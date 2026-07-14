@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="sengensystem.client/sengensystem.client.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="SENGENSystem.Server/SENGENSystem.Server.csproj" />
+</Solution>

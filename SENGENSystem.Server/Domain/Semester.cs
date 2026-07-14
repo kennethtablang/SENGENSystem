@@ -1,0 +1,19 @@
+namespace SENGENSystem.Server.Domain
+{
+    /// <summary>
+    /// An academic term. The dashboard and scheduling are semester-aware; exactly one
+    /// semester is expected to be active at a time (FR-DASH-01, FR-SCHED-05, data §5).
+    /// </summary>
+    public class Semester
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+
+        public string Name { get; set; } = string.Empty; // e.g. "AY 2026-2027 First Semester"
+
+        public bool IsActive { get; set; }
+
+        public DateOnly StartDate { get; set; }
+
+        public DateOnly EndDate { get; set; }
+    }
+}

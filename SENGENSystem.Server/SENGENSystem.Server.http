@@ -1,0 +1,6 @@
+@SENGENSystem.Server_HostAddress = http://localhost:5254
+
+GET {{SENGENSystem.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
