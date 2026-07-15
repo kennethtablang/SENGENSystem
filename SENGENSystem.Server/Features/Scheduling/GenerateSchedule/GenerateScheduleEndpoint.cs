@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.Scheduling.Engine;
@@ -30,6 +31,7 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             GenerateScheduleRequest request,
             AppDbContext db,
             CspScheduler scheduler,
+            AuditLog audit,
             CancellationToken cancellationToken)
         {
             var semester = request.SemesterId is { } id
@@ -99,6 +101,11 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                     FacultyProfileId = a.FacultyProfileId
                 });
             }
+
+            audit.Record(AuditAction.ScheduleGenerated,
+                $"Generated a conflict-free schedule for {semester.Name}: " +
+                $"{result.Assignments.Count} of {sections.Count} sections placed in {result.Steps:N0} search steps.",
+                "Semester", semester.Id.ToString());
 
             await db.SaveChangesAsync(cancellationToken);
 
