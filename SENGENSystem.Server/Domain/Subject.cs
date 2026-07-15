@@ -14,11 +14,19 @@ namespace SENGENSystem.Server.Domain
 
         public int Units { get; set; }
 
-        public string ProgramCode { get; set; } = string.Empty; // e.g. "BSCS"
+        public string ProgramCode { get; set; } = string.Empty; // e.g. "BSCS" (kept in sync with the curriculum's program)
 
         public int YearLevel { get; set; }
 
         /// <summary>Requires a laboratory room; enforced as a hard placement constraint.</summary>
         public bool RequiresLaboratory { get; set; }
+
+        /// <summary>The curriculum this subject belongs to.</summary>
+        public Guid? CurriculumId { get; set; }
+
+        public Curriculum? Curriculum { get; set; }
+
+        /// <summary>The subjects that must be taken before this one (same curriculum).</summary>
+        public ICollection<SubjectPrerequisite> Prerequisites { get; set; } = new List<SubjectPrerequisite>();
     }
 }

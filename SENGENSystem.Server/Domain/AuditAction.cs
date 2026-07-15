@@ -39,6 +39,10 @@ namespace SENGENSystem.Server.Domain
         SchoolYearSaved = 21,
         SemesterSaved = 22,
         BuildingSaved = 23,
-        RoomSaved = 24
+        RoomSaved = 24,
+
+        // Curriculum & subjects
+        CurriculumSaved = 25,
+        SubjectSaved = 26
     }
 }
