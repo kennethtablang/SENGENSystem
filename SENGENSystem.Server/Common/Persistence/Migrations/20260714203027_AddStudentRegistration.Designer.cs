@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SENGENSystem.Server.Common.Persistence;
 
@@ -11,9 +12,11 @@ using SENGENSystem.Server.Common.Persistence;
 namespace SENGENSystem.Server.Common.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260714203027_AddStudentRegistration")]
+    partial class AddStudentRegistration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -75,26 +78,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.ToTable("AuditEntries");
                 });
 
-            modelBuilder.Entity("SENGENSystem.Server.Domain.Building", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Code")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Buildings");
-                });
-
             modelBuilder.Entity("SENGENSystem.Server.Domain.FacultyProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -153,9 +136,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("BuildingId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("Capacity")
                         .HasColumnType("int");
 
@@ -168,8 +148,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasColumnType("nvarchar(60)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("BuildingId");
 
                     b.ToTable("Rooms");
                 });
@@ -215,31 +193,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.HasIndex("TimeSlotId");
 
                     b.ToTable("ScheduleAssignments");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.SchoolYear", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateOnly>("EndDate")
-                        .HasColumnType("date");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("nvarchar(60)");
-
-                    b.Property<DateOnly>("StartDate")
-                        .HasColumnType("date");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SchoolYears");
                 });
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.Section", b =>
@@ -301,15 +254,10 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
 
-                    b.Property<Guid?>("SchoolYearId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("SchoolYearId");
 
                     b.ToTable("Semesters");
                 });
@@ -669,16 +617,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Navigation("StudentRegistration");
                 });
 
-            modelBuilder.Entity("SENGENSystem.Server.Domain.Room", b =>
-                {
-                    b.HasOne("SENGENSystem.Server.Domain.Building", "Building")
-                        .WithMany("Rooms")
-                        .HasForeignKey("BuildingId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Building");
-                });
-
             modelBuilder.Entity("SENGENSystem.Server.Domain.ScheduleAssignment", b =>
                 {
                     b.HasOne("SENGENSystem.Server.Domain.FacultyProfile", "FacultyProfile")
@@ -733,16 +671,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Navigation("Subject");
                 });
 
-            modelBuilder.Entity("SENGENSystem.Server.Domain.Semester", b =>
-                {
-                    b.HasOne("SENGENSystem.Server.Domain.SchoolYear", "SchoolYear")
-                        .WithMany("Semesters")
-                        .HasForeignKey("SchoolYearId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("SchoolYear");
-                });
-
             modelBuilder.Entity("SENGENSystem.Server.Domain.StudentRegistration", b =>
                 {
                     b.HasOne("SENGENSystem.Server.Domain.Semester", "Semester")
@@ -771,16 +699,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Navigation("Semester");
 
                     b.Navigation("StudentRegistration");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.Building", b =>
-                {
-                    b.Navigation("Rooms");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.SchoolYear", b =>
-                {
-                    b.Navigation("Semesters");
                 });
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.StudentRegistration", b =>
