@@ -14,5 +14,10 @@ namespace SENGENSystem.Server.Domain
 
         /// <summary>Whether the room is a laboratory; subjects that require a lab can only be placed here.</summary>
         public bool IsLaboratory { get; set; }
+
+        /// <summary>The building this room is located in (FR: Building contains Rooms).</summary>
+        public Guid? BuildingId { get; set; }
+
+        public Building? Building { get; set; }
     }
 }

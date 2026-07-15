@@ -15,5 +15,10 @@ namespace SENGENSystem.Server.Domain
         public DateOnly StartDate { get; set; }
 
         public DateOnly EndDate { get; set; }
+
+        /// <summary>The school year this semester belongs to (FR: School Year contains Semesters).</summary>
+        public Guid? SchoolYearId { get; set; }
+
+        public SchoolYear? SchoolYear { get; set; }
     }
 }
