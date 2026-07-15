@@ -1,6 +1,7 @@
 using System.Net.Mail;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Common.Validation;
 using SENGENSystem.Server.Domain;
@@ -29,6 +30,7 @@ namespace SENGENSystem.Server.Features.Auth.Register
             RegisterRequest request,
             AppDbContext db,
             IPasswordHasher<User> passwordHasher,
+            AuditLog audit,
             CancellationToken cancellationToken)
         {
             var errors = Validate(request);
@@ -55,6 +57,8 @@ namespace SENGENSystem.Server.Features.Auth.Register
             user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
 
             db.Users.Add(user);
+            audit.RecordFor(user, AuditAction.AccountRegistered,
+                $"Self-registered a new {user.Role} account.", "User", user.Id.ToString());
             await db.SaveChangesAsync(cancellationToken);
 
             return Results.Created($"/api/users/{user.Id}", new RegisterResponse(AuthUserDto.From(user)));
