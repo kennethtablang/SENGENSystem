@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import SetupModal from '../academic/SetupModal';
 import { createSubject, updateSubject, deleteSubject } from './api';
+import { notifySuccess, notifyError } from '../shell/notify';
 
 const yearLevels = [1, 2, 3];
 const terms = [
@@ -54,18 +55,20 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
         try {
             if (isCreate) await createSubject(payload());
             else await updateSubject(record.id, payload());
+            notifySuccess(isCreate ? 'Subject created.' : 'Subject updated.');
             onChanged(); onClose();
         } catch (ex) {
             setFieldErrors(ex.fieldErrors || {});
             if (!ex.fieldErrors || Object.keys(ex.fieldErrors).length === 0) setError(ex.message);
+            notifyError(ex.message);
         } finally { setSaving(false); }
     }
 
     async function remove() {
         if (!window.confirm(`Delete subject ${record.code}? This can't be undone.`)) return;
         setError(''); setBusy(true);
-        try { await deleteSubject(record.id); onDeleted(); onClose(); }
-        catch (ex) { setError(ex.message); setBusy(false); }
+        try { await deleteSubject(record.id); notifySuccess(`Subject ${record.code} deleted.`); onDeleted(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
     }
 
     const footer = (

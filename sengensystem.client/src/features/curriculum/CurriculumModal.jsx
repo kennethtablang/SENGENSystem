@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import SetupModal from '../academic/SetupModal';
 import { createCurriculum, updateCurriculum, deleteCurriculum, activateCurriculum } from './api';
+import { notifySuccess, notifyError } from '../shell/notify';
 
 export default function CurriculumModal({ record, schoolYears, onClose, onChanged, onDeleted }) {
     const isCreate = !record;
@@ -35,24 +36,26 @@ export default function CurriculumModal({ record, schoolYears, onClose, onChange
         setError(''); setFieldErrors({}); setSaving(true);
         try {
             const saved = isCreate ? await createCurriculum(payload()) : await updateCurriculum(record.id, payload());
+            notifySuccess(isCreate ? `${saved.programCode} curriculum created.` : `${saved.programCode} curriculum updated.`);
             onChanged(saved); onClose();
         } catch (ex) {
             setFieldErrors(ex.fieldErrors || {});
             if (!ex.fieldErrors || Object.keys(ex.fieldErrors).length === 0) setError(ex.message);
+            notifyError(ex.message);
         } finally { setSaving(false); }
     }
 
     async function setActive() {
         setError(''); setBusy(true);
-        try { const saved = await activateCurriculum(record.id); onChanged(saved); onClose(); }
-        catch (ex) { setError(ex.message); } finally { setBusy(false); }
+        try { const saved = await activateCurriculum(record.id); notifySuccess(`${saved.programCode} is now the active curriculum for its program.`); onChanged(saved); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); } finally { setBusy(false); }
     }
 
     async function remove() {
         if (!window.confirm(`Delete the ${record.programCode} curriculum? This can't be undone.`)) return;
         setError(''); setBusy(true);
-        try { await deleteCurriculum(record.id); onDeleted(record.id); onClose(); }
-        catch (ex) { setError(ex.message); setBusy(false); }
+        try { await deleteCurriculum(record.id); notifySuccess(`${record.programCode} curriculum deleted.`); onDeleted(record.id); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
     }
 
     const footer = (

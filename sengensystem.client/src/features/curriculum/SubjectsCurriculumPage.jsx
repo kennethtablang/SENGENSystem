@@ -43,9 +43,9 @@ export default function SubjectsCurriculumPage() {
 
     // Load subjects for the selected curriculum.
     useEffect(() => {
-        if (!selectedId) { setSubjects([]); return; }
         let active = true;
         (async () => {
+            if (!selectedId) { if (active) setSubjects([]); return; }
             setLoadingS(true);
             try { const data = await listSubjects(selectedId); if (active) setSubjects(data.subjects); }
             catch (err) { if (active) setError(err.message); }
