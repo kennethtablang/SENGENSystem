@@ -3,18 +3,24 @@ using SENGENSystem.Server.Domain;
 namespace SENGENSystem.Server.Features.Curriculum
 {
     /// <summary>Read models for the Academic Head's Subjects &amp; Curriculum screen (FR-SCHED-04).</summary>
+    public record SchoolYearRef(Guid Id, string Name);
+
     public record CurriculumDto(
         Guid Id,
         string ProgramCode,
         string ProgramName,
-        int EffectivityYear,
         string Label,
         bool IsActive,
-        int SubjectCount)
+        int SubjectCount,
+        IReadOnlyList<SchoolYearRef> SchoolYears)
     {
         public static CurriculumDto From(Domain.Curriculum c, int subjectCount) =>
-            new(c.Id, c.ProgramCode, c.ProgramName, c.EffectivityYear,
-                $"{c.ProgramCode} {c.EffectivityYear}", c.IsActive, subjectCount);
+            new(c.Id, c.ProgramCode, c.ProgramName, c.ProgramCode, c.IsActive, subjectCount,
+                c.SchoolYears
+                    .Where(l => l.SchoolYear is not null)
+                    .OrderBy(l => l.SchoolYear!.StartDate)
+                    .Select(l => new SchoolYearRef(l.SchoolYearId, l.SchoolYear!.Name))
+                    .ToList());
     }
 
     /// <summary>A compact subject reference used for prerequisite chips and the prerequisite picker.</summary>
@@ -30,11 +36,12 @@ namespace SENGENSystem.Server.Features.Curriculum
         string Title,
         int Units,
         int YearLevel,
+        string Term,
         bool RequiresLaboratory,
         IReadOnlyList<SubjectRefDto> Prerequisites)
     {
         public static SubjectDto From(Subject s) =>
-            new(s.Id, s.CurriculumId, s.Code, s.Title, s.Units, s.YearLevel, s.RequiresLaboratory,
+            new(s.Id, s.CurriculumId, s.Code, s.Title, s.Units, s.YearLevel, s.Term.ToString(), s.RequiresLaboratory,
                 s.Prerequisites
                     .Where(p => p.PrerequisiteSubject is not null)
                     .Select(p => SubjectRefDto.From(p.PrerequisiteSubject!))
