@@ -1,0 +1,164 @@
+/* Academic setup — School Admin manages school years, semesters, buildings, rooms. */
+
+.setup-page {
+  animation: rise 0.4s ease both;
+}
+
+.setup-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.4rem;
+}
+
+.setup-head h2 {
+  font-size: 1.35rem;
+  color: var(--sti-blue);
+}
+
+.setup-sub {
+  color: var(--text-3);
+  font-size: 0.88rem;
+  margin-top: 0.35rem;
+  max-width: 46rem;
+}
+
+.setup-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.setup-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: 600 0.74rem/1 var(--sans);
+  color: var(--text-3);
+}
+
+.setup-filter select {
+  font: 500 0.84rem/1.2 var(--sans);
+  color: var(--text-1);
+  background: var(--bg-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  outline: none;
+}
+
+/* ---------- Table ---------- */
+
+.setup-table-wrap {
+  padding: 0.4rem 0.2rem;
+  overflow-x: auto;
+}
+
+.setup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.setup-table th {
+  text-align: left;
+  font: 600 0.72rem/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.setup-table td {
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  vertical-align: middle;
+}
+
+.setup-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.setup-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.setup-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.setup-table td strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.setup-muted {
+  color: var(--text-3);
+}
+
+.setup-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-empty {
+  color: var(--text-3);
+  font-size: 0.9rem;
+  padding: 1.5rem 0;
+}
+
+/* Active / lab pills. */
+.chip-active {
+  background: var(--up-dim, rgba(10, 158, 99, 0.12));
+  color: var(--up);
+}
+
+.chip-lab {
+  background: var(--sti-blue-dim);
+  color: var(--sti-blue);
+}
+
+/* ---------- Modal internals (uses the global .modal shell) ---------- */
+
+.setup-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+  color: var(--text-2);
+  margin: 0.2rem 0 0.4rem;
+  cursor: pointer;
+}
+
+.setup-checkbox input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--sti-blue);
+}
+
+/* Left-aligned destructive action balancing the footer's save/cancel. */
+.modal-foot .setup-foot-spacer {
+  margin-right: auto;
+}
+
+/* Shared button modifiers (kept local so these pages don't depend on another feature's CSS). */
+.btn-sm {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+.btn-danger {
+  background: var(--down);
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #bf2a4c;
+}
