@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { registerAccount } from './api';
-import './auth.css';
+import AuthLayout from './AuthLayout';
+import PasswordInput from './PasswordInput';
+import TermsModal from './TermsModal';
 
 const initialForm = {
     firstName: '',
@@ -18,6 +20,7 @@ function RegisterPage() {
     const [fieldErrors, setFieldErrors] = useState({});
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [termsOpen, setTermsOpen] = useState(false);
 
     const set = (field) => (e) => {
         const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
@@ -57,64 +60,89 @@ function RegisterPage() {
     const fieldError = (name) => fieldErrors[name]?.[0];
 
     return (
-        <div className="auth-page">
+        <AuthLayout>
             <form className="auth-card" onSubmit={handleSubmit} noValidate>
                 <h1>Create your account</h1>
                 <p className="auth-subtitle">
-                    SEN-GEN Student Enrollment &amp; Class Scheduling — STI Alaminos
+                    One account for documents, registration, and enlistment.
                 </p>
 
-                {error && <div className="auth-alert">{error}</div>}
+                {error && <div className="alert">{error}</div>}
 
-                <div className="auth-field-row">
-                    <div className="auth-field">
+                <div className="field-row">
+                    <div className="field">
                         <label htmlFor="firstName">First name</label>
-                        <input id="firstName" type="text" value={form.firstName} onChange={set('firstName')} required />
-                        {fieldError('firstName') && <p className="auth-error">{fieldError('firstName')}</p>}
+                        <input id="firstName" type="text" autoComplete="given-name" value={form.firstName} onChange={set('firstName')} required />
+                        {fieldError('firstName') && <p className="field-error">{fieldError('firstName')}</p>}
                     </div>
-                    <div className="auth-field">
+                    <div className="field">
                         <label htmlFor="lastName">Last name</label>
-                        <input id="lastName" type="text" value={form.lastName} onChange={set('lastName')} required />
-                        {fieldError('lastName') && <p className="auth-error">{fieldError('lastName')}</p>}
+                        <input id="lastName" type="text" autoComplete="family-name" value={form.lastName} onChange={set('lastName')} required />
+                        {fieldError('lastName') && <p className="field-error">{fieldError('lastName')}</p>}
                     </div>
                 </div>
 
-                <div className="auth-field">
-                    <label htmlFor="email">Email address</label>
-                    <input id="email" type="email" value={form.email} onChange={set('email')} required />
-                    {fieldError('email') && <p className="auth-error">{fieldError('email')}</p>}
+                <div className="field">
+                    <label htmlFor="email">Email</label>
+                    <input id="email" type="email" autoComplete="email" value={form.email} onChange={set('email')} required />
+                    {fieldError('email') && <p className="field-error">{fieldError('email')}</p>}
                 </div>
 
-                <div className="auth-field">
+                <div className="field">
                     <label htmlFor="password">Password</label>
-                    <input id="password" type="password" value={form.password} onChange={set('password')} required />
-                    {fieldError('password') && <p className="auth-error">{fieldError('password')}</p>}
+                    <PasswordInput id="password" autoComplete="new-password" value={form.password} onChange={set('password')} />
+                    {fieldError('password') && <p className="field-error">{fieldError('password')}</p>}
                 </div>
 
-                <div className="auth-field">
+                <div className="field">
                     <label htmlFor="confirmPassword">Confirm password</label>
-                    <input id="confirmPassword" type="password" value={form.confirmPassword} onChange={set('confirmPassword')} required />
-                    {fieldError('confirmPassword') && <p className="auth-error">{fieldError('confirmPassword')}</p>}
+                    <PasswordInput id="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={set('confirmPassword')} />
+                    {fieldError('confirmPassword') && <p className="field-error">{fieldError('confirmPassword')}</p>}
                 </div>
 
                 <label className="auth-terms">
-                    <input type="checkbox" checked={form.acceptedTerms} onChange={set('acceptedTerms')} />
+                    <input
+                        type="checkbox"
+                        checked={form.acceptedTerms}
+                        onChange={e => {
+                            if (e.target.checked) {
+                                // Agreement only happens inside the modal, after reading.
+                                setTermsOpen(true);
+                            } else {
+                                setForm(prev => ({ ...prev, acceptedTerms: false }));
+                            }
+                        }}
+                    />
                     <span>
-                        I have read and agree to the terms and conditions on the collection and
-                        processing of my personal data in accordance with the Data Privacy Act of 2012 (RA 10173).
+                        I have read and agree to the{' '}
+                        <button type="button" className="link-btn" onClick={() => setTermsOpen(true)}>
+                            terms and conditions
+                        </button>{' '}
+                        on the collection and processing of my personal data under the
+                        Data Privacy Act of 2012 (RA 10173).
                     </span>
                 </label>
-                {fieldError('acceptedTerms') && <p className="auth-error">{fieldError('acceptedTerms')}</p>}
+                {fieldError('acceptedTerms') && <p className="field-error">{fieldError('acceptedTerms')}</p>}
 
-                <button className="auth-submit" type="submit" disabled={submitting}>
-                    {submitting ? 'Creating account…' : 'Register'}
+                <TermsModal
+                    open={termsOpen}
+                    onClose={() => setTermsOpen(false)}
+                    onAgree={() => {
+                        setForm(prev => ({ ...prev, acceptedTerms: true }));
+                        setTermsOpen(false);
+                    }}
+                />
+
+                <button className="btn btn-primary btn-block" type="submit" disabled={submitting}>
+                    {submitting && <span className="spinner" aria-hidden="true" />}
+                    {submitting ? 'Creating account…' : 'Create account'}
                 </button>
 
                 <p className="auth-switch">
-                    Already have an account? <Link to="/login">Sign in</Link>
+                    Already registered? <Link to="/login">Sign in</Link>
                 </p>
             </form>
-        </div>
+        </AuthLayout>
     );
 }
 

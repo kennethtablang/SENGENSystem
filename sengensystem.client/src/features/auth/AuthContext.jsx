@@ -25,8 +25,11 @@ export function AuthProvider({ children }) {
         setUser(null);
     };
 
+    // Refresh the in-memory user after profile edits.
+    const updateUser = (updated) => setUser(updated);
+
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout }}>
+        <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
             {children}
         </AuthContext.Provider>
     );

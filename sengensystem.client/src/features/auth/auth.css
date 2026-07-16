@@ -1,111 +1,266 @@
-.auth-page {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1.5rem;
+/* Auth: split screen — solid STI Blue brand panel left, white form
+   column right. Gold is reserved for emphasis and the CTA. */
+
+.auth-shell {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  min-height: 100svh;
+}
+
+/* ---------- Brand panel (STI Blue) ---------- */
+
+.auth-brand {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2.5rem;
+  color: #fff;
+  background:
+    radial-gradient(50rem 34rem at -10% 115%, rgba(255, 255, 255, 0.14), transparent 55%),
+    radial-gradient(40rem 28rem at 115% -15%, rgba(85, 200, 232, 0.35), transparent 60%),
+    linear-gradient(165deg, var(--sti-blue) 30%, var(--sti-blue-deep));
+}
+
+.auth-brand-watermark {
+  position: absolute;
+  right: -18%;
+  bottom: -14%;
+  width: 78%;
+  max-width: 34rem;
+  opacity: 0.14;
+  transform: rotate(-8deg);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* On the blue panel the wordmark goes white. */
+.auth-brand .wordmark {
+  position: relative;
+  color: #fff;
+  animation: rise 0.5s ease both;
+}
+
+.auth-brand .wordmark-campus {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.auth-brand .wordmark-dot {
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: var(--sti-yellow);
+}
+
+.auth-brand-body {
+  position: relative;
+  margin: auto 0;
+  padding: 2rem 0;
+  max-width: 27rem;
+}
+
+.auth-brand-body h2 {
+  color: #fff;
+  font-size: clamp(1.7rem, 2.4vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.22;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.9rem;
+  animation: rise 0.55s 0.08s ease both;
+}
+
+/* Gold emphasis inside the blue panel. */
+.auth-brand-body h2 .text-brand {
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: var(--sti-yellow);
+}
+
+.auth-brand-body p {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 24rem;
+  animation: rise 0.55s 0.16s ease both;
+}
+
+/* The three enrollment stages, numbered — order is the point. */
+.auth-pipeline {
+  position: relative;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+}
+
+.auth-pipeline li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: 500 0.8rem/1 var(--sans);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: var(--radius-pill);
+  padding: 0.45rem 0.85rem 0.45rem 0.5rem;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(4px);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  animation: rise 0.5s ease both;
+}
+
+.auth-pipeline li:nth-child(1) { animation-delay: 0.25s; }
+.auth-pipeline li:nth-child(2) { animation-delay: 0.33s; }
+.auth-pipeline li:nth-child(3) { animation-delay: 0.41s; }
+
+.auth-pipeline li:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+.auth-pipeline li i {
+  font: 600 0.68rem/1 var(--mono);
+  font-style: normal;
+  color: var(--on-yellow);
+  background: var(--sti-yellow);
+  border-radius: var(--radius-pill);
+  padding: 0.3rem 0.45rem;
+}
+
+/* ---------- Form column (white) ---------- */
+
+.auth-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 2rem;
+  background:
+    radial-gradient(46rem 30rem at 90% 0%, var(--sti-blue-dim), transparent 60%),
+    var(--bg);
+}
+
+/* Timetable grid — the artifact the engine produces — drawn faintly
+   across the white column, fading out beneath the form card and
+   drifting very slowly (the mask stays put; the grid slides under it;
+   keyframes shared from index.css). */
+.auth-main::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 51, 153, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 51, 153, 0.055) 1px, transparent 1px),
+    linear-gradient(rgba(0, 51, 153, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 51, 153, 0.035) 1px, transparent 1px);
+  background-size: 176px 176px, 176px 176px, 44px 44px, 44px 44px;
+  background-position: 0 0;
+  -webkit-mask-image: radial-gradient(38rem 30rem at 50% 46%, transparent 30%, #fff 78%);
+  mask-image: radial-gradient(38rem 30rem at 50% 46%, transparent 30%, #fff 78%);
+  animation: grid-drift 90s linear infinite;
+}
+
+.auth-main > * {
+  position: relative;
+}
+
+/* The wordmark lives on the brand panel; repeat it up top only on
+   small screens where that panel is hidden. */
+.auth-main-header {
+  display: none;
+}
+
+.auth-form-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 0;
 }
 
 .auth-card {
-    width: 100%;
-    max-width: 420px;
-    padding: 2rem;
-    border: 1px solid rgba(128, 128, 128, 0.35);
-    border-radius: 12px;
-    text-align: left;
+  width: 100%;
+  max-width: 27rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 2rem;
+  box-shadow: var(--shadow-lg);
+  animation: rise 0.5s 0.1s cubic-bezier(0.22, 0.9, 0.3, 1) both;
 }
 
 .auth-card h1 {
-    font-size: 1.5rem;
-    margin: 0 0 0.25rem;
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sti-blue);
+  margin-bottom: 0.35rem;
 }
 
-.auth-card .auth-subtitle {
-    margin: 0 0 1.5rem;
-    opacity: 0.75;
-    font-size: 0.9rem;
-}
-
-.auth-field {
-    margin-bottom: 1rem;
-}
-
-.auth-field label {
-    display: block;
-    font-size: 0.85rem;
-    font-weight: 600;
-    margin-bottom: 0.3rem;
-}
-
-.auth-field input[type='text'],
-.auth-field input[type='email'],
-.auth-field input[type='password'] {
-    width: 100%;
-    padding: 0.55rem 0.7rem;
-    border: 1px solid rgba(128, 128, 128, 0.5);
-    border-radius: 8px;
-    font-size: 0.95rem;
-    background: transparent;
-    color: inherit;
-    box-sizing: border-box;
-}
-
-.auth-field-row {
-    display: flex;
-    gap: 0.75rem;
-}
-
-.auth-field-row .auth-field {
-    flex: 1;
+.auth-subtitle {
+  color: var(--text-3);
+  font-size: 0.88rem;
+  margin-bottom: 1.6rem;
 }
 
 .auth-terms {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-    margin-bottom: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-2);
+  margin: 0.25rem 0 1.1rem;
+  text-align: left;
 }
 
 .auth-terms input {
-    margin-top: 0.2rem;
-}
-
-.auth-error {
-    color: #d64545;
-    font-size: 0.8rem;
-    margin: 0.25rem 0 0;
-}
-
-.auth-alert {
-    border: 1px solid #d64545;
-    color: #d64545;
-    border-radius: 8px;
-    padding: 0.6rem 0.8rem;
-    font-size: 0.85rem;
-    margin-bottom: 1rem;
-}
-
-.auth-alert-success {
-    border-color: #2f9e44;
-    color: #2f9e44;
-}
-
-.auth-submit {
-    width: 100%;
-    padding: 0.65rem;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.auth-submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+  margin-top: 0.2rem;
+  accent-color: var(--sti-blue);
 }
 
 .auth-switch {
-    margin-top: 1.25rem;
-    font-size: 0.85rem;
-    text-align: center;
+  margin-top: 1.4rem;
+  font-size: 0.85rem;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.auth-footer {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 0.5rem 0;
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+@media (max-width: 900px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-brand {
+    display: none;
+  }
+
+  .auth-main-header {
+    display: flex;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-main {
+    padding: 1.25rem 1rem;
+  }
+
+  .auth-card {
+    padding: 1.5rem 1.25rem;
+  }
 }

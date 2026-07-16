@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { loginAccount } from './api';
 import { useAuth } from './useAuth';
-import './auth.css';
+import AuthLayout from './AuthLayout';
+import PasswordInput from './PasswordInput';
 
 function LoginPage() {
     const navigate = useNavigate();
@@ -31,51 +32,52 @@ function LoginPage() {
     }
 
     return (
-        <div className="auth-page">
+        <AuthLayout>
             <form className="auth-card" onSubmit={handleSubmit} noValidate>
                 <h1>Sign in</h1>
-                <p className="auth-subtitle">
-                    SEN-GEN Student Enrollment &amp; Class Scheduling — STI Alaminos
-                </p>
+                <p className="auth-subtitle">Use your SEN-GEN account email.</p>
 
                 {justRegistered && (
-                    <div className="auth-alert auth-alert-success">
-                        Account created successfully. You can now sign in.
+                    <div className="alert alert-success">
+                        Account created. Sign in to continue.
                     </div>
                 )}
-                {error && <div className="auth-alert">{error}</div>}
+                {error && <div className="alert">{error}</div>}
 
-                <div className="auth-field">
-                    <label htmlFor="email">Email address</label>
+                <div className="field">
+                    <label htmlFor="email">Email</label>
                     <input
                         id="email"
                         type="email"
+                        autoComplete="email"
                         value={form.email}
                         onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))}
                         required
                     />
                 </div>
 
-                <div className="auth-field">
+                <div className="field">
                     <label htmlFor="password">Password</label>
-                    <input
+                    <PasswordInput
                         id="password"
-                        type="password"
+                        autoComplete="current-password"
                         value={form.password}
                         onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))}
-                        required
                     />
                 </div>
 
-                <button className="auth-submit" type="submit" disabled={submitting}>
+                <button className="btn btn-primary btn-block" type="submit" disabled={submitting}>
+                    {submitting && <span className="spinner" aria-hidden="true" />}
                     {submitting ? 'Signing in…' : 'Sign in'}
                 </button>
 
                 <p className="auth-switch">
-                    New student? <Link to="/register">Create an account</Link>
+                    New student? <Link to="/register-sis">Register (SIS)</Link>
+                    {' · '}
+                    Returning? <Link to="/term-activation">Activate your term</Link>
                 </p>
             </form>
-        </div>
+        </AuthLayout>
     );
 }
 
