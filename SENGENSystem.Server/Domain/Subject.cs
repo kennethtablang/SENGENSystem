@@ -14,6 +14,13 @@ namespace SENGENSystem.Server.Domain
 
         public int Units { get; set; }
 
+        /// <summary>
+        /// Weekly contact hours that must be plotted on the schedule board. Distinct from
+        /// <see cref="Units"/> (e.g. a 1-unit laboratory meets 3 hours a week). The Weekly Hours
+        /// Tracker compares this against the hours actually placed on the calendar.
+        /// </summary>
+        public int Hours { get; set; }
+
         public string ProgramCode { get; set; } = string.Empty; // e.g. "BSCS" (kept in sync with the curriculum's program)
 
         public int YearLevel { get; set; }
