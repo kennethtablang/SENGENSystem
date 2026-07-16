@@ -1,0 +1,236 @@
+/* Student subject enlistment + Registrar approvals (FR-ENL). */
+
+.enl-page {
+  animation: rise 0.4s ease both;
+}
+
+.enl-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.3rem;
+}
+
+.enl-head h2 {
+  font-size: 1.35rem;
+  color: var(--sti-blue);
+}
+
+.enl-sub {
+  color: var(--text-3);
+  font-size: 0.88rem;
+  margin-top: 0.35rem;
+  max-width: 46rem;
+}
+
+.enl-sub strong {
+  color: var(--text-2);
+}
+
+.enl-controls {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.enl-controls input[type='search'] {
+  min-width: 15rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-1);
+  font: inherit;
+}
+
+.enl-gate ul,
+.alert ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.enl-empty {
+  color: var(--text-3);
+  font-size: 0.9rem;
+  padding: 2rem 0;
+}
+
+/* ---------- My requests ---------- */
+
+.enl-mine {
+  padding: 1rem 1.1rem 1.2rem;
+  margin-bottom: 1.4rem;
+}
+
+.enl-mine-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.7rem;
+}
+
+.enl-mine-head h3 {
+  font-size: 1rem;
+  color: var(--text-1);
+}
+
+.enl-table-wrap {
+  overflow-x: auto;
+}
+
+.enl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.enl-table th {
+  text-align: left;
+  font: 600 0.72rem/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.enl-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  vertical-align: middle;
+}
+
+.enl-mono {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.enl-when {
+  color: var(--text-3);
+  font-size: 0.8rem;
+}
+
+.enl-subject-title {
+  display: block;
+  color: var(--text-3);
+  font-size: 0.78rem;
+}
+
+.enl-reject-reason {
+  color: var(--text-3);
+  font-size: 0.78rem;
+}
+
+/* ---------- Section cards ---------- */
+
+.enl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 1rem;
+}
+
+.enl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.enl-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.enl-card-head h3 {
+  font-size: 1.02rem;
+  color: var(--text-1);
+}
+
+.enl-card-meta {
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.enl-avail {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  color: var(--sti-blue);
+  border: 1px solid var(--sti-blue);
+}
+
+.enl-avail-low {
+  color: #b98900;
+  border-color: #b98900;
+}
+
+.enl-avail-full {
+  color: var(--text-3);
+  border-color: var(--line);
+}
+
+.enl-meetings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.enl-meetings li {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.enl-faculty {
+  color: var(--text-3);
+}
+
+.enl-card-foot {
+  margin-top: auto;
+  padding-top: 0.4rem;
+}
+
+/* ---------- Approvals queue ---------- */
+
+.enl-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.enl-reject-form {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.enl-reject-form input {
+  min-width: 11rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.enl-cancel {
+  font-size: 0.78rem;
+}
