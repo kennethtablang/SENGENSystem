@@ -8,7 +8,10 @@ namespace SENGENSystem.Server.Domain
     {
         public Guid Id { get; set; } = Guid.NewGuid();
 
-        public string Name { get; set; } = string.Empty; // e.g. "AY 2026-2027 First Semester"
+        public string Name { get; set; } = string.Empty; // auto-derived, e.g. "AY 2026-2027 — First Semester"
+
+        /// <summary>Which of the two terms of its school year this is (hard-coded first/second).</summary>
+        public SemesterTerm Term { get; set; } = SemesterTerm.FirstSemester;
 
         public bool IsActive { get; set; }
 

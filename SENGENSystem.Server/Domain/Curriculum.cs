@@ -14,11 +14,12 @@ namespace SENGENSystem.Server.Domain
 
         public string ProgramName { get; set; } = string.Empty; // e.g. "BS Information Technology"
 
-        public int EffectivityYear { get; set; } // e.g. 2024
-
         public bool IsActive { get; set; }
 
         /// <summary>The subjects that make up this curriculum, across year levels.</summary>
         public ICollection<Subject> Subjects { get; set; } = new List<Subject>();
+
+        /// <summary>The school years this curriculum is effective for (checkbox effectivity).</summary>
+        public ICollection<CurriculumSchoolYear> SchoolYears { get; set; } = new List<CurriculumSchoolYear>();
     }
 }

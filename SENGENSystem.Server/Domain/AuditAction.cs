@@ -43,6 +43,12 @@ namespace SENGENSystem.Server.Domain
 
         // Curriculum & subjects
         CurriculumSaved = 25,
-        SubjectSaved = 26
+        SubjectSaved = 26,
+
+        // Faculty load management
+        FacultyLoadSaved = 27,
+
+        // Academic setup — class sections (student blocks)
+        ClassSectionSaved = 28
     }
 }

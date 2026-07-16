@@ -18,6 +18,9 @@ namespace SENGENSystem.Server.Domain
 
         public int YearLevel { get; set; }
 
+        /// <summary>The term (first/second semester) this subject is offered in within its year.</summary>
+        public SemesterTerm Term { get; set; } = SemesterTerm.FirstSemester;
+
         /// <summary>Requires a laboratory room; enforced as a hard placement constraint.</summary>
         public bool RequiresLaboratory { get; set; }
 
