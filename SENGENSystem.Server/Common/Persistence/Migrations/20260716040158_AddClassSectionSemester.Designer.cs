@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SENGENSystem.Server.Common.Persistence;
 
@@ -11,9 +12,11 @@ using SENGENSystem.Server.Common.Persistence;
 namespace SENGENSystem.Server.Common.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716040158_AddClassSectionSemester")]
+    partial class AddClassSectionSemester
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -183,9 +186,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Property<DateTime>("AssignedAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("ClassSectionId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("FacultyProfileId")
                         .HasColumnType("uniqueidentifier");
 
@@ -197,13 +197,11 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ClassSectionId");
-
-                    b.HasIndex("FacultyProfileId");
-
                     b.HasIndex("SemesterId");
 
-                    b.HasIndex("SubjectId", "ClassSectionId")
+                    b.HasIndex("SubjectId");
+
+                    b.HasIndex("FacultyProfileId", "SubjectId", "SemesterId")
                         .IsUnique();
 
                     b.ToTable("FacultyLoadAssignments");
@@ -835,12 +833,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.FacultyLoadAssignment", b =>
                 {
-                    b.HasOne("SENGENSystem.Server.Domain.ClassSection", "ClassSection")
-                        .WithMany()
-                        .HasForeignKey("ClassSectionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("SENGENSystem.Server.Domain.FacultyProfile", "FacultyProfile")
                         .WithMany()
                         .HasForeignKey("FacultyProfileId")
@@ -858,8 +850,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasForeignKey("SubjectId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("ClassSection");
 
                     b.Navigation("FacultyProfile");
 

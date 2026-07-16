@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SENGENSystem.Server.Common.Persistence;
 
@@ -11,9 +12,11 @@ using SENGENSystem.Server.Common.Persistence;
 namespace SENGENSystem.Server.Common.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716011513_AddSubjectTerm")]
+    partial class AddSubjectTerm
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -95,44 +98,14 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.ToTable("Buildings");
                 });
 
-            modelBuilder.Entity("SENGENSystem.Server.Domain.ClassSection", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ProgramCode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("SectionName")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<Guid>("SemesterId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("YearLevel")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SemesterId", "ProgramCode", "YearLevel", "SectionName")
-                        .IsUnique();
-
-                    b.ToTable("ClassSections");
-                });
-
             modelBuilder.Entity("SENGENSystem.Server.Domain.Curriculum", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("EffectivityYear")
+                        .HasColumnType("int");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -149,29 +122,10 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Curricula");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.CurriculumSchoolYear", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("CurriculumId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("SchoolYearId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SchoolYearId");
-
-                    b.HasIndex("CurriculumId", "SchoolYearId")
+                    b.HasIndex("ProgramCode", "EffectivityYear")
                         .IsUnique();
 
-                    b.ToTable("CurriculumSchoolYears");
+                    b.ToTable("Curricula");
                 });
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.FacultyLoadAssignment", b =>
@@ -182,9 +136,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.Property<DateTime>("AssignedAtUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<Guid>("ClassSectionId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("FacultyProfileId")
                         .HasColumnType("uniqueidentifier");
@@ -197,13 +148,11 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ClassSectionId");
-
-                    b.HasIndex("FacultyProfileId");
-
                     b.HasIndex("SemesterId");
 
-                    b.HasIndex("SubjectId", "ClassSectionId")
+                    b.HasIndex("SubjectId");
+
+                    b.HasIndex("FacultyProfileId", "SubjectId", "SemesterId")
                         .IsUnique();
 
                     b.ToTable("FacultyLoadAssignments");
@@ -421,18 +370,9 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
-                    b.Property<string>("Term")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("FirstSemester");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("SchoolYearId", "Term")
-                        .IsUnique()
-                        .HasFilter("[SchoolYearId] IS NOT NULL");
+                    b.HasIndex("SchoolYearId");
 
                     b.ToTable("Semesters");
                 });
@@ -803,44 +743,8 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("SENGENSystem.Server.Domain.ClassSection", b =>
-                {
-                    b.HasOne("SENGENSystem.Server.Domain.Semester", "Semester")
-                        .WithMany()
-                        .HasForeignKey("SemesterId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Semester");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.CurriculumSchoolYear", b =>
-                {
-                    b.HasOne("SENGENSystem.Server.Domain.Curriculum", "Curriculum")
-                        .WithMany("SchoolYears")
-                        .HasForeignKey("CurriculumId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("SENGENSystem.Server.Domain.SchoolYear", "SchoolYear")
-                        .WithMany()
-                        .HasForeignKey("SchoolYearId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Curriculum");
-
-                    b.Navigation("SchoolYear");
-                });
-
             modelBuilder.Entity("SENGENSystem.Server.Domain.FacultyLoadAssignment", b =>
                 {
-                    b.HasOne("SENGENSystem.Server.Domain.ClassSection", "ClassSection")
-                        .WithMany()
-                        .HasForeignKey("ClassSectionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("SENGENSystem.Server.Domain.FacultyProfile", "FacultyProfile")
                         .WithMany()
                         .HasForeignKey("FacultyProfileId")
@@ -858,8 +762,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasForeignKey("SubjectId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("ClassSection");
 
                     b.Navigation("FacultyProfile");
 
@@ -1030,8 +932,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.Curriculum", b =>
                 {
-                    b.Navigation("SchoolYears");
-
                     b.Navigation("Subjects");
                 });
 
