@@ -638,6 +638,9 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Property<Guid?>("CurriculumId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("Hours")
+                        .HasColumnType("int");
+
                     b.Property<string>("ProgramCode")
                         .IsRequired()
                         .HasMaxLength(20)
