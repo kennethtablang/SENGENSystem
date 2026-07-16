@@ -1,0 +1,368 @@
+/* Faculty load management — Academic Head allocates subjects to faculty (FR-FAC-01). */
+
+.fl-page {
+  animation: rise 0.4s ease both;
+}
+
+.fl-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.4rem;
+}
+
+.fl-head h2 {
+  font-size: 1.35rem;
+  color: var(--sti-blue);
+}
+
+.fl-sub {
+  color: var(--text-3);
+  font-size: 0.88rem;
+  margin-top: 0.35rem;
+  max-width: 46rem;
+}
+
+.fl-semester {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font: 600 0.74rem/1 var(--sans);
+  color: var(--text-3);
+}
+
+.fl-semester select {
+  font: 500 0.84rem/1.2 var(--sans);
+  color: var(--text-1);
+  background: var(--bg-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  outline: none;
+}
+
+/* ---------- Faculty table ---------- */
+
+.fl-table-wrap {
+  padding: 0.4rem 0.2rem;
+  overflow-x: auto;
+}
+
+.fl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.fl-table th {
+  text-align: left;
+  font: 600 0.72rem/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.fl-table td {
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  vertical-align: middle;
+}
+
+.fl-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.fl-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.fl-row:hover {
+  background: var(--surface-hover);
+}
+
+.fl-table td strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.fl-muted {
+  color: var(--text-3);
+}
+
+.fl-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.fl-load-col {
+  width: 12rem;
+}
+
+.fl-load {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.fl-load-bar {
+  flex: 1;
+  height: 0.5rem;
+  background: var(--sti-blue-dim);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.fl-load-fill {
+  display: block;
+  height: 100%;
+  background: var(--up);
+  border-radius: var(--radius-pill);
+  transition: width 0.25s ease;
+}
+
+.fl-load-fill.is-over {
+  background: var(--down);
+}
+
+.fl-load-text {
+  font: 600 0.78rem/1 var(--mono, 'IBM Plex Mono', monospace);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.fl-empty {
+  color: var(--text-3);
+  font-size: 0.9rem;
+  padding: 1.5rem 0;
+}
+
+/* ---------- Assignment modal ---------- */
+
+/* Enlarge the Assign-load modal — it holds a filterable, scrollable subject list. */
+.modal.fl-modal-wide {
+  max-width: 60rem;
+  max-height: min(88svh, 52rem);
+}
+
+.fl-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.fl-search {
+  flex: 1 1 12rem;
+  font: 400 0.9rem/1.4 var(--sans);
+  color: var(--text-1);
+  background: var(--bg-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem;
+  outline: none;
+}
+
+.fl-search:focus {
+  border-color: var(--sti-blue);
+  box-shadow: 0 0 0 4px var(--sti-blue-dim);
+}
+
+.fl-filter {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font: 600 0.68rem/1 var(--sans);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.fl-filter select {
+  font: 500 0.84rem/1.2 var(--sans);
+  color: var(--text-1);
+  background: var(--bg-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+  outline: none;
+}
+
+/* Shared grid for the subject list head + rows. */
+.fl-subject-head,
+.fl-subject-row {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 1fr) 5rem 3rem 3.5rem 6.5rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fl-subject-head {
+  padding: 0.3rem 0.55rem 0.5rem;
+  font: 600 0.66rem/1 var(--sans);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--surface, #fff);
+  z-index: 1;
+}
+
+.fl-subject-list {
+  max-height: 30rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.fl-subject-row {
+  padding: 0.5rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.12s ease;
+}
+
+.fl-subject-row:last-child {
+  border-bottom: none;
+}
+
+.fl-subject-row:hover {
+  background: var(--surface-hover);
+}
+
+.fl-subject-row.is-on {
+  background: var(--sti-blue-dim);
+}
+
+/* Held by another faculty member: muted and not selectable here. */
+.fl-subject-row.is-taken {
+  cursor: not-allowed;
+  opacity: 0.72;
+  background: var(--bg-wash);
+}
+
+.fl-subject-row.is-taken:hover {
+  background: var(--bg-wash);
+}
+
+.fl-subject-row.is-taken .fl-subject-code,
+.fl-subject-row.is-taken .fl-subject-title {
+  color: var(--text-3);
+}
+
+.fl-subject-row input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--sti-blue);
+}
+
+.fl-subject-row input:disabled {
+  cursor: not-allowed;
+}
+
+/* "Assigned to <name> · <course> · Year N" indicator on taken rows. */
+.fl-assigned-to {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+  font: 500 0.72rem/1.3 var(--sans);
+  color: var(--text-3);
+}
+
+.fl-assigned-badge {
+  font: 700 0.6rem/1 var(--sans);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--down);
+  background: rgba(214, 54, 90, 0.1);
+  border: 1px solid rgba(214, 54, 90, 0.25);
+  border-radius: var(--radius-pill);
+  padding: 0.2rem 0.45rem;
+}
+
+.fl-subject-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.fl-subject-code {
+  font: 600 0.8rem/1.1 var(--mono, 'IBM Plex Mono', monospace);
+  color: var(--sti-blue);
+}
+
+.fl-subject-title {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fl-col-course { color: var(--text-3); }
+.fl-col-year { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.fl-col-units { font-variant-numeric: tabular-nums; color: var(--text-2); }
+
+/* ---------- Footer total ---------- */
+
+.fl-total {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.fl-total-label {
+  font: 600 0.68rem/1 var(--sans);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.fl-total-value {
+  font: 700 1.05rem/1 var(--mono, 'IBM Plex Mono', monospace);
+  color: var(--sti-blue);
+}
+
+.fl-total-max {
+  font-weight: 500;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.fl-total-count {
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+.fl-total.is-over .fl-total-value {
+  color: var(--down);
+}
+
+/* ---------- Shared primitives (kept local to this feature) ---------- */
+
+.modal-foot .setup-foot-spacer {
+  margin-right: auto;
+}
+
+.chip-lab {
+  background: var(--sti-blue-dim);
+  color: var(--sti-blue);
+}
+
+.alert-warn {
+  background: rgba(214, 54, 90, 0.08);
+  border: 1px solid rgba(214, 54, 90, 0.25);
+  color: var(--down);
+}
