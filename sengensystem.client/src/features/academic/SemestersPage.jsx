@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
+import { notifySuccess, notifyError } from '../shell/notify';
 import {
     listSemesters, createSemester, updateSemester, deleteSemester, activateSemester, listSchoolYears
 } from './api';
@@ -40,24 +41,26 @@ function SemesterModal({ record, schoolYears, defaultYearId, onClose, onChanged 
         try {
             if (isCreate) await createSemester(payload());
             else await updateSemester(record.id, payload());
+            notifySuccess(isCreate ? 'Semester created.' : 'Semester updated.');
             onChanged(); onClose();
         } catch (ex) {
             setFieldErrors(ex.fieldErrors || {});
             if (!ex.fieldErrors || Object.keys(ex.fieldErrors).length === 0) setError(ex.message);
+            notifyError(ex.message);
         } finally { setSaving(false); }
     }
 
     async function setActive() {
         setError(''); setBusy(true);
-        try { await activateSemester(record.id); onChanged(); onClose(); }
-        catch (ex) { setError(ex.message); } finally { setBusy(false); }
+        try { await activateSemester(record.id); notifySuccess(`“${record.name}” is now the active semester.`); onChanged(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); } finally { setBusy(false); }
     }
 
     async function remove() {
         if (!window.confirm(`Delete semester “${record.name}”? This can't be undone.`)) return;
         setError(''); setBusy(true);
-        try { await deleteSemester(record.id); onChanged(); onClose(); }
-        catch (ex) { setError(ex.message); setBusy(false); }
+        try { await deleteSemester(record.id); notifySuccess(`Semester “${record.name}” deleted.`); onChanged(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
     }
 
     const footer = (

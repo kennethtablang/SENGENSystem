@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
+import { notifySuccess, notifyError } from '../shell/notify';
 import { listBuildings, createBuilding, updateBuilding, deleteBuilding } from './api';
 import './academic.css';
 
@@ -20,8 +21,10 @@ function BuildingModal({ record, onClose, onChanged }) {
         try {
             if (isCreate) await createBuilding(form);
             else await updateBuilding(record.id, form);
+            notifySuccess(isCreate ? 'Building created.' : 'Building updated.');
             onChanged(); onClose();
         } catch (ex) {
+            notifyError(ex.message);
             setFieldErrors(ex.fieldErrors || {});
             if (!ex.fieldErrors || Object.keys(ex.fieldErrors).length === 0) setError(ex.message);
         } finally { setSaving(false); }
@@ -30,8 +33,8 @@ function BuildingModal({ record, onClose, onChanged }) {
     async function remove() {
         if (!window.confirm(`Delete building “${record.name}”? This can't be undone.`)) return;
         setError(''); setBusy(true);
-        try { await deleteBuilding(record.id); onChanged(); onClose(); }
-        catch (ex) { setError(ex.message); setBusy(false); }
+        try { await deleteBuilding(record.id); notifySuccess(`Building “${record.name}” deleted.`); onChanged(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
     }
 
     const footer = (

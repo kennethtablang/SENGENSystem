@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
+import { notifySuccess, notifyError } from '../shell/notify';
 import { listRooms, createRoom, updateRoom, deleteRoom, listBuildings } from './api';
 import './academic.css';
 
@@ -31,8 +32,10 @@ function RoomModal({ record, buildings, defaultBuildingId, onClose, onChanged })
         try {
             if (isCreate) await createRoom(payload());
             else await updateRoom(record.id, payload());
+            notifySuccess(isCreate ? 'Room created.' : 'Room updated.');
             onChanged(); onClose();
         } catch (ex) {
+            notifyError(ex.message);
             setFieldErrors(ex.fieldErrors || {});
             if (!ex.fieldErrors || Object.keys(ex.fieldErrors).length === 0) setError(ex.message);
         } finally { setSaving(false); }
@@ -41,8 +44,8 @@ function RoomModal({ record, buildings, defaultBuildingId, onClose, onChanged })
     async function remove() {
         if (!window.confirm(`Delete room “${record.name}”? This can't be undone.`)) return;
         setError(''); setBusy(true);
-        try { await deleteRoom(record.id); onChanged(); onClose(); }
-        catch (ex) { setError(ex.message); setBusy(false); }
+        try { await deleteRoom(record.id); notifySuccess(`Room “${record.name}” deleted.`); onChanged(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
     }
 
     const footer = (
