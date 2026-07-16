@@ -35,13 +35,14 @@ namespace SENGENSystem.Server.Features.Curriculum
         string Code,
         string Title,
         int Units,
+        int Hours,
         int YearLevel,
         string Term,
         bool RequiresLaboratory,
         IReadOnlyList<SubjectRefDto> Prerequisites)
     {
         public static SubjectDto From(Subject s) =>
-            new(s.Id, s.CurriculumId, s.Code, s.Title, s.Units, s.YearLevel, s.Term.ToString(), s.RequiresLaboratory,
+            new(s.Id, s.CurriculumId, s.Code, s.Title, s.Units, s.Hours, s.YearLevel, s.Term.ToString(), s.RequiresLaboratory,
                 s.Prerequisites
                     .Where(p => p.PrerequisiteSubject is not null)
                     .Select(p => SubjectRefDto.From(p.PrerequisiteSubject!))
