@@ -14,6 +14,7 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
         string? Title,
         int? Units,
         int? YearLevel,
+        string? Term,
         bool RequiresLaboratory,
         List<Guid>? PrerequisiteSubjectIds);
 
@@ -53,7 +54,7 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
         private static async Task<IResult> CreateAsync(
             SubjectRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
         {
-            var (ok, code, title, units, year, curriculum, problem) = await ValidateAsync(request, null, db, ct);
+            var (ok, code, title, units, year, term, curriculum, problem) = await ValidateAsync(request, null, db, ct);
             if (!ok) return problem;
 
             var subject = new Subject
@@ -64,6 +65,7 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
                 Title = title,
                 Units = units,
                 YearLevel = year,
+                Term = term,
                 RequiresLaboratory = request.RequiresLaboratory
             };
             db.Subjects.Add(subject);
@@ -83,7 +85,7 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             var subject = await db.Subjects.FirstOrDefaultAsync(s => s.Id == id, ct);
             if (subject is null) return Results.NotFound(new { message = "Subject not found." });
 
-            var (ok, code, title, units, year, curriculum, problem) = await ValidateAsync(request, id, db, ct);
+            var (ok, code, title, units, year, term, curriculum, problem) = await ValidateAsync(request, id, db, ct);
             if (!ok) return problem;
 
             subject.CurriculumId = curriculum!.Id;
@@ -92,6 +94,7 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             subject.Title = title;
             subject.Units = units;
             subject.YearLevel = year;
+            subject.Term = term;
             subject.RequiresLaboratory = request.RequiresLaboratory;
 
             await ReconcilePrerequisitesAsync(db, subject.Id, curriculum.Id, request.PrerequisiteSubjectIds, ct);
@@ -157,12 +160,17 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             return SubjectDto.From(subject);
         }
 
-        private static async Task<(bool Ok, string Code, string Title, int Units, int Year, Domain.Curriculum? Curriculum, IResult Problem)>
+        private static async Task<(bool Ok, string Code, string Title, int Units, int Year, SemesterTerm Term, Domain.Curriculum? Curriculum, IResult Problem)>
             ValidateAsync(SubjectRequest request, Guid? subjectId, AppDbContext db, CancellationToken ct)
         {
             var code = request.Code?.Trim().ToUpperInvariant() ?? string.Empty;
             var title = request.Title?.Trim() ?? string.Empty;
             var errors = new Dictionary<string, string[]>();
+
+            if (!Enum.TryParse<SemesterTerm>(request.Term, ignoreCase: true, out var term) || !Enum.IsDefined(term))
+            {
+                errors["term"] = ["Please choose the term this subject is offered in."];
+            }
 
             Domain.Curriculum? curriculum = null;
             if (request.CurriculumId is not { } cid)
@@ -182,9 +190,9 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             {
                 errors["units"] = ["Units must be between 1 and 20."];
             }
-            if (request.YearLevel is not { } year || year is < 1 or > 6)
+            if (request.YearLevel is not { } year || year is < 1 or > 3)
             {
-                errors["yearLevel"] = ["Year level must be between 1 and 6."];
+                errors["yearLevel"] = ["Year level must be between 1 and 3."];
             }
 
             // Code is unique within the curriculum.
@@ -196,10 +204,10 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
 
             if (errors.Count > 0)
             {
-                return (false, code, title, 0, 0, null, Results.ValidationProblem(errors));
+                return (false, code, title, 0, 0, default, null, Results.ValidationProblem(errors));
             }
 
-            return (true, code, title, request.Units!.Value, request.YearLevel!.Value, curriculum, Results.Empty);
+            return (true, code, title, request.Units!.Value, request.YearLevel!.Value, term, curriculum, Results.Empty);
         }
     }
 }
