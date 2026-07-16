@@ -46,6 +46,36 @@ export async function loginAccount(data) {
     return response.json();
 }
 
+export async function forgotPassword(email) {
+    const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+    });
+    if (!response.ok) throw await parseError(response);
+    return response.json();
+}
+
+export async function resetPassword(data) {
+    const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) throw await parseError(response);
+    return response.json();
+}
+
+export async function confirmEmailChange(token) {
+    const response = await fetch('/api/profile/email/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+    });
+    if (!response.ok) throw await parseError(response);
+    return response.json();
+}
+
 export async function fetchCurrentUser() {
     const token = getToken();
     if (!token) return null;

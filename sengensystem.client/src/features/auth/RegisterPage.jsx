@@ -4,6 +4,7 @@ import { registerAccount } from './api';
 import AuthLayout from './AuthLayout';
 import PasswordInput from './PasswordInput';
 import TermsModal from './TermsModal';
+import { notifySuccess, notifyError } from '../shell/notify';
 
 const initialForm = {
     firstName: '',
@@ -46,8 +47,10 @@ function RegisterPage() {
                 password: form.password,
                 acceptedTerms: form.acceptedTerms
             });
+            notifySuccess('Account created — you can now sign in.');
             navigate('/login', { state: { registered: true } });
         } catch (err) {
+            notifyError(err.message);
             setFieldErrors(err.fieldErrors || {});
             if (!err.fieldErrors || Object.keys(err.fieldErrors).length === 0) {
                 setError(err.message);

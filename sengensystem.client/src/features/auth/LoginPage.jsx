@@ -4,6 +4,7 @@ import { loginAccount } from './api';
 import { useAuth } from './useAuth';
 import AuthLayout from './AuthLayout';
 import PasswordInput from './PasswordInput';
+import { notifyError } from '../shell/notify';
 
 function LoginPage() {
     const navigate = useNavigate();
@@ -26,6 +27,7 @@ function LoginPage() {
             navigate('/', { replace: true });
         } catch (err) {
             setError(err.message);
+            notifyError(err.message);
         } finally {
             setSubmitting(false);
         }
@@ -64,6 +66,9 @@ function LoginPage() {
                         value={form.password}
                         onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))}
                     />
+                    <p style={{ textAlign: 'right', marginTop: '0.4rem', fontSize: '0.82rem' }}>
+                        <Link to="/forgot-password">Forgot password?</Link>
+                    </p>
                 </div>
 
                 <button className="btn btn-primary btn-block" type="submit" disabled={submitting}>
