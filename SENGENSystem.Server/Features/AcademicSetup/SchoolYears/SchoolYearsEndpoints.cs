@@ -90,6 +90,11 @@ namespace SENGENSystem.Server.Features.AcademicSetup.SchoolYears
                 return Results.Conflict(new { message = "This school year still has semesters. Move or delete them first." });
             }
 
+            if (await db.CurriculumSchoolYears.AnyAsync(l => l.SchoolYearId == id, ct))
+            {
+                return Results.Conflict(new { message = "This school year is set as a curriculum's effectivity. Unset it there first." });
+            }
+
             db.SchoolYears.Remove(year);
             audit.Record(AuditAction.SchoolYearSaved, $"Deleted school year “{year.Name}”.",
                 "SchoolYear", year.Id.ToString());

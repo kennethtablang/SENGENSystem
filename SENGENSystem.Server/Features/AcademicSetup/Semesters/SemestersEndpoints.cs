@@ -9,7 +9,8 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Semesters
     // semester is the term-aware source the dashboard and scheduling key off (FR-DASH, FR-SCHED).
     // Safe delete refuses to remove a semester referenced by sections, registrations, or term
     // activations (409).
-    public record SemesterRequest(string? Name, Guid? SchoolYearId, string? StartDate, string? EndDate);
+    // The semester is one of the two hard-coded terms of its school year; its name is derived.
+    public record SemesterRequest(Guid? SchoolYearId, string? Term, string? StartDate, string? EndDate);
 
     public static class SemestersEndpoints
     {
@@ -45,10 +46,17 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Semesters
         private static async Task<IResult> CreateAsync(
             SemesterRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
         {
-            var (ok, name, yearId, start, end, problem) = await ValidateAsync(request, db, ct);
+            var (ok, year, term, start, end, problem) = await ValidateAsync(request, null, db, ct);
             if (!ok) return problem;
 
-            var semester = new Semester { Name = name, SchoolYearId = yearId, StartDate = start, EndDate = end };
+            var semester = new Semester
+            {
+                Name = SemesterName(year!, term),
+                Term = term,
+                SchoolYearId = year!.Id,
+                StartDate = start,
+                EndDate = end
+            };
             db.Semesters.Add(semester);
             audit.Record(AuditAction.SemesterSaved, $"Created semester “{semester.Name}”.",
                 "Semester", semester.Id.ToString());
@@ -64,11 +72,12 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Semesters
             var semester = await db.Semesters.FirstOrDefaultAsync(s => s.Id == id, ct);
             if (semester is null) return Results.NotFound(new { message = "Semester not found." });
 
-            var (ok, name, yearId, start, end, problem) = await ValidateAsync(request, db, ct);
+            var (ok, year, term, start, end, problem) = await ValidateAsync(request, id, db, ct);
             if (!ok) return problem;
 
-            semester.Name = name;
-            semester.SchoolYearId = yearId;
+            semester.Name = SemesterName(year!, term);
+            semester.Term = term;
+            semester.SchoolYearId = year!.Id;
             semester.StartDate = start;
             semester.EndDate = end;
 
@@ -87,7 +96,8 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Semesters
 
             var referenced = await db.Sections.AnyAsync(x => x.SemesterId == id, ct)
                 || await db.StudentRegistrations.AnyAsync(x => x.SemesterId == id, ct)
-                || await db.TermActivations.AnyAsync(x => x.SemesterId == id, ct);
+                || await db.TermActivations.AnyAsync(x => x.SemesterId == id, ct)
+                || await db.FacultyLoadAssignments.AnyAsync(x => x.SemesterId == id, ct);
             if (referenced)
             {
                 return Results.Conflict(new { message = "This semester is in use by sections, registrations, or term activations and can't be deleted." });
@@ -121,22 +131,24 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Semesters
             return Results.Ok(SemesterDto.From(semester));
         }
 
-        private static async Task<(bool Ok, string Name, Guid? YearId, DateOnly Start, DateOnly End, IResult Problem)>
-            ValidateAsync(SemesterRequest request, AppDbContext db, CancellationToken ct)
+        private static async Task<(bool Ok, SchoolYear? Year, SemesterTerm Term, DateOnly Start, DateOnly End, IResult Problem)>
+            ValidateAsync(SemesterRequest request, Guid? excludeId, AppDbContext db, CancellationToken ct)
         {
-            var name = request.Name?.Trim() ?? string.Empty;
             var errors = new Dictionary<string, string[]>();
 
-            if (string.IsNullOrWhiteSpace(name)) errors["name"] = ["A semester name is required."];
-
+            SchoolYear? year = null;
             if (request.SchoolYearId is not { } yid)
             {
                 errors["schoolYearId"] = ["Please choose a school year."];
             }
-            else if (!await db.SchoolYears.AnyAsync(y => y.Id == yid, ct))
+            else
             {
-                errors["schoolYearId"] = ["The selected school year no longer exists."];
+                year = await db.SchoolYears.FirstOrDefaultAsync(y => y.Id == yid, ct);
+                if (year is null) errors["schoolYearId"] = ["The selected school year no longer exists."];
             }
+
+            var termOk = Enum.TryParse<SemesterTerm>(request.Term, ignoreCase: true, out var term) && Enum.IsDefined(term);
+            if (!termOk) errors["term"] = ["Please choose the semester (first or second)."];
 
             var s = IsoDate.TryParse(request.StartDate);
             var e = IsoDate.TryParse(request.EndDate);
@@ -144,12 +156,24 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Semesters
             if (e is null) errors["endDate"] = ["A valid end date is required."];
             if (s is { } sv && e is { } ev && ev < sv) errors["endDate"] = ["The end date must be on or after the start date."];
 
-            if (errors.Count > 0)
+            // A school year has at most one First and one Second semester.
+            if (year is not null && termOk
+                && await db.Semesters.AnyAsync(x => x.SchoolYearId == year.Id && x.Term == term && x.Id != excludeId, ct))
             {
-                return (false, name, null, default, default, Results.ValidationProblem(errors));
+                errors["term"] = [$"{year.Name} already has a {TermLabel(term)}."];
             }
 
-            return (true, name, request.SchoolYearId, s!.Value, e!.Value, Results.Empty);
+            if (errors.Count > 0)
+            {
+                return (false, null, default, default, default, Results.ValidationProblem(errors));
+            }
+
+            return (true, year, term, s!.Value, e!.Value, Results.Empty);
         }
+
+        private static string SemesterName(SchoolYear year, SemesterTerm term) => $"{year.Name} — {TermLabel(term)}";
+
+        private static string TermLabel(SemesterTerm term) =>
+            term == SemesterTerm.SecondSemester ? "Second Semester" : "First Semester";
     }
 }

@@ -32,6 +32,7 @@ namespace SENGENSystem.Server.Features.AcademicSetup
     public record SemesterDto(
         Guid Id,
         string Name,
+        string Term,
         bool IsActive,
         string StartDate,
         string EndDate,
@@ -39,7 +40,7 @@ namespace SENGENSystem.Server.Features.AcademicSetup
         string? SchoolYearName)
     {
         public static SemesterDto From(Semester s) =>
-            new(s.Id, s.Name, s.IsActive, IsoDate.Of(s.StartDate), IsoDate.Of(s.EndDate),
+            new(s.Id, s.Name, s.Term.ToString(), s.IsActive, IsoDate.Of(s.StartDate), IsoDate.Of(s.EndDate),
                 s.SchoolYearId, s.SchoolYear?.Name);
     }
 
@@ -63,5 +64,18 @@ namespace SENGENSystem.Server.Features.AcademicSetup
     {
         public static RoomDto From(Room r) =>
             new(r.Id, r.Name, r.Capacity, r.IsLaboratory, r.BuildingId, r.Building?.Name);
+    }
+
+    public record ClassSectionDto(
+        Guid Id,
+        Guid SemesterId,
+        string? SemesterName,
+        string ProgramCode,
+        int YearLevel,
+        string SectionName,
+        string DisplayName)
+    {
+        public static ClassSectionDto From(ClassSection c) =>
+            new(c.Id, c.SemesterId, c.Semester?.Name, c.ProgramCode, c.YearLevel, c.SectionName, c.DisplayName);
     }
 }
