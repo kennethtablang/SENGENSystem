@@ -91,7 +91,7 @@
 
 .curr-item.is-selected {
   background: var(--sti-blue-dim);
-  border-color: rgba(0, 51, 153, 0.18);
+  border-color: var(--line-strong);
 }
 
 .curr-item-top {
@@ -378,20 +378,13 @@
   color: var(--text-2);
 }
 
-/* ---------- Shared primitives reused by this feature's modals ---------- */
-
-.btn-sm {
-  padding: 0.4rem 0.85rem;
-  font-size: 0.8rem;
+/* Archived subjects read as history: dimmed, struck code. */
+.curr-subj-row.is-archived td {
+  opacity: 0.55;
 }
 
-.btn-danger {
-  background: var(--down);
-  color: #fff;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #bf2a4c;
+.curr-subj-row.is-archived .curr-subj-code {
+  text-decoration: line-through;
 }
 
 .setup-checkbox {

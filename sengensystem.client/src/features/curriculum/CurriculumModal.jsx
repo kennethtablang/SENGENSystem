@@ -2,6 +2,7 @@ import { useState } from 'react';
 import SetupModal from '../academic/SetupModal';
 import { createCurriculum, updateCurriculum, deleteCurriculum, activateCurriculum } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmDelete } from '../shell/confirm';
 
 export default function CurriculumModal({ record, schoolYears, onClose, onChanged, onDeleted }) {
     const isCreate = !record;
@@ -52,7 +53,7 @@ export default function CurriculumModal({ record, schoolYears, onClose, onChange
     }
 
     async function remove() {
-        if (!window.confirm(`Delete the ${record.programCode} curriculum? This can't be undone.`)) return;
+        if (!(await confirmDelete(`the ${record.programCode} curriculum`, 'Its subjects and their prerequisites go with it. This can’t be undone.'))) return;
         setError(''); setBusy(true);
         try { await deleteCurriculum(record.id); notifySuccess(`${record.programCode} curriculum deleted.`); onDeleted(record.id); onClose(); }
         catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }

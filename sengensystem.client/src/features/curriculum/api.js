@@ -52,3 +52,5 @@ export const listSubjects = (curriculumId) =>
 export const createSubject = (data) => send('POST', '/api/subjects', data);
 export const updateSubject = (id, data) => send('PUT', `/api/subjects/${id}`, data);
 export const deleteSubject = (id) => send('DELETE', `/api/subjects/${id}`);
+export const archiveSubject = (id, reason) => send('POST', `/api/subjects/${id}/archive`, { reason: reason || null });
+export const restoreSubject = (id) => send('POST', `/api/subjects/${id}/restore`, {});

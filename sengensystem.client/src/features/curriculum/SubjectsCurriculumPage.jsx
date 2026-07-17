@@ -19,6 +19,7 @@ export default function SubjectsCurriculumPage() {
     const [subjModal, setSubjModal] = useState(null);
     const [reloadC, setReloadC] = useState(0);
     const [reloadS, setReloadS] = useState(0);
+    const [showArchived, setShowArchived] = useState(false);
 
     // Load curricula; keep a valid selection.
     useEffect(() => {
@@ -58,10 +59,16 @@ export default function SubjectsCurriculumPage() {
     const refreshSubjects = () => setReloadS(n => n + 1);
     const selected = curricula.find(c => c.id === selectedId) || null;
 
+    const archivedCount = useMemo(() => subjects.filter(s => s.isArchived).length, [subjects]);
+    const visibleSubjects = useMemo(
+        () => (showArchived ? subjects : subjects.filter(s => !s.isArchived)),
+        [subjects, showArchived]
+    );
+
     // Group subjects by year level, then by term (First/Second Semester), for the curriculum sheet.
     const groups = useMemo(() => {
         const byYear = new Map();
-        for (const s of subjects) {
+        for (const s of visibleSubjects) {
             if (!byYear.has(s.yearLevel)) byYear.set(s.yearLevel, new Map());
             const byTerm = byYear.get(s.yearLevel);
             if (!byTerm.has(s.term)) byTerm.set(s.term, []);
@@ -75,7 +82,7 @@ export default function SubjectsCurriculumPage() {
                     .filter(t => byTerm.has(t))
                     .map(t => ({ term: t, list: [...byTerm.get(t)].sort((a, b) => a.code.localeCompare(b.code)) }))
             }));
-    }, [subjects]);
+    }, [visibleSubjects]);
 
     return (
         <div className="curr-page">
@@ -140,6 +147,15 @@ export default function SubjectsCurriculumPage() {
                                 </div>
                             </div>
                             <div className="curr-main-actions">
+                                {archivedCount > 0 && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-ghost btn-sm"
+                                        onClick={() => setShowArchived(v => !v)}
+                                    >
+                                        {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
+                                    </button>
+                                )}
                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCurrModal(selected)}>
                                     Edit curriculum
                                 </button>
@@ -170,10 +186,11 @@ export default function SubjectsCurriculumPage() {
                                                     <table className="curr-table">
                                                         <tbody>
                                                             {t.list.map(s => (
-                                                                <tr key={s.id} className="curr-subj-row" onClick={() => setSubjModal(s)}>
+                                                                <tr key={s.id} className={`curr-subj-row${s.isArchived ? ' is-archived' : ''}`} onClick={() => setSubjModal(s)}>
                                                                     <td className="curr-subj-code">{s.code}</td>
                                                                     <td className="curr-subj-title">
                                                                         {s.title}
+                                                                        {s.isArchived && <span className="chip chip-muted" style={{ marginLeft: '0.45rem' }}>Archived</span>}
                                                                         {s.prerequisites.length > 0 && (
                                                                             <span className="curr-prereq-chips">
                                                                                 {s.prerequisites.map(p => (

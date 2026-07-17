@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import SetupModal from '../academic/SetupModal';
-import { createSubject, updateSubject, deleteSubject } from './api';
+import { createSubject, updateSubject, deleteSubject, archiveSubject, restoreSubject } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmAction, confirmDelete } from '../shell/confirm';
 
 const yearLevels = [1, 2, 3];
 const terms = [
@@ -65,18 +66,48 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
     }
 
     async function remove() {
-        if (!window.confirm(`Delete subject ${record.code}? This can't be undone.`)) return;
+        if (!(await confirmDelete(`subject ${record.code}`))) return;
         setError(''); setBusy(true);
         try { await deleteSubject(record.id); notifySuccess(`Subject ${record.code} deleted.`); onDeleted(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
+    }
+
+    // Curriculum-change path: retire the subject instead of deleting it, keeping its history.
+    async function archive() {
+        const ok = await confirmAction({
+            title: `Archive ${record.code}?`,
+            message: 'The subject leaves the active curriculum and can no longer be offered or assigned, but its sections, loads, and history stay intact. You can restore it any time.',
+            confirmLabel: 'Archive'
+        });
+        if (!ok) return;
+        setError(''); setBusy(true);
+        try { await archiveSubject(record.id); notifySuccess(`Subject ${record.code} archived.`); onChanged(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
+    }
+
+    async function restore() {
+        setError(''); setBusy(true);
+        try { await restoreSubject(record.id); notifySuccess(`Subject ${record.code} restored.`); onChanged(); onClose(); }
         catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
     }
 
     const footer = (
         <>
             {!isCreate && (
-                <button type="button" className="btn btn-danger setup-foot-spacer" disabled={busy} onClick={remove}>
-                    Delete
-                </button>
+                <span className="setup-foot-spacer" style={{ display: 'inline-flex', gap: '0.5rem' }}>
+                    <button type="button" className="btn btn-danger" disabled={busy} onClick={remove}>
+                        Delete
+                    </button>
+                    {record.isArchived ? (
+                        <button type="button" className="btn btn-ghost" disabled={busy} onClick={restore}>
+                            Restore
+                        </button>
+                    ) : (
+                        <button type="button" className="btn btn-ghost" disabled={busy} onClick={archive}>
+                            Archive
+                        </button>
+                    )}
+                </span>
             )}
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" form="subj-form" className="btn btn-primary" disabled={saving}>
@@ -87,8 +118,14 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
     );
 
     return (
-        <SetupModal title={isCreate ? 'New subject' : 'Edit subject'} onClose={onClose} footer={footer}>
+        <SetupModal title={isCreate ? 'New subject' : 'Edit subject'} onClose={onClose} footer={footer} className="modal-lg">
             {error && <div className="alert">{error}</div>}
+            {!isCreate && record.isArchived && (
+                <div className="alert alert-success" style={{ background: 'var(--sti-yellow-dim)', borderColor: 'var(--sti-yellow)', color: 'var(--text-1)' }}>
+                    This subject is archived{record.archiveReason ? ` — ${record.archiveReason}` : ''}. It stays out of
+                    faculty-load offers and new sections until restored.
+                </div>
+            )}
             <form id="subj-form" onSubmit={save} noValidate>
                 <div className="field-row">
                     <div className="field" style={{ flex: '0 0 34%' }}>
