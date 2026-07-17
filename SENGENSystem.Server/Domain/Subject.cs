@@ -31,6 +31,17 @@ namespace SENGENSystem.Server.Domain
         /// <summary>Requires a laboratory room; enforced as a hard placement constraint.</summary>
         public bool RequiresLaboratory { get; set; }
 
+        /// <summary>
+        /// Soft-retirement for curriculum changes: an archived subject stays for history
+        /// (sections, loads, audit) but is hidden from new offerings and load assignment.
+        /// </summary>
+        public bool IsArchived { get; set; }
+
+        public DateTime? ArchivedAtUtc { get; set; }
+
+        /// <summary>Why it was retired, e.g. "Replaced by CS102 in the 2027 curriculum".</summary>
+        public string? ArchiveReason { get; set; }
+
         /// <summary>The curriculum this subject belongs to.</summary>
         public Guid? CurriculumId { get; set; }
 

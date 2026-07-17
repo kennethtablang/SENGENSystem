@@ -19,5 +19,8 @@ namespace SENGENSystem.Server.Domain
 
         /// <summary>Maximum teaching load in subject units (FR-FAC-03, FR-SCHED-02).</summary>
         public int MaxLoadUnits { get; set; } = 24;
+
+        /// <summary>Institutional employee number shown on load reports (searchable).</summary>
+        public string EmployeeId { get; set; } = string.Empty;
     }
 }

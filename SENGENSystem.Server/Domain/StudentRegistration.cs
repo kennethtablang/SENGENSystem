@@ -24,6 +24,24 @@ namespace SENGENSystem.Server.Domain
 
         public Semester? Semester { get; set; }
 
+        /// <summary>
+        /// The student's login account once claimed (matched by email at account registration or
+        /// via the claim flow). Null until linked; enlistment requires the link (FR-ENL-05).
+        /// </summary>
+        public Guid? UserId { get; set; }
+
+        public User? User { get; set; }
+
+        /// <summary>
+        /// FR-PRE-02/04: cleared by the Admission Officer for online subject slot selection —
+        /// granted only after the document checklist is complete and the SIS is confirmed.
+        /// </summary>
+        public bool IsPreAuthorized { get; set; }
+
+        public DateTime? PreAuthorizedAtUtc { get; set; }
+
+        public Guid? PreAuthorizedByUserId { get; set; }
+
         // ---- Identity (SIS items 3–8, 14) ----
         public string LastName { get; set; } = string.Empty;
         public string FirstName { get; set; } = string.Empty;

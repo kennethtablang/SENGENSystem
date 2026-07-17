@@ -15,6 +15,14 @@ namespace SENGENSystem.Server.Domain
 
         public bool IsActive { get; set; }
 
+        /// <summary>
+        /// Set once the term is finished: the semester's schedule becomes a frozen, read-only
+        /// archive — the board, generator, and publisher refuse further changes to it.
+        /// </summary>
+        public bool IsArchived { get; set; }
+
+        public DateTime? ArchivedAtUtc { get; set; }
+
         public DateOnly StartDate { get; set; }
 
         public DateOnly EndDate { get; set; }

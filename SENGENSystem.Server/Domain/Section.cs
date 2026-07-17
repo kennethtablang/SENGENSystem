@@ -29,6 +29,15 @@ namespace SENGENSystem.Server.Domain
 
         public int Capacity { get; set; } = MaxCapacity;
 
+        /// <summary>
+        /// Approved-enlistment seat count (FR-ENL-02/03). Guarded by a DB CHECK constraint
+        /// (never above <see cref="Capacity"/>) and optimistic concurrency via <see cref="RowVersion"/>.
+        /// </summary>
+        public int EnrolledCount { get; set; }
+
+        /// <summary>Concurrency token so racing approvals cannot oversell the last seat.</summary>
+        public byte[] RowVersion { get; set; } = [];
+
         /// <summary>Identifies the student cohort for time-overlap constraints.</summary>
         public string CohortKey => $"{ProgramCode}-{YearLevel}-{Block}";
     }
