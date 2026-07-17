@@ -61,6 +61,12 @@ namespace SENGENSystem.Server.Features.Auth.Register
                 $"Self-registered a new {user.Role} account.", "User", user.Id.ToString());
             await db.SaveChangesAsync(cancellationToken);
 
+            // NOTE: deliberately NO auto-linking of SIS records here. Registration proves
+            // nothing about mailbox ownership, so binding a student record to whoever types
+            // the email first would allow account pre-registration takeover. Students claim
+            // their record explicitly (student number + matching email + date of birth) via
+            // Features/Registration/LinkAccount.
+
             return Results.Created($"/api/users/{user.Id}", new RegisterResponse(AuthUserDto.From(user)));
         }
 
