@@ -73,6 +73,9 @@ namespace SENGENSystem.Server.Domain
         // Archiving — subjects retired on curriculum changes, semester schedules at term end
         SubjectArchived = 38,
         SubjectRestored = 39,
-        ScheduleArchived = 40
+        ScheduleArchived = 40,
+
+        // Bulk data export — the one-workbook semester bundle (FR-RPT-02)
+        SemesterExported = 41
     }
 }
