@@ -102,7 +102,7 @@
 /* ---------- Staff board ---------- */
 
 .doc-expand-row td {
-  background: var(--surface-2, rgba(255, 255, 255, 0.02));
+  background: var(--bg-wash);
   padding: 0.9rem 1rem 1.1rem;
 }
 
