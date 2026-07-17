@@ -154,7 +154,7 @@ namespace SENGENSystem.Server.Features.Reports
                 })
                 .ToList();
 
-            return Deliver("Faculty load summary", semester, format,
+            return (
                 ["Faculty", "Program", "Assigned units", "Max units", "Subject loads", "Scheduled h/week", "Standing"],
                 rows);
         }
@@ -219,6 +219,14 @@ namespace SENGENSystem.Server.Features.Reports
             var semester = await ResolveAsync(semesterId, db, ct);
             if (semester is null) return NoSemester();
 
+            var (headers, rows) = await DocumentCompletionRowsAsync(semester, db, ct);
+            return Deliver("Document checklist completion", semester, format, headers, rows);
+        }
+
+        /// <summary>Shared with the full semester export bundle.</summary>
+        internal static async Task<(string[] Headers, List<object[]> Rows)> DocumentCompletionRowsAsync(
+            Semester semester, AppDbContext db, CancellationToken ct)
+        {
             var rows = (await db.StudentRegistrations.AsNoTracking()
                 .Where(r => r.SemesterId == semester.Id)
                 .Include(r => r.Documents)
@@ -239,7 +247,7 @@ namespace SENGENSystem.Server.Features.Reports
                 })
                 .ToList();
 
-            return Deliver("Document checklist completion", semester, format,
+            return (
                 ["Student no.", "Name", "Program", "Submitted", "Required", "Checklist", "Missing papers"],
                 rows);
         }
@@ -260,7 +268,18 @@ namespace SENGENSystem.Server.Features.Reports
         internal static byte[] BuildWorkbook(string title, string semesterName, string[] headers, List<object[]> rows)
         {
             using var workbook = new XLWorkbook();
-            var sheet = workbook.AddWorksheet(title.Length > 31 ? title[..31] : title);
+            WriteTableSheet(workbook, title, title, semesterName, headers, rows);
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return stream.ToArray();
+        }
+
+        /// <summary>Adds one titled tabular sheet; shared with the full semester export bundle.</summary>
+        internal static void WriteTableSheet(
+            XLWorkbook workbook, string sheetName, string title, string semesterName,
+            string[] headers, List<object[]> rows)
+        {
+            var sheet = workbook.AddWorksheet(sheetName.Length > 31 ? sheetName[..31] : sheetName);
             sheet.Cell(1, 1).Value = $"{title} — {semesterName}";
             sheet.Cell(1, 1).Style.Font.Bold = true;
             for (var c = 0; c < headers.Length; c++)
@@ -276,9 +295,6 @@ namespace SENGENSystem.Server.Features.Reports
                 }
             }
             sheet.Columns().AdjustToContents();
-            using var stream = new MemoryStream();
-            workbook.SaveAs(stream);
-            return stream.ToArray();
         }
 
         /// <summary>JSON by default; ?format=xlsx streams a ClosedXML workbook (FR-RPT-02).</summary>
