@@ -1,0 +1,603 @@
+/* Digital SIS registration + term activation (FR-SIS, FR-DOC). */
+
+/* ============================================================
+   Official form shell — institutional letterhead over a single
+   document card. No marketing/brand panel (this is an official form).
+   ============================================================ */
+
+.sisform-page {
+  position: relative;
+  flex: 1;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-wash);
+}
+
+/* Faint timetable grid — the artifact the scheduling engine produces — drawn across the page and
+   masked to fade toward the centre where the document sits. Matches the login-page motif. */
+.sisform-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px),
+    linear-gradient(var(--grid-line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line-soft) 1px, transparent 1px);
+  background-size: 176px 176px, 176px 176px, 44px 44px, 44px 44px;
+  -webkit-mask-image: radial-gradient(46rem 40rem at 50% 42%, transparent 34%, #000 82%);
+  mask-image: radial-gradient(46rem 40rem at 50% 42%, transparent 34%, #000 82%);
+  animation: grid-drift 120s linear infinite;
+}
+
+/* Large rotated logo silhouette watermark, like the login brand panel. */
+.sisform-watermark {
+  position: fixed;
+  right: -9%;
+  bottom: -12%;
+  width: 42%;
+  max-width: 32rem;
+  opacity: 0.05;
+  transform: rotate(-8deg);
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+/* Keep the letterhead, document, and footer above the backdrop. */
+.sisform-masthead,
+.sisform-main,
+.sisform-foot {
+  position: relative;
+  z-index: 1;
+}
+
+.sisform-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem 1.5rem;
+  background: var(--surface);
+  border-bottom: 2px solid var(--sti-blue);
+}
+
+.sisform-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.sisform-logo {
+  width: 2.6rem;
+  height: 2.6rem;
+  object-fit: contain;
+}
+
+.sisform-inst {
+  font: 700 1.02rem/1.1 var(--sans);
+  color: var(--sti-blue);
+  letter-spacing: 0.01em;
+}
+
+.sisform-tag {
+  font-size: 0.76rem;
+  color: var(--text-3);
+  margin-top: 0.1rem;
+}
+
+.sisform-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  font: 500 0.72rem/1.3 var(--mono);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sisform-main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.sisform-doc {
+  width: 100%;
+  max-width: 54rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--sti-blue);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 2.4rem 2.6rem;
+  animation: rise 0.4s ease both;
+}
+
+.sisform-doc-head {
+  padding-bottom: 1.2rem;
+  margin-bottom: 1.4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.sisform-doc-head h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sti-blue);
+}
+
+.sisform-lead {
+  color: var(--text-3);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  margin-top: 0.5rem;
+  max-width: 44rem;
+}
+
+.sisform-lead strong {
+  color: var(--sti-blue);
+}
+
+/* Terms acknowledgment */
+.sisform-terms {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-2);
+  margin: 1.4rem 0 0.4rem;
+}
+
+.sisform-terms input {
+  margin-top: 0.2rem;
+  accent-color: var(--sti-blue);
+}
+
+/* Submit + secondary links */
+.sisform-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 1.6rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--line);
+}
+
+.sisform-actions .btn-primary {
+  min-width: 16rem;
+}
+
+.sisform-switch {
+  font-size: 0.85rem;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.sisform-foot {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 1rem 1.5rem;
+  font-size: 0.74rem;
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* Success variant */
+.sisform-done {
+  max-width: 34rem;
+  text-align: center;
+}
+
+.sisform-done-check {
+  width: 3.2rem;
+  height: 3.2rem;
+  margin: 0 auto 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--up-dim);
+  color: var(--up);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.sisform-done h1 {
+  font-size: 1.5rem;
+  color: var(--sti-blue);
+}
+
+.sisform-done .reg-number-card {
+  text-align: left;
+}
+
+.sisform-done .btn-primary {
+  min-width: 14rem;
+}
+
+@media (max-width: 640px) {
+  .sisform-doc {
+    padding: 1.6rem 1.2rem;
+  }
+  .sisform-main {
+    padding: 1.25rem 0.85rem 2rem;
+  }
+}
+
+@media print {
+  .sisform-page { background: var(--bg); }
+  .sisform-doc {
+    box-shadow: none;
+    border: 1px solid #ccc;
+    max-width: none;
+  }
+  .sisform-actions, .sisform-switch { display: none; }
+}
+
+
+/* ---------- Public SIS form ---------- */
+
+.reg-form {
+  max-width: 40rem;
+}
+
+.reg-section {
+  border: none;
+  border-top: 1px solid var(--line);
+  padding: 1rem 0 0.2rem;
+  margin: 0.4rem 0 1rem;
+}
+
+.reg-section legend {
+  font: 600 0.72rem/1 var(--sans);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--sti-blue);
+  padding: 0;
+}
+
+/* ---------- Success panels ---------- */
+
+.reg-done {
+  text-align: center;
+}
+
+.reg-done-check {
+  width: 3.2rem;
+  height: 3.2rem;
+  margin: 0 auto 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--up-dim);
+  color: var(--up);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.reg-number-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  margin: 1.2rem 0;
+  border: 1px dashed var(--sti-blue);
+  border-radius: var(--radius-sm);
+  background: var(--sti-blue-dim);
+}
+
+.reg-number-card span {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+
+.reg-number-card strong {
+  font: 700 1.5rem/1 var(--mono);
+  letter-spacing: 2px;
+  color: var(--sti-blue);
+}
+
+.reg-hint {
+  font-size: 0.85rem;
+  color: var(--text-3);
+  margin-bottom: 1.2rem;
+}
+
+/* ---------- Management pages (Registrar / Admission Officer) ---------- */
+
+.reg-page {
+  animation: rise 0.4s ease both;
+}
+
+.reg-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.4rem;
+}
+
+.reg-head h2 {
+  font-size: 1.35rem;
+  color: var(--sti-blue);
+}
+
+.reg-sub {
+  color: var(--text-3);
+  font-size: 0.88rem;
+  margin-top: 0.35rem;
+  max-width: 46rem;
+}
+
+.reg-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.reg-search input {
+  font: 400 0.85rem/1.2 var(--sans);
+  color: var(--text-1);
+  background: var(--bg-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  min-width: 15rem;
+  outline: none;
+}
+
+.reg-search input:focus {
+  border-color: var(--sti-blue);
+  box-shadow: 0 0 0 4px var(--sti-blue-dim);
+}
+
+.reg-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font: 600 0.76rem/1 var(--sans);
+  color: var(--text-3);
+}
+
+/* ---------- Tables ---------- */
+
+.reg-table-wrap {
+  padding: 0.4rem 0.2rem;
+  overflow-x: auto;
+}
+
+.reg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.reg-table th {
+  text-align: left;
+  font: 600 0.72rem/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.reg-table td {
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  vertical-align: middle;
+}
+
+.reg-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.reg-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.reg-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.reg-table td strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.reg-mono {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.reg-when {
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.reg-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.reg-empty {
+  color: var(--text-3);
+  font-size: 0.9rem;
+  padding: 1.5rem 0;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+/* ---------- Detail drawer ---------- */
+
+.reg-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 20, 34, 0.45);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 50;
+  animation: rise 0.2s ease both;
+}
+
+.reg-drawer {
+  width: min(38rem, 100%);
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 40px rgba(8, 20, 34, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.reg-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.2rem 1.4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.reg-drawer-head h3 {
+  font-size: 1.1rem;
+  color: var(--text-1);
+  margin-bottom: 0.25rem;
+}
+
+.reg-drawer-head .reg-mono {
+  margin-right: 0.6rem;
+}
+
+.reg-drawer-close {
+  border: none;
+  background: transparent;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.reg-drawer-close:hover {
+  color: var(--sti-blue);
+}
+
+.reg-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.2rem 1.4rem;
+}
+
+.reg-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.reg-detail-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.reg-detail-wide {
+  grid-column: 1 / -1;
+}
+
+.reg-detail-grid span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+}
+
+.reg-detail-grid strong {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--text-1);
+  word-break: break-word;
+}
+
+.reg-detail-title {
+  font: 600 0.72rem/1 var(--sans);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--sti-blue);
+  margin-bottom: 0.7rem;
+}
+
+.reg-doc-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reg-doc-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.reg-doc-label {
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+.reg-doc-list select {
+  flex: none;
+  min-width: 11rem;
+}
+
+.reg-drawer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 1rem 1.4rem;
+  border-top: 1px solid var(--line);
+}
+
+.reg-drawer-foot-right {
+  display: flex;
+  gap: 0.6rem;
+}
+
+@media (max-width: 560px) {
+  .reg-detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .field-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
