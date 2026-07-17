@@ -1,0 +1,157 @@
+/* Academic-Head scheduling: generate + review (FR-SCHED-06). */
+
+.sched-page {
+  animation: rise 0.4s ease both;
+}
+
+.sched-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.4rem;
+}
+
+.sched-head h2 {
+  font-size: 1.35rem;
+  color: var(--sti-blue);
+}
+
+.sched-sub {
+  color: var(--text-3);
+  font-size: 0.88rem;
+  margin-top: 0.35rem;
+  max-width: 46rem;
+}
+
+.sched-sub strong {
+  color: var(--text-2);
+}
+
+/* ---------- Generation summary ---------- */
+
+.sched-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-bottom: 1.4rem;
+}
+
+.sched-stat {
+  flex: 1;
+  min-width: 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.9rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.sched-stat-num {
+  font: 700 1.5rem/1 var(--mono);
+  color: var(--sti-blue);
+}
+
+.sched-stat-label {
+  font-size: 0.76rem;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+
+.sched-reasons {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+}
+
+.sched-reasons li {
+  margin-bottom: 0.2rem;
+}
+
+/* ---------- Grouped tables ---------- */
+
+.sched-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.sched-group {
+  padding: 1rem 1.1rem 1.2rem;
+}
+
+.sched-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.8rem;
+}
+
+.sched-group-head h3 {
+  font-size: 1rem;
+  color: var(--text-1);
+}
+
+.sched-table-wrap {
+  overflow-x: auto;
+}
+
+.sched-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.sched-table th {
+  text-align: left;
+  font: 600 0.72rem/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.sched-table td {
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  vertical-align: middle;
+}
+
+.sched-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.sched-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.sched-table td strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.sched-subject-title {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--text-3);
+  white-space: normal;
+}
+
+.sched-mono {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.sched-empty {
+  color: var(--text-3);
+  font-size: 0.9rem;
+  padding: 1.5rem 0;
+}

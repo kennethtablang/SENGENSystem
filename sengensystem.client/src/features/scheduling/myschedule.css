@@ -1,0 +1,169 @@
+/* My Schedule — the signed-in user's read-only weekly timetable (FR-FAC-05). */
+
+.myx-page {
+  animation: rise 0.4s ease both;
+}
+
+.myx-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+}
+
+.myx-head h2 {
+  font-size: 1.35rem;
+  color: var(--sti-blue);
+}
+
+.myx-sub {
+  color: var(--text-3);
+  font-size: 0.88rem;
+  margin-top: 0.35rem;
+}
+
+.myx-summary {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chip-draft {
+  background: var(--sti-yellow-dim);
+  color: var(--amber-text);
+  border: 1px solid rgba(255, 215, 0, 0.5);
+}
+
+.myx-empty {
+  color: var(--text-3);
+  font-size: 0.9rem;
+  padding: 1.5rem;
+}
+
+/* ---------- Empty state ---------- */
+
+.myx-emptycard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5rem;
+  padding: 3rem 2rem;
+}
+
+.myx-empty-mark {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  color: var(--sti-blue);
+  background: var(--sti-blue-dim);
+  margin-bottom: 0.4rem;
+}
+
+.myx-empty-mark.is-student {
+  color: var(--brand-indigo);
+}
+
+.myx-empty-title {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.myx-empty-text {
+  font-size: 0.86rem;
+  color: var(--text-3);
+  max-width: 30rem;
+}
+
+/* ---------- Layout: calendar + day list ---------- */
+
+.myx-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 1.1rem;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .myx-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.myx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.myx-day {
+  padding: 0.85rem 0.95rem;
+}
+
+.myx-day-title {
+  font: 700 0.72rem/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 0.7rem;
+}
+
+.myx-day-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.myx-item {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--sti-blue);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  background: var(--surface);
+}
+
+.myx-item-time {
+  font: 600 0.72rem/1 var(--mono, monospace);
+  color: var(--text-2);
+}
+
+.myx-item-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+  min-width: 0;
+}
+
+.myx-item-code {
+  font: 700 0.82rem/1.1 var(--mono, monospace);
+  color: var(--sti-blue);
+}
+
+.myx-item-title {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.myx-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.myx-item-seats {
+  font-variant-numeric: tabular-nums;
+}
