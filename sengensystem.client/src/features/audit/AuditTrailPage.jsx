@@ -22,7 +22,8 @@ const blueActions = new Set([
     'SlotApproved', 'SlotRequested', 'LoginSucceeded',
     'SchoolYearSaved', 'SemesterSaved', 'BuildingSaved', 'RoomSaved',
     'CurriculumSaved', 'SubjectSaved', 'FacultyLoadSaved',
-    'SubjectArchived', 'SubjectRestored', 'ScheduleArchived', 'SemesterExported'
+    'SubjectArchived', 'SubjectRestored', 'ScheduleArchived', 'SemesterExported',
+    'SystemParametersExported'
 ]);
 
 function actionChip(action) {
