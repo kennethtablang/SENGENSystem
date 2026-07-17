@@ -1,0 +1,64 @@
+/* Registrar schedule publishing (FR-PUB). Builds on scheduling.css. */
+
+.pub-section {
+  margin-top: 1.6rem;
+}
+
+.pub-section-title {
+  font-size: 1rem;
+  color: var(--text-1);
+  margin-bottom: 0.8rem;
+}
+
+.pub-view-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.8rem;
+}
+
+.pub-view-head .pub-section-title {
+  margin-bottom: 0;
+}
+
+.pub-tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.pub-tab {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.pub-tab:hover {
+  color: var(--text-1);
+}
+
+.pub-tab-active {
+  color: var(--sti-blue);
+  border-color: var(--sti-blue);
+}
+
+.pub-day-picker {
+  margin-bottom: 0.9rem;
+}
+
+.pub-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
