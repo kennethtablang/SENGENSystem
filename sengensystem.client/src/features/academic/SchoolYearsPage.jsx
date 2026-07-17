@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmDelete } from '../shell/confirm';
 import {
     listSchoolYears, createSchoolYear, updateSchoolYear, deleteSchoolYear, activateSchoolYear
 } from './api';
@@ -50,7 +51,7 @@ function SchoolYearModal({ record, onClose, onChanged }) {
     }
 
     async function remove() {
-        if (!window.confirm(`Delete school year “${record.name}”? This can't be undone.`)) return;
+        if (!(await confirmDelete(`school year “${record.name}”`))) return;
         setError(''); setBusy(true);
         try { await deleteSchoolYear(record.id); notifySuccess(`School year “${record.name}” deleted.`); onChanged(); onClose(); }
         catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }

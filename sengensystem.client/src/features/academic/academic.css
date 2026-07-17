@@ -40,17 +40,6 @@
   color: var(--text-3);
 }
 
-.setup-filter select {
-  font: 500 0.84rem/1.2 var(--sans);
-  color: var(--text-1);
-  background: var(--bg-wash);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0.45rem 0.7rem;
-  cursor: pointer;
-  outline: none;
-}
-
 /* ---------- Table ---------- */
 
 .setup-table-wrap {
@@ -148,17 +137,4 @@
   margin-right: auto;
 }
 
-/* Shared button modifiers (kept local so these pages don't depend on another feature's CSS). */
-.btn-sm {
-  padding: 0.4rem 0.85rem;
-  font-size: 0.8rem;
-}
-
-.btn-danger {
-  background: var(--down);
-  color: #fff;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #bf2a4c;
-}
+/* .btn-sm / .btn-danger moved to index.css — shared by every feature. */

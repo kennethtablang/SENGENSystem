@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmDelete } from '../shell/confirm';
 import { listRooms, createRoom, updateRoom, deleteRoom, listBuildings } from './api';
 import './academic.css';
 
@@ -42,7 +43,7 @@ function RoomModal({ record, buildings, defaultBuildingId, onClose, onChanged })
     }
 
     async function remove() {
-        if (!window.confirm(`Delete room “${record.name}”? This can't be undone.`)) return;
+        if (!(await confirmDelete(`room “${record.name}”`))) return;
         setError(''); setBusy(true);
         try { await deleteRoom(record.id); notifySuccess(`Room “${record.name}” deleted.`); onChanged(); onClose(); }
         catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }

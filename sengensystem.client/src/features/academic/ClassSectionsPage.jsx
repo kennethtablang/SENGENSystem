@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmDelete } from '../shell/confirm';
 import { listClassSections, createClassSection, updateClassSection, deleteClassSection } from './api';
 import './academic.css';
 
@@ -44,7 +45,7 @@ function ClassSectionModal({ record, semesters, programs, defaultSemesterId, def
     }
 
     async function remove() {
-        if (!window.confirm(`Delete class “${record.displayName}”? This can't be undone.`)) return;
+        if (!(await confirmDelete(`class “${record.displayName}”`))) return;
         setError(''); setBusy(true);
         try { await deleteClassSection(record.id); notifySuccess(`Class “${record.displayName}” deleted.`); onChanged(); onClose(); }
         catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }

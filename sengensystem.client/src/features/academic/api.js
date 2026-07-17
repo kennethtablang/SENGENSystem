@@ -61,6 +61,8 @@ export const createSemester = (data) => send('POST', '/api/semesters', data);
 export const updateSemester = (id, data) => send('PUT', `/api/semesters/${id}`, data);
 export const deleteSemester = (id) => send('DELETE', `/api/semesters/${id}`);
 export const activateSemester = (id) => send('POST', `/api/semesters/${id}/active`, {});
+export const archiveSemester = (id) => send('POST', `/api/semesters/${id}/archive`, {});
+export const unarchiveSemester = (id) => send('POST', `/api/semesters/${id}/unarchive`, {});
 
 // ---------- Buildings ----------
 export const listBuildings = () => get('/api/buildings');

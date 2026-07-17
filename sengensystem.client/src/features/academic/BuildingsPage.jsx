@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmDelete } from '../shell/confirm';
 import { listBuildings, createBuilding, updateBuilding, deleteBuilding } from './api';
 import './academic.css';
 
@@ -31,7 +32,7 @@ function BuildingModal({ record, onClose, onChanged }) {
     }
 
     async function remove() {
-        if (!window.confirm(`Delete building “${record.name}”? This can't be undone.`)) return;
+        if (!(await confirmDelete(`building “${record.name}”`))) return;
         setError(''); setBusy(true);
         try { await deleteBuilding(record.id); notifySuccess(`Building “${record.name}” deleted.`); onChanged(); onClose(); }
         catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }

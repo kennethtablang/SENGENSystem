@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmAction, confirmDelete } from '../shell/confirm';
 import {
-    listSemesters, createSemester, updateSemester, deleteSemester, activateSemester, listSchoolYears
+    listSemesters, createSemester, updateSemester, deleteSemester, activateSemester,
+    archiveSemester, unarchiveSemester, listSchoolYears
 } from './api';
+import { downloadSemesterExport } from '../reports/exportApi';
 import './academic.css';
 
 const terms = [
@@ -57,10 +60,37 @@ function SemesterModal({ record, schoolYears, defaultYearId, onClose, onChanged 
     }
 
     async function remove() {
-        if (!window.confirm(`Delete semester “${record.name}”? This can't be undone.`)) return;
+        if (!(await confirmDelete(`semester “${record.name}”`))) return;
         setError(''); setBusy(true);
         try { await deleteSemester(record.id); notifySuccess(`Semester “${record.name}” deleted.`); onChanged(); onClose(); }
         catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
+    }
+
+    // Term wrap-up: freeze the set schedule as a read-only archive once the semester is done.
+    async function archive() {
+        const ok = await confirmAction({
+            title: `Archive “${record.name}”?`,
+            message: 'Its set schedule becomes read-only history — the schedule board, generator, and publisher will refuse changes. You can reopen it later if needed.',
+            confirmLabel: 'Archive'
+        });
+        if (!ok) return;
+        setError(''); setBusy(true);
+        try { await archiveSemester(record.id); notifySuccess(`“${record.name}” archived — its schedule is now frozen.`); onChanged(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
+    }
+
+    async function reopen() {
+        setError(''); setBusy(true);
+        try { await unarchiveSemester(record.id); notifySuccess(`“${record.name}” reopened.`); onChanged(); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
+    }
+
+    // One-click filing: everything the term collected, in a single workbook.
+    async function exportData() {
+        setError(''); setBusy(true);
+        try { await downloadSemesterExport(record.id); notifySuccess(`Exported the full data bundle for “${record.name}”.`); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); }
+        finally { setBusy(false); }
     }
 
     const footer = (
@@ -70,10 +100,27 @@ function SemesterModal({ record, schoolYears, defaultYearId, onClose, onChanged 
                     Delete
                 </button>
             )}
+            {!isCreate && (
+                <button type="button" className="btn btn-ghost" disabled={busy} onClick={exportData}
+                    title="Download every report for this semester in one workbook">
+                    Export data
+                </button>
+            )}
             {!isCreate && !record.isActive && (
                 <button type="button" className="btn btn-ghost" disabled={busy} onClick={setActive}>
                     Set active
                 </button>
+            )}
+            {!isCreate && !record.isActive && (
+                record.isArchived ? (
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={reopen}>
+                        Reopen
+                    </button>
+                ) : (
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={archive}>
+                        Archive schedule
+                    </button>
+                )
             )}
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" form="sem-form" className="btn btn-primary" disabled={saving}>
@@ -207,7 +254,9 @@ export default function SemestersPage() {
                                     <td>
                                         {s.isActive
                                             ? <span className="chip chip-active">Active</span>
-                                            : <span className="chip chip-muted">Inactive</span>}
+                                            : s.isArchived
+                                                ? <span className="chip chip-yellow">Archived</span>
+                                                : <span className="chip chip-muted">Inactive</span>}
                                     </td>
                                 </tr>
                             ))}
