@@ -1,0 +1,256 @@
+import { useEffect, useRef, useState } from 'react';
+import { getToken } from '../auth/api';
+import { getDashboardMetrics } from '../dashboard/api';
+import { subscribeToReports } from './live';
+import { LiveChip } from './ReportsPage';
+import { notifySuccess, notifyError } from '../shell/notify';
+import '../registration/registration.css';
+import './reports.css';
+
+/* Faculty Academic Load Reports: monitor teaching assignments per semester, search by
+   name or employee ID, and download individual, consolidated, room-utilization, grid,
+   or bulk (.zip) workbooks for workload balance and institutional compliance. */
+
+async function downloadFile(url, fallbackName) {
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (!response.ok) {
+        let message = 'Download failed.';
+        try {
+            message = (await response.json())?.message ?? message;
+        } catch {
+            // non-JSON error body
+        }
+        throw new Error(message);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const match = /filename="?([^";]+)"?/.exec(disposition);
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = match?.[1] ?? fallbackName;
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function FacultyLoadReportsPage() {
+    const [semesters, setSemesters] = useState([]);
+    const [semesterId, setSemesterId] = useState('');
+    const [search, setSearch] = useState('');
+    const [data, setData] = useState(null);
+    const [error, setError] = useState(null);
+    const [busy, setBusy] = useState(null); // key of the running download
+    const [liveState, setLiveState] = useState('offline');
+    const [updatedAt, setUpdatedAt] = useState(null);
+    const [refreshTick, setRefreshTick] = useState(0);
+    const debounceRef = useRef(null);
+
+    useEffect(() => {
+        getDashboardMetrics()
+            .then(d => {
+                setSemesters(d.semesters ?? []);
+                if (d.semesterId) setSemesterId(d.semesterId);
+            })
+            .catch(err => setError(err.message));
+    }, []);
+
+    useEffect(() => {
+        const unsubscribe = subscribeToReports(
+            () => {
+                clearTimeout(debounceRef.current);
+                debounceRef.current = setTimeout(() => setRefreshTick(t => t + 1), 400);
+            },
+            state => setLiveState(state));
+        return () => {
+            clearTimeout(debounceRef.current);
+            unsubscribe();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!semesterId) return;
+        let live = true;
+        const run = setTimeout(async () => {
+            setError(null);
+            try {
+                const qs = new URLSearchParams({ semesterId });
+                if (search.trim()) qs.set('search', search.trim());
+                const response = await fetch(`/api/reports/faculty-loading?${qs}`, {
+                    headers: { Authorization: `Bearer ${getToken()}` }
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload?.message || 'Could not load faculty loading.');
+                if (live) {
+                    setData(payload);
+                    setUpdatedAt(new Date());
+                }
+            } catch (err) {
+                if (live) setError(err.message);
+            }
+        }, search ? 250 : 0); // debounce keystrokes
+        return () => {
+            live = false;
+            clearTimeout(run);
+        };
+    }, [semesterId, search, refreshTick]);
+
+    async function download(key, url, fallbackName, doneMessage) {
+        setBusy(key);
+        try {
+            await downloadFile(url, fallbackName);
+            notifySuccess(doneMessage);
+        } catch (err) {
+            notifyError(err.message);
+        } finally {
+            setBusy(null);
+        }
+    }
+
+    const qsSem = `semesterId=${encodeURIComponent(semesterId)}`;
+    const rows = data?.faculty ?? [];
+
+    return (
+        <div className="reg-page">
+            <header className="reg-head">
+                <div>
+                    <h2>Faculty load reports <LiveChip state={liveState} updatedAt={updatedAt} /></h2>
+                    <p className="reg-sub">
+                        Teaching assignments by semester — monitor workload balance and download
+                        compliance reports per member, consolidated, or in bulk.
+                    </p>
+                </div>
+                <div className="reg-controls">
+                    <label className="reg-filter">
+                        <span>Semester</span>
+                        <select value={semesterId} onChange={e => setSemesterId(e.target.value)}>
+                            {semesters.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}{s.isActive ? ' · active' : ''}</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+            </header>
+
+            {error && <div className="alert">{error}</div>}
+
+            <div className="flr-toolbar">
+                <div className="flr-search">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                        <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16M21 21l-4.35-4.35" />
+                    </svg>
+                    <input
+                        type="text"
+                        placeholder="Search by faculty name or employee ID…"
+                        aria-label="Search faculty"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                    />
+                </div>
+                <button
+                    type="button" className="btn btn-primary" disabled={!semesterId || busy !== null}
+                    onClick={() => download('bulk', `/api/reports/faculty-loading/bulk?${qsSem}`,
+                        'sengen-faculty-load-reports.zip', 'Downloaded the full report bundle.')}
+                >
+                    {busy === 'bulk' && <span className="spinner" aria-hidden="true" />}
+                    Download all (.zip)
+                </button>
+                <button
+                    type="button" className="btn btn-ghost" disabled={!semesterId || busy !== null}
+                    onClick={() => download('consolidated', `/api/reports/faculty-loading/consolidated?${qsSem}`,
+                        'sengen-consolidated-faculty-loading.xlsx', 'Downloaded the consolidated loading report.')}
+                >
+                    {busy === 'consolidated' && <span className="spinner" aria-hidden="true" />}
+                    Consolidated report
+                </button>
+                <button
+                    type="button" className="btn btn-ghost" disabled={!semesterId || busy !== null}
+                    onClick={() => download('rooms', `/api/reports/room-utilization?${qsSem}&format=xlsx`,
+                        'sengen-room-utilization.xlsx', 'Downloaded room utilization (08:00–17:00).')}
+                >
+                    {busy === 'rooms' && <span className="spinner" aria-hidden="true" />}
+                    Room utilization
+                </button>
+                <button
+                    type="button" className="btn btn-ghost" disabled={!semesterId || busy !== null}
+                    onClick={() => download('grids', `/api/reports/grid-schedules?${qsSem}`,
+                        'sengen-grid-schedules.xlsx', 'Downloaded the grid schedules.')}
+                >
+                    {busy === 'grids' && <span className="spinner" aria-hidden="true" />}
+                    Grid schedules
+                </button>
+            </div>
+
+            {!data ? (
+                <p className="reg-empty">Pick a semester to load faculty assignments.</p>
+            ) : rows.length === 0 ? (
+                <p className="reg-empty">No faculty match this search.</p>
+            ) : (
+                <div className="card reg-table-wrap">
+                    <table className="reg-table">
+                        <thead>
+                            <tr>
+                                <th>Faculty</th>
+                                <th>Employee ID</th>
+                                <th>Program</th>
+                                <th>Total units</th>
+                                <th>Total subjects</th>
+                                <th>Scheduled h/week</th>
+                                <th>Standing</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map(f => {
+                                const over = f.totalUnits > f.maxUnits;
+                                const pct = f.maxUnits === 0 ? 0 : Math.min(100, Math.round(100 * f.totalUnits / f.maxUnits));
+                                return (
+                                    <tr key={f.facultyProfileId}>
+                                        <td>{f.name}</td>
+                                        <td style={{ fontFamily: 'var(--mono)' }}>{f.employeeId || '—'}</td>
+                                        <td>{f.programCode}</td>
+                                        <td>
+                                            <span className="flr-units">
+                                                {f.totalUnits}/{f.maxUnits}
+                                                <span className={`flr-bar${over ? ' over' : ''}`}>
+                                                    <span style={{ width: `${pct}%` }} />
+                                                </span>
+                                            </span>
+                                        </td>
+                                        <td>{f.totalSubjects}</td>
+                                        <td>{f.scheduledHours}</td>
+                                        <td>
+                                            <span className={`chip ${f.standing === 'Overloaded' ? 'chip-down'
+                                                : f.standing === 'Unassigned' ? 'chip-muted' : 'chip-up'}`}>
+                                                {f.standing}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button
+                                                type="button" className="btn btn-ghost"
+                                                style={{ padding: '0.45rem 1rem', fontSize: '0.8rem' }}
+                                                disabled={busy !== null}
+                                                onClick={() => download(f.facultyProfileId,
+                                                    `/api/reports/faculty-loading/${f.facultyProfileId}?${qsSem}`,
+                                                    'sengen-load-report.xlsx',
+                                                    `Downloaded ${f.name}'s load report.`)}
+                                            >
+                                                {busy === f.facultyProfileId && <span className="spinner" aria-hidden="true" />}
+                                                Download
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            <p style={{ marginTop: '0.9rem', fontSize: '0.8rem', color: 'var(--text-3)' }}>
+                {data ? `${data.count} faculty member(s) · ${data.semesterName}` : ''}
+            </p>
+        </div>
+    );
+}
+
+export default FacultyLoadReportsPage;

@@ -1,0 +1,108 @@
+/* Reports & analytics: live indicator + faculty load report table accents. */
+
+.live-chip {
+  background: var(--bg-wash);
+  color: var(--text-3);
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}
+
+.live-chip small {
+  font-weight: 500;
+  font-size: 0.68rem;
+}
+
+.live-chip .live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.live-chip.on {
+  background: var(--up-dim);
+  color: var(--up);
+}
+
+.live-chip.on .live-dot {
+  background: var(--up);
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+/* ---------- Faculty load reports ---------- */
+
+.flr-toolbar {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+
+.flr-search {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 340px;
+}
+
+.flr-search input {
+  width: 100%;
+  font: 400 0.9rem/1.4 var(--sans);
+  color: var(--text-1);
+  background: var(--bg-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0.55rem 1rem 0.55rem 2.2rem;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.flr-search input:focus {
+  background: var(--surface);
+  border-color: var(--sti-blue);
+  box-shadow: 0 0 0 4px var(--sti-blue-dim);
+}
+
+.flr-search svg {
+  position: absolute;
+  left: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+}
+
+.flr-units {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.flr-bar {
+  width: 90px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-wash);
+  overflow: hidden;
+}
+
+.flr-bar span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--sti-blue);
+  transition: width 0.3s ease;
+}
+
+.flr-bar.over span {
+  background: var(--down);
+}
+
+.chip-up {
+  background: var(--up-dim);
+  color: var(--up);
+}
+
+.chip-down {
+  background: var(--down-dim);
+  color: var(--down);
+}
