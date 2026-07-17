@@ -61,6 +61,7 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
             AppDbContext db,
             AuditLog audit,
             IEmailSender email,
+            Features.Reports.Live.ReportsBroadcaster broadcaster,
             CancellationToken cancellationToken)
         {
             var semester = await db.Semesters.FirstOrDefaultAsync(s => s.IsActive, cancellationToken);
@@ -180,6 +181,7 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
                 await db.SaveChangesAsync(cancellationToken);
             }
 
+            broadcaster.Announce("registration");
             return Results.Created($"/api/registration/{registration.Id}",
                 new RegisterStudentResponse(registration.Id, registration.StudentNumber, registration.FullName, result.Sent));
         }
