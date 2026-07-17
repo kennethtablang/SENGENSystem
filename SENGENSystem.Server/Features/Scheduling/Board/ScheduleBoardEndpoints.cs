@@ -34,7 +34,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
         {
             var semesters = await db.Semesters.AsNoTracking()
                 .OrderByDescending(s => s.StartDate)
-                .Select(s => new BoardSemesterDto(s.Id, s.Name, s.IsActive))
+                .Select(s => new BoardSemesterDto(s.Id, s.Name, s.IsActive, s.IsArchived))
                 .ToListAsync(ct);
 
             var rooms = await db.Rooms.AsNoTracking()
@@ -164,6 +164,8 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 return Results.NotFound(new { message = "That assigned subject no longer exists. Refresh the board." });
             }
 
+            if (await EnsureNotArchivedAsync(db, load.SemesterId, ct) is { } frozen) return frozen;
+
             var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == request.RoomId, ct);
             if (room is null) return Results.BadRequest(new { message = "The selected room no longer exists." });
 
@@ -238,6 +240,8 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 return Results.NotFound(new { message = "That placement no longer exists. Refresh the board." });
             }
 
+            if (await EnsureNotArchivedAsync(db, assignment.SemesterId, ct) is { } frozen) return frozen;
+
             var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == request.RoomId, ct);
             if (room is null) return Results.BadRequest(new { message = "The selected room no longer exists." });
 
@@ -271,6 +275,8 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 .FirstOrDefaultAsync(a => a.Id == assignmentId, ct);
             if (assignment is null) return Results.NotFound(new { message = "That placement no longer exists." });
 
+            if (await EnsureNotArchivedAsync(db, assignment.SemesterId, ct) is { } frozen) return frozen;
+
             db.ScheduleAssignments.Remove(assignment);
             audit.Record(AuditAction.ScheduleOverridden,
                 $"Removed {assignment.Section?.Subject?.Code} from the calendar.",
@@ -281,10 +287,22 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
 
         // ---- helpers ----
 
+        // Archived semesters are frozen history (FR: schedule archiving) — every write refuses.
+        private static async Task<IResult?> EnsureNotArchivedAsync(AppDbContext db, Guid semesterId, CancellationToken ct)
+        {
+            var archived = await db.Semesters.AsNoTracking()
+                .Where(s => s.Id == semesterId)
+                .Select(s => s.IsArchived)
+                .FirstOrDefaultAsync(ct);
+            return archived
+                ? Results.Conflict(new { message = "This semester is archived — its schedule is read-only." })
+                : null;
+        }
+
         private static IResult? Validate(int day, int start, int end)
         {
-            if (day is < 1 or > 5)
-                return Results.BadRequest(new { message = "Classes can only be scheduled Monday to Friday." });
+            if (day is < 1 or > 6)
+                return Results.BadRequest(new { message = "Classes can only be scheduled Monday to Saturday." });
             if (start < 0 || end > 24 * 60 || start >= end)
                 return Results.BadRequest(new { message = "That time range is invalid." });
             return null;

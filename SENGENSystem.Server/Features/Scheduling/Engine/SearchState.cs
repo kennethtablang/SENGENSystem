@@ -2,6 +2,16 @@ using SENGENSystem.Server.Domain;
 
 namespace SENGENSystem.Server.Features.Scheduling.Engine
 {
+    /// <summary>Which hard constraint a candidate assignment ran into (for failure diagnostics).</summary>
+    internal enum ConflictKind
+    {
+        None,
+        FacultyOverload,
+        RoomBusy,
+        FacultyBusy,
+        CohortBusy
+    }
+
     /// <summary>
     /// Mutable working state of the backtracking search: the sections placed so far and the
     /// running faculty load. Encapsulates hard-constraint checking (<see cref="IsConsistent"/>)
@@ -29,12 +39,20 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         }
 
         /// <summary>True when assigning <paramref name="value"/> to <paramref name="section"/> violates no hard constraint.</summary>
-        public bool IsConsistent(SectionVar section, SectionAssignment value)
+        public bool IsConsistent(SectionVar section, SectionAssignment value) =>
+            IsConsistent(section, value, out _);
+
+        /// <summary>
+        /// Hard-constraint check that also reports <paramref name="conflict"/> — the first
+        /// constraint the candidate collided with — so failed runs can explain themselves.
+        /// </summary>
+        public bool IsConsistent(SectionVar section, SectionAssignment value, out ConflictKind conflict)
         {
             // Faculty unit-load ceiling (FR-SCHED-02, FR-FAC-03).
             var projectedLoad = _facultyLoad.GetValueOrDefault(value.FacultyProfileId) + section.Units;
             if (projectedLoad > _facultyMaxLoad[value.FacultyProfileId])
             {
+                conflict = ConflictKind.FacultyOverload;
                 return false;
             }
 
@@ -49,20 +67,24 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 // Overlapping in time — none of these three collisions may happen.
                 if (placed.RoomId == value.RoomId)
                 {
-                    return false; // room double-booking
+                    conflict = ConflictKind.RoomBusy; // room double-booking
+                    return false;
                 }
 
                 if (placed.FacultyProfileId == value.FacultyProfileId)
                 {
-                    return false; // faculty double-assignment
+                    conflict = ConflictKind.FacultyBusy; // faculty double-assignment
+                    return false;
                 }
 
                 if (placed.CohortKey == section.CohortKey)
                 {
-                    return false; // two classes for the same student cohort at once
+                    conflict = ConflictKind.CohortBusy; // two classes for the same student cohort at once
+                    return false;
                 }
             }
 
+            conflict = ConflictKind.None;
             return true;
         }
 
@@ -96,13 +118,21 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
 
         /// <summary>
         /// Lower is better. Encodes soft constraints (FR-SCHED-03): balance faculty load
-        /// (dominant term), keep a cohort's classes contiguous to cut idle gaps, and prefer a
-        /// snug room so large rooms stay free for large sections.
+        /// (dominant term), honor faculty time-slot preferences, keep a cohort's classes
+        /// contiguous to cut idle gaps, and prefer a snug room so large rooms stay free for
+        /// large sections.
         /// </summary>
         public int SoftScore(SectionVar section, RoomOption room, TimeSlot slot, FacultyOption faculty)
         {
             var score = _facultyLoad.GetValueOrDefault(faculty.FacultyProfileId) * 10;
             score += room.Capacity;
+
+            // Faculty time-slot preferences: reward a slot inside a preferred window, penalize
+            // one outside (only when the member declared preferences at all).
+            if (faculty.Preferences.Count > 0)
+            {
+                score += faculty.Preferences.Any(w => w.Contains(slot)) ? -8 : 4;
+            }
 
             foreach (var placed in _placed)
             {

@@ -16,7 +16,21 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
 
     public sealed record RoomOption(Guid RoomId, int Capacity, bool IsLaboratory);
 
-    public sealed record FacultyOption(Guid FacultyProfileId, string ProgramCode, int MaxLoadUnits);
+    /// <summary>A faculty member's preferred teaching window (FR-SCHED-03 soft constraint).</summary>
+    public sealed record PreferredWindow(DayOfWeek Day, int StartMinutes, int EndMinutes)
+    {
+        public bool Contains(TimeSlot slot) =>
+            Day == slot.Day && StartMinutes <= slot.StartMinutes && slot.EndMinutes <= EndMinutes;
+    }
+
+    public sealed record FacultyOption(
+        Guid FacultyProfileId,
+        string ProgramCode,
+        int MaxLoadUnits,
+        IReadOnlyList<PreferredWindow>? PreferredWindows = null)
+    {
+        public IReadOnlyList<PreferredWindow> Preferences => PreferredWindows ?? [];
+    }
 
     /// <summary>A concrete value chosen for a section variable.</summary>
     public sealed record SectionAssignment(Guid SectionId, Guid RoomId, Guid TimeSlotId, Guid FacultyProfileId);

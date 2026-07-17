@@ -12,7 +12,7 @@ namespace SENGENSystem.Server.Features.Scheduling.GetSchedule
         {
             app.MapGet("/api/scheduling/schedule", HandleAsync)
                 .RequireAuthorization(policy => policy.RequireRole(
-                    nameof(UserRole.AcademicHead), nameof(UserRole.Registrar)));
+                    nameof(UserRole.AcademicHead), nameof(UserRole.Registrar), nameof(UserRole.SchoolAdmin)));
             return app;
         }
 

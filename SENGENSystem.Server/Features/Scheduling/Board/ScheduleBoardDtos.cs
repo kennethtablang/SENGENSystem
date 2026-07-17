@@ -61,7 +61,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
         int RequiredHours);
 
     public record BoardRoomDto(Guid Id, string Name, int Capacity, bool IsLaboratory);
-    public record BoardSemesterDto(Guid Id, string Name, bool IsActive);
+    public record BoardSemesterDto(Guid Id, string Name, bool IsActive, bool IsArchived);
     public record BoardFacultyDto(Guid Id, string Name);
 
     /// <summary>Place a pool item onto the calendar at a room/day/time.</summary>
