@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Icon } from '../shell/AppLayout';
 import { listNotifications, markAllRead, markRead } from './api';
 import { iconFor, relativeTime, NOTIFICATIONS_CHANGED, announceNotificationsChanged } from './meta';
+import { subscribeToReports } from '../reports/live';
 import './notifications.css';
 
 const POLL_MS = 60_000;
@@ -26,14 +27,20 @@ function NotificationsBell() {
     }, []);
 
     // Initial load + gentle polling + refresh whenever another view marks notices read.
+    // A SignalR push ("notifications" area) refreshes the badge the moment a notice is
+    // dispatched; polling stays as the fallback when the socket is down.
     useEffect(() => {
         const initial = setTimeout(load, 0);
         const timer = setInterval(load, POLL_MS);
         window.addEventListener(NOTIFICATIONS_CHANGED, load);
+        const unsubscribe = subscribeToReports(payload => {
+            if (payload?.area === 'notifications') setTimeout(load, 600);
+        });
         return () => {
             clearTimeout(initial);
             clearInterval(timer);
             window.removeEventListener(NOTIFICATIONS_CHANGED, load);
+            unsubscribe();
         };
     }, [load]);
 
