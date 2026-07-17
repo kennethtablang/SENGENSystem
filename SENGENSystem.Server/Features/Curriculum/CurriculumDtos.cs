@@ -39,10 +39,14 @@ namespace SENGENSystem.Server.Features.Curriculum
         int YearLevel,
         string Term,
         bool RequiresLaboratory,
+        bool IsArchived,
+        DateTime? ArchivedAtUtc,
+        string? ArchiveReason,
         IReadOnlyList<SubjectRefDto> Prerequisites)
     {
         public static SubjectDto From(Subject s) =>
             new(s.Id, s.CurriculumId, s.Code, s.Title, s.Units, s.Hours, s.YearLevel, s.Term.ToString(), s.RequiresLaboratory,
+                s.IsArchived, s.ArchivedAtUtc, s.ArchiveReason,
                 s.Prerequisites
                     .Where(p => p.PrerequisiteSubject is not null)
                     .Select(p => SubjectRefDto.From(p.PrerequisiteSubject!))

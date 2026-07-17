@@ -19,6 +19,8 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
         bool RequiresLaboratory,
         List<Guid>? PrerequisiteSubjectIds);
 
+    public record ArchiveSubjectRequest(string? Reason);
+
     public static class SubjectsEndpoints
     {
         public static IEndpointRouteBuilder MapSubjects(this IEndpointRouteBuilder app)
@@ -31,6 +33,8 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             group.MapPost("", CreateAsync);
             group.MapPut("/{id:guid}", UpdateAsync);
             group.MapDelete("/{id:guid}", DeleteAsync);
+            group.MapPost("/{id:guid}/archive", ArchiveAsync);
+            group.MapPost("/{id:guid}/restore", RestoreAsync);
             return app;
         }
 
@@ -116,7 +120,11 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
 
             if (await db.Sections.AnyAsync(s => s.SubjectId == id, ct))
             {
-                return Results.Conflict(new { message = "This subject is used by a section and can't be deleted." });
+                return Results.Conflict(new
+                {
+                    message = "This subject is used by a section and can't be deleted. Archive it instead — " +
+                        "archived subjects keep their history but leave the active curriculum."
+                });
             }
 
             // Remove edges where this subject is required by others (the Restrict FK side), then the
@@ -129,6 +137,47 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
                 "Subject", subject.Id.ToString());
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
+        }
+
+        // POST /api/subjects/{id}/archive — soft-retire a subject when the curriculum changes.
+        // History (sections, loads, schedules) is untouched; the subject just stops being offered.
+        private static async Task<IResult> ArchiveAsync(
+            Guid id, ArchiveSubjectRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var subject = await db.Subjects.FirstOrDefaultAsync(s => s.Id == id, ct);
+            if (subject is null) return Results.NotFound(new { message = "Subject not found." });
+            if (subject.IsArchived) return Results.Conflict(new { message = $"{subject.Code} is already archived." });
+
+            subject.IsArchived = true;
+            subject.ArchivedAtUtc = DateTime.UtcNow;
+            subject.ArchiveReason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
+
+            audit.Record(AuditAction.SubjectArchived,
+                $"Archived subject {subject.Code} — {subject.Title}" +
+                (subject.ArchiveReason is null ? "." : $" ({subject.ArchiveReason})."),
+                "Subject", subject.Id.ToString());
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(await LoadDtoAsync(db, subject.Id, ct));
+        }
+
+        // POST /api/subjects/{id}/restore — bring an archived subject back into the curriculum.
+        private static async Task<IResult> RestoreAsync(Guid id, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var subject = await db.Subjects.FirstOrDefaultAsync(s => s.Id == id, ct);
+            if (subject is null) return Results.NotFound(new { message = "Subject not found." });
+            if (!subject.IsArchived) return Results.Conflict(new { message = $"{subject.Code} is not archived." });
+
+            subject.IsArchived = false;
+            subject.ArchivedAtUtc = null;
+            subject.ArchiveReason = null;
+
+            audit.Record(AuditAction.SubjectRestored,
+                $"Restored subject {subject.Code} — {subject.Title} from the archive.",
+                "Subject", subject.Id.ToString());
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(await LoadDtoAsync(db, subject.Id, ct));
         }
 
         /// <summary>Makes the stored prerequisite edges for a subject match the requested set.</summary>
