@@ -24,6 +24,8 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Semesters
             group.MapPut("/{id:guid}", UpdateAsync);
             group.MapDelete("/{id:guid}", DeleteAsync);
             group.MapPost("/{id:guid}/active", SetActiveAsync);
+            group.MapPost("/{id:guid}/archive", ArchiveAsync);
+            group.MapPost("/{id:guid}/unarchive", UnarchiveAsync);
             return app;
         }
 
@@ -125,6 +127,54 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Semesters
                 audit.Record(AuditAction.SemesterSaved, $"Set “{semester.Name}” as the active semester.",
                     "Semester", semester.Id.ToString());
             }
+            await db.SaveChangesAsync(ct);
+
+            await db.Entry(semester).Reference(s => s.SchoolYear).LoadAsync(ct);
+            return Results.Ok(SemesterDto.From(semester));
+        }
+
+        // POST /api/semesters/{id}/archive — freeze a finished term: its set schedule becomes a
+        // read-only archive (the board, generator, and publisher refuse changes) while every
+        // row stays queryable for reports and history.
+        private static async Task<IResult> ArchiveAsync(Guid id, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var semester = await db.Semesters.FirstOrDefaultAsync(s => s.Id == id, ct);
+            if (semester is null) return Results.NotFound(new { message = "Semester not found." });
+            if (semester.IsActive)
+            {
+                return Results.Conflict(new { message = "The active semester can't be archived. Activate the next term first." });
+            }
+            if (semester.IsArchived)
+            {
+                return Results.Conflict(new { message = $"“{semester.Name}” is already archived." });
+            }
+
+            semester.IsArchived = true;
+            semester.ArchivedAtUtc = DateTime.UtcNow;
+
+            var scheduled = await db.ScheduleAssignments.CountAsync(a => a.SemesterId == id, ct);
+            audit.Record(AuditAction.ScheduleArchived,
+                $"Archived “{semester.Name}” — its schedule ({scheduled} placements) is now frozen and read-only.",
+                "Semester", semester.Id.ToString());
+            await db.SaveChangesAsync(ct);
+
+            await db.Entry(semester).Reference(s => s.SchoolYear).LoadAsync(ct);
+            return Results.Ok(SemesterDto.From(semester));
+        }
+
+        // POST /api/semesters/{id}/unarchive — reopen a term archived by mistake.
+        private static async Task<IResult> UnarchiveAsync(Guid id, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var semester = await db.Semesters.FirstOrDefaultAsync(s => s.Id == id, ct);
+            if (semester is null) return Results.NotFound(new { message = "Semester not found." });
+            if (!semester.IsArchived) return Results.Conflict(new { message = $"“{semester.Name}” is not archived." });
+
+            semester.IsArchived = false;
+            semester.ArchivedAtUtc = null;
+
+            audit.Record(AuditAction.ScheduleArchived,
+                $"Reopened “{semester.Name}” — its schedule can be edited again.",
+                "Semester", semester.Id.ToString());
             await db.SaveChangesAsync(ct);
 
             await db.Entry(semester).Reference(s => s.SchoolYear).LoadAsync(ct);

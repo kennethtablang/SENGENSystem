@@ -34,13 +34,16 @@ namespace SENGENSystem.Server.Features.AcademicSetup
         string Name,
         string Term,
         bool IsActive,
+        bool IsArchived,
+        DateTime? ArchivedAtUtc,
         string StartDate,
         string EndDate,
         Guid? SchoolYearId,
         string? SchoolYearName)
     {
         public static SemesterDto From(Semester s) =>
-            new(s.Id, s.Name, s.Term.ToString(), s.IsActive, IsoDate.Of(s.StartDate), IsoDate.Of(s.EndDate),
+            new(s.Id, s.Name, s.Term.ToString(), s.IsActive, s.IsArchived, s.ArchivedAtUtc,
+                IsoDate.Of(s.StartDate), IsoDate.Of(s.EndDate),
                 s.SchoolYearId, s.SchoolYear?.Name);
     }
 
