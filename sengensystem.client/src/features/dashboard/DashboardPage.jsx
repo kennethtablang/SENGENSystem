@@ -7,6 +7,7 @@ import { myEnlistment } from '../enlistment/api';
 import { getMySchedule } from '../scheduling/api';
 import { subscribeToReports } from '../reports/live';
 import { LiveChip } from '../reports/ReportsPage';
+import { Donut, TrendChart, LoadColumns } from './charts';
 import '../reports/reports.css'; // LiveChip styles
 import './dashboard.css';
 
@@ -24,6 +25,28 @@ const flagChip = {
     Unassigned: 'chip chip-muted',
     Balanced: 'chip chip-blue'
 };
+
+/* Page header: greeting on the left, per-dashboard controls (semester picker,
+   live chip) inline on the right. */
+function DashHead({ controls }) {
+    const { user } = useAuth();
+    const isStaff = STAFF_ROLES.includes(user.role);
+    return (
+        <div className="dash-head">
+            <div>
+                <h2 className="dash-title">Welcome back, <span className="text-brand">{user.firstName}</span></h2>
+                <p className="dash-sub">
+                    {isStaff
+                        ? 'Live, semester-scoped metrics across enrollment, enlistment, rooms, and faculty load.'
+                        : user.role === 'FacultyMember'
+                            ? 'Your teaching week at a glance.'
+                            : 'Your enrollment journey — each step unlocks the next.'}
+                </p>
+            </div>
+            {controls && <div className="dash-head-controls">{controls}</div>}
+        </div>
+    );
+}
 
 function Stat({ value, label }) {
     return (
@@ -81,27 +104,35 @@ function StaffDashboard() {
         };
     }, []);
 
-    if (error) return <div className="alert">{error}</div>;
-    if (!data) return <p className="dash-loading">Loading live metrics…</p>;
+    if (error) return <><DashHead /><div className="alert">{error}</div></>;
+    if (!data) return <><DashHead /><p className="dash-loading">Loading live metrics…</p></>;
     if (!data.semesterId) {
-        return <div className="alert">No semester has been set up yet — create and activate one under Academic setup.</div>;
+        return (
+            <>
+                <DashHead />
+                <div className="alert">No semester has been set up yet — create and activate one under Academic setup.</div>
+            </>
+        );
     }
 
-    const { registration, documents, enlistment, roomUtilization, facultyLoad } = data;
+    const { registration, documents, intakeTrend, enlistment, roomUtilization, facultyLoad } = data;
+    const requestsTotal = enlistment.pending + enlistment.approved + enlistment.rejected;
 
     return (
         <>
-            <div className="dash-semester">
-                <label>
-                    <span>Semester</span>
-                    <select value={data.semesterId} onChange={e => setSemesterId(e.target.value)}>
-                        {data.semesters.map(s => (
-                            <option key={s.id} value={s.id}>{s.name}{s.isActive ? ' · active' : ''}</option>
-                        ))}
-                    </select>
-                </label>
-                <LiveChip state={liveState} updatedAt={updatedAt} />
-            </div>
+            <DashHead controls={
+                <>
+                    <label className="dash-sem-picker">
+                        <span>Semester</span>
+                        <select value={data.semesterId} onChange={e => setSemesterId(e.target.value)}>
+                            {data.semesters.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}{s.isActive ? ' · active' : ''}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <LiveChip state={liveState} updatedAt={updatedAt} />
+                </>
+            } />
 
             <div className="dash-stats">
                 <Stat value={registration.total} label="SIS registrations" />
@@ -110,6 +141,60 @@ function StaffDashboard() {
                 <Stat value={registration.preAuthorized} label="Pre-authorized" />
                 <Stat value={enlistment.pending} label="Slot requests pending" />
                 <Stat value={enlistment.approved} label="Seats approved" />
+            </div>
+
+            <div className="dash-charts">
+                <section className="card chart-card chart-wide">
+                    <h3>Registration intake <small>(last 30 days)</small></h3>
+                    {registration.total === 0 ? (
+                        <p className="dash-panel-empty">No SIS registrations this semester yet.</p>
+                    ) : (
+                        <TrendChart points={intakeTrend} />
+                    )}
+                </section>
+
+                <section className="card chart-card">
+                    <h3>Registration pipeline</h3>
+                    {registration.total === 0 ? (
+                        <p className="dash-panel-empty">Nothing in the pipeline yet.</p>
+                    ) : (
+                        <Donut
+                            centerValue={registration.total}
+                            centerLabel="registrations"
+                            segments={[
+                                { label: 'Confirmed', value: registration.confirmed, tone: 'tone-up' },
+                                { label: 'Submitted', value: registration.submitted, tone: 'tone-yellow' },
+                                { label: 'Rejected', value: registration.rejected, tone: 'tone-down' }
+                            ]}
+                        />
+                    )}
+                </section>
+
+                <section className="card chart-card">
+                    <h3>Slot requests</h3>
+                    {requestsTotal === 0 ? (
+                        <p className="dash-panel-empty">No enlistment requests yet.</p>
+                    ) : (
+                        <Donut
+                            centerValue={requestsTotal}
+                            centerLabel="requests"
+                            segments={[
+                                { label: 'Approved', value: enlistment.approved, tone: 'tone-blue' },
+                                { label: 'Pending', value: enlistment.pending, tone: 'tone-yellow' },
+                                { label: 'Rejected', value: enlistment.rejected, tone: 'tone-down' }
+                            ]}
+                        />
+                    )}
+                </section>
+
+                <section className="card chart-card chart-wide">
+                    <h3>Faculty load distribution <small>(ticks mark each member’s ceiling)</small></h3>
+                    {facultyLoad.members.length === 0 ? (
+                        <p className="dash-panel-empty">No faculty profiles yet.</p>
+                    ) : (
+                        <LoadColumns members={facultyLoad.members} mean={facultyLoad.meanUnits} />
+                    )}
+                </section>
             </div>
 
             <div className="dash-panels">
@@ -187,8 +272,8 @@ function StudentDashboard() {
         return () => { active = false; };
     }, []);
 
-    if (error) return <div className="alert">{error}</div>;
-    if (!link || !mine) return <p className="dash-loading">Loading your enrollment status…</p>;
+    if (error) return <><DashHead /><div className="alert">{error}</div></>;
+    if (!link || !mine) return <><DashHead /><p className="dash-loading">Loading your enrollment status…</p></>;
 
     const r = link.registration;
     const steps = [
@@ -225,6 +310,7 @@ function StudentDashboard() {
 
     return (
         <>
+            <DashHead />
             <section className="card dash-progress" aria-label="Enrollment progress">
                 {steps.map((step, i) => (
                     <div className={`step${i === currentIndex ? ' is-current' : ''}${step.done ? ' is-done' : ''}`} key={step.title}>
@@ -272,11 +358,12 @@ function FacultyDashboard() {
         return () => { active = false; };
     }, []);
 
-    if (error) return <div className="alert">{error}</div>;
-    if (!sched) return <p className="dash-loading">Loading your teaching week…</p>;
+    if (error) return <><DashHead /><div className="alert">{error}</div></>;
+    if (!sched) return <><DashHead /><p className="dash-loading">Loading your teaching week…</p></>;
 
     return (
         <>
+            <DashHead />
             <div className="dash-stats">
                 <Stat value={sched.count} label="Classes this week" />
                 <Stat value={`${sched.totalHours} h`} label="Teaching hours" />
@@ -295,21 +382,8 @@ function FacultyDashboard() {
 
 function DashboardPage() {
     const { user } = useAuth();
-    const isStaff = STAFF_ROLES.includes(user.role);
-
-    return (
-        <>
-            <h2 className="dash-title">Welcome back, <span className="text-brand">{user.firstName}</span></h2>
-            <p className="dash-sub">
-                {isStaff
-                    ? 'Live, semester-scoped metrics across enrollment, enlistment, rooms, and faculty load.'
-                    : user.role === 'FacultyMember'
-                        ? 'Your teaching week at a glance.'
-                        : 'Your enrollment journey — each step unlocks the next.'}
-            </p>
-            {isStaff ? <StaffDashboard /> : user.role === 'FacultyMember' ? <FacultyDashboard /> : <StudentDashboard />}
-        </>
-    );
+    if (STAFF_ROLES.includes(user.role)) return <StaffDashboard />;
+    return user.role === 'FacultyMember' ? <FacultyDashboard /> : <StudentDashboard />;
 }
 
 export default DashboardPage;
