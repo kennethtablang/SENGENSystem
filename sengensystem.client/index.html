@@ -2,9 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/SENGENlogo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>sengensystem.client</title>
+    <meta name="theme-color" content="#003399" />
+    <title>SEN-GEN · STI Alaminos</title>
+    <!-- Stamp the saved theme before first paint. main.jsx applies preferences too,
+         but it is a deferred module: without this the page paints light first and
+         flashes when a dark-theme user loads. Mirrors settings/prefs.js. -->
+    <script>
+      try {
+        var t = (JSON.parse(localStorage.getItem('sengen.prefs') || '{}').theme) || 'light';
+        if (t === 'system') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
