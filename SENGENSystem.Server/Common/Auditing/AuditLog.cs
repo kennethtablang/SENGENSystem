@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Reports.Live;
 
 namespace SENGENSystem.Server.Common.Auditing
 {
@@ -15,11 +16,13 @@ namespace SENGENSystem.Server.Common.Auditing
     {
         private readonly AppDbContext _db;
         private readonly IHttpContextAccessor _http;
+        private readonly ReportsBroadcaster _broadcaster;
 
-        public AuditLog(AppDbContext db, IHttpContextAccessor http)
+        public AuditLog(AppDbContext db, IHttpContextAccessor http, ReportsBroadcaster broadcaster)
         {
             _db = db;
             _http = http;
+            _broadcaster = broadcaster;
         }
 
         /// <summary>Records an action by the current authenticated actor (resolved from the request).</summary>
@@ -79,6 +82,10 @@ namespace SENGENSystem.Server.Common.Auditing
                 EntityId = entityId,
                 IpAddress = _http.HttpContext?.Connection.RemoteIpAddress?.ToString()
             });
+
+            // Every audited action nudges live listeners (audit trail + dashboard). Best-effort
+            // and fire-and-forget; clients debounce, so the refetch lands after the commit.
+            _broadcaster.Announce("audit");
         }
     }
 }
