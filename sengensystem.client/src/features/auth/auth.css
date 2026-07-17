@@ -21,7 +21,7 @@
   background:
     radial-gradient(50rem 34rem at -10% 115%, rgba(255, 255, 255, 0.14), transparent 55%),
     radial-gradient(40rem 28rem at 115% -15%, rgba(85, 200, 232, 0.35), transparent 60%),
-    linear-gradient(165deg, var(--sti-blue) 30%, var(--sti-blue-deep));
+    linear-gradient(165deg, var(--sti-blue-solid) 30%, var(--sti-blue-deep));
 }
 
 .auth-brand-watermark {
@@ -154,10 +154,10 @@
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(0, 51, 153, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 51, 153, 0.055) 1px, transparent 1px),
-    linear-gradient(rgba(0, 51, 153, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 51, 153, 0.035) 1px, transparent 1px);
+    linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px),
+    linear-gradient(var(--grid-line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line-soft) 1px, transparent 1px);
   background-size: 176px 176px, 176px 176px, 44px 44px, 44px 44px;
   background-position: 0 0;
   -webkit-mask-image: radial-gradient(38rem 30rem at 50% 46%, transparent 30%, #fff 78%);
