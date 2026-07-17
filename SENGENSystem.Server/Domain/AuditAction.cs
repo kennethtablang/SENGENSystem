@@ -76,6 +76,9 @@ namespace SENGENSystem.Server.Domain
         ScheduleArchived = 40,
 
         // Bulk data export — the one-workbook semester bundle (FR-RPT-02)
-        SemesterExported = 41
+        SemesterExported = 41,
+
+        // Bulk data export — the system parameters / setup master-data workbook
+        SystemParametersExported = 42
     }
 }
