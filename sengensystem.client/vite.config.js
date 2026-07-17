@@ -50,6 +50,12 @@ export default defineConfig({
             '^/api': {
                 target,
                 secure: false
+            },
+            // SignalR hub (websocket upgrade) for live reports
+            '^/hubs': {
+                target,
+                secure: false,
+                ws: true
             }
         },
         port: parseInt(env.DEV_SERVER_PORT || '51683'),
