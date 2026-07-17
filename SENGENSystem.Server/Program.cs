@@ -16,19 +16,40 @@ using SENGENSystem.Server.Features.AcademicSetup.Semesters;
 using SENGENSystem.Server.Features.Audit.GetAuditTrail;
 using SENGENSystem.Server.Features.Curriculum.Curricula;
 using SENGENSystem.Server.Features.Curriculum.Subjects;
+using SENGENSystem.Server.Features.Dashboard;
+using SENGENSystem.Server.Features.Documents.Checklist;
+using SENGENSystem.Server.Features.Documents.Reminders;
+using SENGENSystem.Server.Features.Enlistment.Approvals;
+using SENGENSystem.Server.Features.Enlistment.Browse;
+using SENGENSystem.Server.Features.Enlistment.MyEnlistment;
+using SENGENSystem.Server.Features.Enlistment.RequestSlot;
 using SENGENSystem.Server.Features.FacultyLoad;
+using SENGENSystem.Server.Features.FacultyLoad.Preferences;
+using SENGENSystem.Server.Features.Notifications;
+using SENGENSystem.Server.Features.PreEnrollment.Import;
+using SENGENSystem.Server.Features.PreEnrollment.PreAuthorize;
+using SENGENSystem.Server.Features.Registration.LinkAccount;
+using SENGENSystem.Server.Features.Auth.ForgotPassword;
 using SENGENSystem.Server.Features.Auth.Login;
 using SENGENSystem.Server.Features.Auth.Me;
 using SENGENSystem.Server.Features.Auth.Register;
+using SENGENSystem.Server.Features.Profile.ChangeEmail;
 using SENGENSystem.Server.Features.Profile.ChangePassword;
 using SENGENSystem.Server.Features.Profile.UpdateProfile;
+using SENGENSystem.Server.Features.Publishing.GetPublishedSchedule;
+using SENGENSystem.Server.Features.Publishing.PublishSchedule;
 using SENGENSystem.Server.Features.Registration.Manage;
+using SENGENSystem.Server.Features.Reports;
+using SENGENSystem.Server.Features.Reports.FacultyLoading;
+using SENGENSystem.Server.Features.Reports.Live;
+using SENGENSystem.Server.Features.Reports.SemesterExport;
 using SENGENSystem.Server.Features.Registration.RegisterStudent;
 using SENGENSystem.Server.Features.Registration.TermActivation;
 using SENGENSystem.Server.Features.Scheduling.Board;
 using SENGENSystem.Server.Features.Scheduling.Engine;
 using SENGENSystem.Server.Features.Scheduling.GenerateSchedule;
 using SENGENSystem.Server.Features.Scheduling.GetSchedule;
+using SENGENSystem.Server.Features.Scheduling.MySchedule;
 using SENGENSystem.Server.Features.UserManagement.CreateUser;
 using SENGENSystem.Server.Features.UserManagement.ListUsers;
 using SENGENSystem.Server.Features.UserManagement.ResetUserPassword;
@@ -54,6 +75,9 @@ namespace SENGENSystem.Server
             builder.Services.AddScoped<AuditLog>();
             builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
             builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+            builder.Services.AddScoped<Notifier>();
+            builder.Services.AddSignalR();
+            builder.Services.AddSingleton<ReportsBroadcaster>();
             builder.Services.AddSingleton<JwtTokenService>();
             builder.Services.AddSingleton<CspScheduler>();
             builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
@@ -74,6 +98,21 @@ namespace SENGENSystem.Server
                         ValidIssuer = jwt.Issuer,
                         ValidAudience = jwt.Audience,
                         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key))
+                    };
+                    // SignalR cannot send an Authorization header on WebSocket connects — the
+                    // standard pattern is the access_token query parameter, scoped to hub paths.
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnMessageReceived = context =>
+                        {
+                            var accessToken = context.Request.Query["access_token"];
+                            if (!string.IsNullOrEmpty(accessToken)
+                                && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                            {
+                                context.Token = accessToken;
+                            }
+                            return Task.CompletedTask;
+                        }
                     };
                 });
             builder.Services.AddAuthorization();
@@ -101,15 +140,22 @@ namespace SENGENSystem.Server
             app.MapRegister();
             app.MapLogin();
             app.MapMe();
+            app.MapForgotPassword();
 
             // Profile slice (self-service account editing)
             app.MapUpdateProfile();
             app.MapChangePassword();
+            app.MapChangeEmail();
 
             // Scheduling slice (FR-SCHED, FR-FAC)
             app.MapGenerateSchedule();
             app.MapGetSchedule();
             app.MapScheduleBoard();
+            app.MapMySchedule();
+
+            // Publishing slice — Registrar publishes finalized schedules (FR-PUB)
+            app.MapPublishSchedule();
+            app.MapGetPublishedSchedule();
 
             // Registration slice — digital SIS + term activation (FR-SIS, FR-DOC, FR-NOTIF)
             app.MapRegisterStudent();
@@ -119,6 +165,21 @@ namespace SENGENSystem.Server
             app.MapListRegistrations();
             app.MapGetRegistration();
             app.MapUpdateRegistration();
+            app.MapLinkAccount();
+
+            // Documents slice — Admission Officer checklist board + reminder emails (FR-DOC)
+            app.MapDocumentChecklist();
+            app.MapDocumentReminders();
+
+            // Pre-enrollment slice — .xlsx ETL import + Admission Officer pre-authorization (FR-PRE)
+            app.MapPreEnrollmentImport();
+            app.MapPreAuthorization();
+
+            // Enlistment slice — student slot selection + Registrar approvals (FR-ENL)
+            app.MapBrowseSections();
+            app.MapRequestSlot();
+            app.MapMyEnlistment();
+            app.MapEnlistmentApprovals();
 
             // Academic setup slice — School Admin manages school years, semesters, buildings, rooms
             app.MapSchoolYears();
@@ -132,7 +193,9 @@ namespace SENGENSystem.Server
             app.MapSubjects();
 
             // Faculty load slice — Academic Head allocates subjects to faculty (FR-FAC-01)
+            // and records preferred teaching windows for the engine (FR-SCHED-03)
             app.MapFacultyLoad();
+            app.MapFacultyPreferences();
 
             // User management slice — School Admin account CRUD (FR-AUTH-07)
             app.MapListUsers();
@@ -140,6 +203,19 @@ namespace SENGENSystem.Server
             app.MapUpdateUser();
             app.MapSetUserActive();
             app.MapResetUserPassword();
+
+            // Dashboard slice — live semester-scoped metrics + scheduling transparency (FR-DASH)
+            app.MapDashboardMetrics();
+            app.MapSchedulingTransparency();
+
+            // Reports slice — semester-scoped, exportable reports (FR-RPT) + live push channel
+            app.MapReports();
+            app.MapFacultyLoadingReports();
+            app.MapSemesterExport();
+            app.MapHub<ReportsHub>("/hubs/reports");
+
+            // Notifications slice — the signed-in user's in-app bell notices (FR-NOTIF)
+            app.MapNotifications();
 
             // Audit trail slice (FR-AUD)
             app.MapGetAuditTrail();
