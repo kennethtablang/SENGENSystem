@@ -47,18 +47,21 @@ namespace SENGENSystem.Server.Features.Profile.UpdateProfile
                 return Results.Unauthorized();
             }
 
+            // Email changes must go through the confirmed change-email flow (mailbox ownership
+            // is verified there); this endpoint only edits the name.
             var email = request.Email.Trim().ToLowerInvariant();
-            var emailTaken = await db.Users.AnyAsync(u => u.Email == email && u.Id != userId, cancellationToken);
-            if (emailTaken)
+            if (email != user.Email)
             {
-                return Results.Conflict(new { message = "An account with this email address already exists." });
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["email"] = ["Use the Change email button to update your email — it needs a confirmation link."]
+                });
             }
 
             user.FirstName = NameFormatter.ToProperCase(request.FirstName);
             user.LastName = NameFormatter.ToProperCase(request.LastName);
-            user.Email = email;
             audit.Record(AuditAction.ProfileUpdated,
-                "Updated their own profile (name and email).", "User", user.Id.ToString());
+                "Updated their own profile (name).", "User", user.Id.ToString());
             await db.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(new UpdateProfileResponse(AuthUserDto.From(user)));
