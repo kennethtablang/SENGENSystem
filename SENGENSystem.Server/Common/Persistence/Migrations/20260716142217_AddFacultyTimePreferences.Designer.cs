@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SENGENSystem.Server.Common.Persistence;
 
@@ -11,9 +12,11 @@ using SENGENSystem.Server.Common.Persistence;
 namespace SENGENSystem.Server.Common.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716142217_AddFacultyTimePreferences")]
+    partial class AddFacultyTimePreferences
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -215,13 +218,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("EmployeeId")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("");
-
                     b.Property<int>("MaxLoadUnits")
                         .HasColumnType("int");
 
@@ -264,49 +260,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.HasIndex("FacultyProfileId");
 
                     b.ToTable("FacultyTimePreferences");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.Notification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Body")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsRead")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("LinkTo")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAtUtc");
-
-                    b.HasIndex("UserId", "IsRead");
-
-                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.RegistrationDocument", b =>
@@ -491,16 +444,10 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime?>("ArchivedAtUtc")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsArchived")
                         .HasColumnType("bit");
 
                     b.Property<string>("Name")
@@ -782,12 +729,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("ArchiveReason")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("ArchivedAtUtc")
-                        .HasColumnType("datetime2");
-
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -798,9 +739,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.Property<int>("Hours")
                         .HasColumnType("int");
-
-                    b.Property<bool>("IsArchived")
-                        .HasColumnType("bit");
 
                     b.Property<string>("ProgramCode")
                         .IsRequired()
@@ -934,13 +872,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.Property<DateTime?>("EmailChangeExpiresUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EmailChangeTokenHash")
-                        .HasMaxLength(88)
-                        .HasColumnType("nvarchar(88)");
-
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -957,17 +888,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("PasswordResetExpiresUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PasswordResetTokenHash")
-                        .HasMaxLength(88)
-                        .HasColumnType("nvarchar(88)");
-
-                    b.Property<string>("PendingEmail")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -1070,17 +990,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("FacultyProfile");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.Notification", b =>
-                {
-                    b.HasOne("SENGENSystem.Server.Domain.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.RegistrationDocument", b =>
