@@ -146,7 +146,7 @@ function StaffDashboard() {
             <div className="dash-charts">
                 <section className="card chart-card chart-wide">
                     <h3>Registration intake <small>(last 30 days)</small></h3>
-                    {registration.total === 0 ? (
+                    {!intakeTrend?.length || registration.total === 0 ? (
                         <p className="dash-panel-empty">No SIS registrations this semester yet.</p>
                     ) : (
                         <TrendChart points={intakeTrend} />
