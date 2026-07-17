@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
+using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 
@@ -106,7 +107,9 @@ namespace SENGENSystem.Server.Features.FacultyLoad
                 .OrderBy(c => c.ProgramCode).ThenBy(c => c.YearLevel).ThenBy(c => c.SectionName)
                 .ToListAsync(ct);
 
+            // Archived subjects left the active curriculum — they never enter new load offers.
             var subjects = await db.Subjects.AsNoTracking()
+                .Where(s => !s.IsArchived)
                 .OrderBy(s => s.ProgramCode).ThenBy(s => s.YearLevel).ThenBy(s => s.Code)
                 .ToListAsync(ct);
 
@@ -135,7 +138,8 @@ namespace SENGENSystem.Server.Features.FacultyLoad
         // PUT /api/faculty-load/{id} — reconcile a faculty member's (subject × class section) assignments
         // for a semester.
         private static async Task<IResult> SaveAsync(
-            Guid facultyProfileId, SaveLoadRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
+            Guid facultyProfileId, SaveLoadRequest request, AppDbContext db, AuditLog audit, Notifier notifier,
+            Features.Reports.Live.ReportsBroadcaster broadcaster, CancellationToken ct)
         {
             var faculty = await db.FacultyProfiles.Include(f => f.User)
                 .FirstOrDefaultAsync(f => f.Id == facultyProfileId, ct);
@@ -189,11 +193,13 @@ namespace SENGENSystem.Server.Features.FacultyLoad
                 .ToListAsync(ct);
             var existingKeys = existing.Select(e => new LoadItem(e.SubjectId, e.ClassSectionId)).ToHashSet();
 
-            foreach (var gone in existing.Where(e => !desired.Contains(new LoadItem(e.SubjectId, e.ClassSectionId))))
+            var removals = existing.Where(e => !desired.Contains(new LoadItem(e.SubjectId, e.ClassSectionId))).ToList();
+            var additions = desired.Where(d => !existingKeys.Contains(d)).ToList();
+            foreach (var gone in removals)
             {
                 db.FacultyLoadAssignments.Remove(gone);
             }
-            foreach (var add in desired.Where(d => !existingKeys.Contains(d)))
+            foreach (var add in additions)
             {
                 db.FacultyLoadAssignments.Add(new FacultyLoadAssignment
                 {
@@ -204,10 +210,20 @@ namespace SENGENSystem.Server.Features.FacultyLoad
                 });
             }
 
+            // Tell the faculty member their allocation changed (only when it actually did).
+            if (removals.Count > 0 || additions.Count > 0)
+            {
+                notifier.Notify(faculty.UserId, NotificationKind.FacultyLoadUpdated,
+                    "Your teaching load was updated",
+                    $"You are now assigned {desired.Count} class(es) totaling {totalUnits} units for {semester.Name}.",
+                    "/schedule");
+            }
+
             audit.Record(AuditAction.FacultyLoadSaved,
                 $"Set {faculty.User?.FullName}'s load for {semester.Name} to {desired.Count} classes ({totalUnits} units).",
                 "FacultyProfile", faculty.Id.ToString());
             await db.SaveChangesAsync(ct);
+            broadcaster.Announce("faculty-load");
 
             return Results.Ok(new FacultyLoadDto(
                 faculty.Id, faculty.User?.FullName ?? "(unknown)", faculty.ProgramCode,
