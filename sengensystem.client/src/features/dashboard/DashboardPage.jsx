@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { getDashboardMetrics } from './api';
 import { getMyLink } from '../documents/api';
 import { myEnlistment } from '../enlistment/api';
 import { getMySchedule } from '../scheduling/api';
+import { subscribeToReports } from '../reports/live';
+import { LiveChip } from '../reports/ReportsPage';
+import '../reports/reports.css'; // LiveChip styles
 import './dashboard.css';
 
 /* The semester-aware dashboard (FR-DASH). Staff see live metrics scoped to the active (or
@@ -45,19 +48,38 @@ function StaffDashboard() {
     const [data, setData] = useState(null);
     const [semesterId, setSemesterId] = useState(null);
     const [error, setError] = useState(null);
+    const [liveState, setLiveState] = useState('offline');
+    const [updatedAt, setUpdatedAt] = useState(null);
+    const [refreshTick, setRefreshTick] = useState(0);
+    const debounceRef = useRef(null);
 
     useEffect(() => {
         let active = true;
         (async () => {
             try {
                 const payload = await getDashboardMetrics(semesterId);
-                if (active) setData(payload);
+                if (active) { setData(payload); setUpdatedAt(new Date()); }
             } catch (err) {
                 if (active) setError(err.message);
             }
         })();
         return () => { active = false; };
-    }, [semesterId]);
+    }, [semesterId, refreshTick]);
+
+    // Live metrics: every audited mutation on the server pushes a SignalR signal;
+    // the dashboard refetches (debounced) so the numbers move as the school works.
+    useEffect(() => {
+        const unsubscribe = subscribeToReports(
+            () => {
+                clearTimeout(debounceRef.current);
+                debounceRef.current = setTimeout(() => setRefreshTick(t => t + 1), 500);
+            },
+            state => setLiveState(state));
+        return () => {
+            clearTimeout(debounceRef.current);
+            unsubscribe();
+        };
+    }, []);
 
     if (error) return <div className="alert">{error}</div>;
     if (!data) return <p className="dash-loading">Loading live metrics…</p>;
@@ -78,6 +100,7 @@ function StaffDashboard() {
                         ))}
                     </select>
                 </label>
+                <LiveChip state={liveState} updatedAt={updatedAt} />
             </div>
 
             <div className="dash-stats">
