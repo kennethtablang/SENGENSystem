@@ -43,6 +43,7 @@ using SENGENSystem.Server.Features.Reports;
 using SENGENSystem.Server.Features.Reports.FacultyLoading;
 using SENGENSystem.Server.Features.Reports.Live;
 using SENGENSystem.Server.Features.Reports.SemesterExport;
+using SENGENSystem.Server.Features.Reports.SystemExport;
 using SENGENSystem.Server.Features.Registration.RegisterStudent;
 using SENGENSystem.Server.Features.Registration.TermActivation;
 using SENGENSystem.Server.Features.Scheduling.Board;
@@ -212,6 +213,7 @@ namespace SENGENSystem.Server
             app.MapReports();
             app.MapFacultyLoadingReports();
             app.MapSemesterExport();
+            app.MapSystemParametersExport();
             app.MapHub<ReportsHub>("/hubs/reports");
 
             // Notifications slice — the signed-in user's in-app bell notices (FR-NOTIF)
