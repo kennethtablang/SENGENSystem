@@ -23,6 +23,9 @@ namespace SENGENSystem.Server.Common.Notifications
 
         public string FromName { get; set; } = "STI.SEN-GEN";
 
+        /// <summary>Base URL of the client app, used to build links in emails (reset password, confirm email).</summary>
+        public string ClientBaseUrl { get; set; } = "https://localhost:51683";
+
         /// <summary>When true (no credentials configured), emails are logged instead of sent.</summary>
         public bool IsConfigured => !string.IsNullOrWhiteSpace(User) && !string.IsNullOrWhiteSpace(Password);
     }
