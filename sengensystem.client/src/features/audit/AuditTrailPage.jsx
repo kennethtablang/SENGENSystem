@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getAuditTrail } from './api';
+import { subscribeToReports } from '../reports/live';
+import { LiveChip } from '../reports/ReportsPage';
+import '../reports/reports.css'; // LiveChip styles
 import './audit.css';
 
 // "AccountRegistered" -> "Account registered"
@@ -10,13 +13,16 @@ function humanize(action) {
 
 // Group actions into a colour so the log scans quickly. Yellow flags the
 // security-sensitive events an admin scans for first.
-const yellowActions = new Set(['PasswordChanged', 'UserAccountDeactivated', 'LoginFailed']);
+const yellowActions = new Set([
+    'PasswordChanged', 'UserAccountDeactivated', 'LoginFailed', 'ScheduleGenerationFailed'
+]);
 const blueActions = new Set([
     'AccountRegistered', 'UserAccountCreated', 'UserAccountUpdated',
     'ScheduleGenerated', 'SchedulePublished', 'ScheduleOverridden',
     'SlotApproved', 'SlotRequested', 'LoginSucceeded',
     'SchoolYearSaved', 'SemesterSaved', 'BuildingSaved', 'RoomSaved',
-    'CurriculumSaved', 'SubjectSaved', 'FacultyLoadSaved'
+    'CurriculumSaved', 'SubjectSaved', 'FacultyLoadSaved',
+    'SubjectArchived', 'SubjectRestored', 'ScheduleArchived', 'SemesterExported'
 ]);
 
 function actionChip(action) {
@@ -74,6 +80,32 @@ function AuditTrailPage() {
         return () => { active = false; };
     }, []);
 
+    // Live tail: every audited action on the server pushes a SignalR signal — new rows
+    // appear without touching Refresh.
+    const [liveState, setLiveState] = useState('offline');
+    const [updatedAt, setUpdatedAt] = useState(null);
+    const debounceRef = useRef(null);
+    useEffect(() => {
+        const unsubscribe = subscribeToReports(
+            () => {
+                clearTimeout(debounceRef.current);
+                debounceRef.current = setTimeout(async () => {
+                    try {
+                        const data = await getAuditTrail();
+                        setEntries(data.entries);
+                        setUpdatedAt(new Date());
+                    } catch {
+                        // keep showing the last good list; the Refresh button still works
+                    }
+                }, 500);
+            },
+            state => setLiveState(state));
+        return () => {
+            clearTimeout(debounceRef.current);
+            unsubscribe();
+        };
+    }, []);
+
     // Distinct actions present, for the filter dropdown.
     const actions = useMemo(() => {
         const set = new Set(entries.map(e => e.action));
@@ -93,6 +125,7 @@ function AuditTrailPage() {
                     </p>
                 </div>
                 <div className="audit-controls">
+                    <LiveChip state={liveState} updatedAt={updatedAt} />
                     <label className="audit-filter">
                         <span>Action</span>
                         <select value={filter} onChange={e => setFilter(e.target.value)}>
