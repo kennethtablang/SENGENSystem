@@ -33,17 +33,6 @@
   color: var(--text-3);
 }
 
-.fl-semester select {
-  font: 500 0.84rem/1.2 var(--sans);
-  color: var(--text-1);
-  background: var(--bg-wash);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0.45rem 0.7rem;
-  cursor: pointer;
-  outline: none;
-}
-
 /* ---------- Faculty table ---------- */
 
 .fl-table-wrap {
@@ -183,17 +172,6 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-3);
-}
-
-.fl-filter select {
-  font: 500 0.84rem/1.2 var(--sans);
-  color: var(--text-1);
-  background: var(--bg-wash);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0.45rem 0.6rem;
-  cursor: pointer;
-  outline: none;
 }
 
 /* Shared grid for the subject list head + rows. */

@@ -170,8 +170,8 @@
 }
 
 .enl-avail-low {
-  color: #b98900;
-  border-color: #b98900;
+  color: var(--amber-text);
+  border-color: var(--amber-text);
 }
 
 .enl-avail-full {
