@@ -1,0 +1,70 @@
+/* Profile settings: identity header + two editing cards. */
+
+.profile-page {
+  max-width: 60rem;
+}
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.6rem;
+  animation: rise 0.45s ease both;
+}
+
+.profile-avatar {
+  width: 56px;
+  height: 56px;
+  font-size: 1.05rem;
+}
+
+.profile-head h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--sti-blue);
+  margin-bottom: 0.25rem;
+}
+
+.profile-head p {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.profile-email {
+  color: var(--text-3);
+  font-size: 0.85rem;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.profile-card {
+  padding: 1.5rem;
+  animation: rise 0.5s ease both;
+}
+
+.profile-card:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.profile-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 0.25rem;
+}
+
+.profile-card-sub {
+  color: var(--text-3);
+  font-size: 0.82rem;
+  margin-bottom: 1.1rem;
+}
+
+.profile-card .btn {
+  margin-top: 0.25rem;
+}
