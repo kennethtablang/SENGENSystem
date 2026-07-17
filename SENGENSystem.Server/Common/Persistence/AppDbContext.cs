@@ -47,6 +47,12 @@ namespace SENGENSystem.Server.Common.Persistence
 
         public DbSet<TermActivation> TermActivations => Set<TermActivation>();
 
+        public DbSet<SlotRequest> SlotRequests => Set<SlotRequest>();
+
+        public DbSet<FacultyTimePreference> FacultyTimePreferences => Set<FacultyTimePreference>();
+
+        public DbSet<Notification> Notifications => Set<Notification>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<User>(user =>
@@ -57,6 +63,9 @@ namespace SENGENSystem.Server.Common.Persistence
                 user.Property(u => u.LastName).HasMaxLength(100).IsRequired();
                 user.Property(u => u.PasswordHash).IsRequired();
                 user.Property(u => u.Role).HasConversion<string>().HasMaxLength(30);
+                user.Property(u => u.PasswordResetTokenHash).HasMaxLength(88);
+                user.Property(u => u.PendingEmail).HasMaxLength(256);
+                user.Property(u => u.EmailChangeTokenHash).HasMaxLength(88);
             });
 
             modelBuilder.Entity<SchoolYear>(schoolYear =>
@@ -149,6 +158,7 @@ namespace SENGENSystem.Server.Common.Persistence
             modelBuilder.Entity<FacultyProfile>(faculty =>
             {
                 faculty.Property(f => f.ProgramCode).HasMaxLength(20).IsRequired();
+                faculty.Property(f => f.EmployeeId).HasMaxLength(20).HasDefaultValue(string.Empty);
                 faculty.HasOne(f => f.User)
                     .WithMany()
                     .HasForeignKey(f => f.UserId)
@@ -158,6 +168,12 @@ namespace SENGENSystem.Server.Common.Persistence
 
             modelBuilder.Entity<Section>(section =>
             {
+                // FR-ENL-03: the 40-slot cap is enforced at the database level — even a code
+                // path that skips the application check cannot oversell a section.
+                section.ToTable(t => t.HasCheckConstraint(
+                    "CK_Sections_EnrolledCount",
+                    "[EnrolledCount] >= 0 AND [EnrolledCount] <= [Capacity]"));
+                section.Property(s => s.RowVersion).IsRowVersion();
                 section.Property(s => s.SectionCode).HasMaxLength(60).IsRequired();
                 section.Property(s => s.ProgramCode).HasMaxLength(20).IsRequired();
                 section.Property(s => s.Block).HasMaxLength(10).IsRequired();
@@ -287,6 +303,12 @@ namespace SENGENSystem.Server.Common.Persistence
                     .WithMany()
                     .HasForeignKey(r => r.SemesterId)
                     .OnDelete(DeleteBehavior.Restrict);
+                // A login account claims at most one SIS record; unlink (not delete) if the account goes.
+                reg.HasIndex(r => r.UserId).IsUnique();
+                reg.HasOne(r => r.User)
+                    .WithMany()
+                    .HasForeignKey(r => r.UserId)
+                    .OnDelete(DeleteBehavior.SetNull);
                 reg.HasMany(r => r.Documents)
                     .WithOne(d => d.StudentRegistration!)
                     .HasForeignKey(d => d.StudentRegistrationId)
@@ -298,6 +320,51 @@ namespace SENGENSystem.Server.Common.Persistence
                 doc.Property(d => d.DocumentType).HasConversion<string>().HasMaxLength(30).IsRequired();
                 doc.Property(d => d.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
                 doc.HasIndex(d => new { d.StudentRegistrationId, d.DocumentType }).IsUnique();
+            });
+
+            modelBuilder.Entity<FacultyTimePreference>(pref =>
+            {
+                pref.HasIndex(p => p.FacultyProfileId);
+                pref.HasOne(p => p.FacultyProfile)
+                    .WithMany()
+                    .HasForeignKey(p => p.FacultyProfileId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<SlotRequest>(request =>
+            {
+                request.Property(r => r.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+                request.Property(r => r.RejectionReason).HasMaxLength(500);
+                request.HasIndex(r => r.Status);
+                // One live (requested/approved) seat request per student per section; rejected
+                // or cancelled attempts do not block a retry.
+                request.HasIndex(r => new { r.StudentRegistrationId, r.SectionId })
+                    .IsUnique()
+                    .HasFilter("[Status] IN ('Requested','Approved')");
+                request.HasOne(r => r.StudentRegistration)
+                    .WithMany()
+                    .HasForeignKey(r => r.StudentRegistrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                // Sections referenced by enlistment records must not be silently deleted.
+                request.HasOne(r => r.Section)
+                    .WithMany()
+                    .HasForeignKey(r => r.SectionId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<Notification>(notification =>
+            {
+                notification.Property(n => n.Kind).HasConversion<string>().HasMaxLength(30).IsRequired();
+                notification.Property(n => n.Title).HasMaxLength(160).IsRequired();
+                notification.Property(n => n.Body).HasMaxLength(500).IsRequired();
+                notification.Property(n => n.LinkTo).HasMaxLength(200);
+                // The bell reads one user's notices newest-first and counts the unread ones.
+                notification.HasIndex(n => new { n.UserId, n.IsRead });
+                notification.HasIndex(n => n.CreatedAtUtc);
+                notification.HasOne(n => n.User)
+                    .WithMany()
+                    .HasForeignKey(n => n.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<TermActivation>(act =>

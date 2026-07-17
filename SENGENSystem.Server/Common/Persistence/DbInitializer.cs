@@ -26,6 +26,347 @@ namespace SENGENSystem.Server.Common.Persistence
             await SeedReturningStudentsAsync(db);
             await BackfillAcademicSetupAsync(db);
             await SeedFacultyLoadAsync(db);
+            await SeedRichDemoDataAsync(db, hasher);
+        }
+
+        /// <summary>
+        /// Development-only: fills every corner of the system with realistic volume so each
+        /// screen has something to show and broken flows surface early — Saturday + afternoon
+        /// time slots, a second building and more rooms, a BSIT curriculum, BSCS year-2
+        /// subjects with prerequisites, extra faculty with time preferences, cohorts and
+        /// offerings for the active semester, distributed faculty loads, a batch of varied
+        /// student registrations, and a finished (archived) prior school year. Every block is
+        /// individually idempotent, so re-running is safe on any existing database.
+        /// </summary>
+        private static async Task SeedRichDemoDataAsync(AppDbContext db, IPasswordHasher<User> hasher)
+        {
+            var active = await db.Semesters.FirstOrDefaultAsync(s => s.IsActive);
+            if (active is null)
+            {
+                return;
+            }
+
+            // ---- Time slots: afternoon blocks Mon–Fri and a Mon–Sat grid (schedule board shows Saturday) ----
+            if (!await db.TimeSlots.AnyAsync(t => t.Day == DayOfWeek.Saturday))
+            {
+                var weekdays = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday };
+                var afternoon = new (int Start, int End)[] { (870, 960), (960, 1050) }; // 14:30–16:00, 16:00–17:30
+                foreach (var d in weekdays)
+                {
+                    foreach (var (s, e) in afternoon)
+                    {
+                        if (!await db.TimeSlots.AnyAsync(t => t.Day == d && t.StartMinutes == s && t.EndMinutes == e))
+                        {
+                            db.TimeSlots.Add(new TimeSlot { Day = d, StartMinutes = s, EndMinutes = e });
+                        }
+                    }
+                }
+
+                var saturdayBlocks = new (int Start, int End)[] { (480, 570), (570, 660), (780, 870), (870, 960) };
+                foreach (var (s, e) in saturdayBlocks)
+                {
+                    db.TimeSlots.Add(new TimeSlot { Day = DayOfWeek.Saturday, StartMinutes = s, EndMinutes = e });
+                }
+                await db.SaveChangesAsync();
+            }
+
+            // ---- A second building with more rooms (utilization panels need spread) ----
+            if (!await db.Buildings.AnyAsync(b => b.Code == "AX"))
+            {
+                var annex = new Building { Name = "Annex Building", Code = "AX" };
+                db.Buildings.Add(annex);
+                db.Rooms.AddRange(
+                    new Room { Name = "Annex 101", Capacity = 50, IsLaboratory = false, BuildingId = annex.Id },
+                    new Room { Name = "Annex 102", Capacity = 35, IsLaboratory = false, BuildingId = annex.Id },
+                    new Room { Name = "Computer Lab B", Capacity = 40, IsLaboratory = true, BuildingId = annex.Id },
+                    new Room { Name = "AVR", Capacity = 60, IsLaboratory = false, BuildingId = annex.Id });
+                await db.SaveChangesAsync();
+            }
+
+            // ---- BSCS second-year subjects with prerequisite chains ----
+            var bscs = await db.Curricula.FirstOrDefaultAsync(c => c.ProgramCode == "BSCS");
+            if (bscs is not null && !await db.Subjects.AnyAsync(s => s.CurriculumId == bscs.Id && s.Code == "CS201"))
+            {
+                var cs101 = await db.Subjects.FirstOrDefaultAsync(s => s.CurriculumId == bscs.Id && s.Code == "CS101");
+                var year2 = new[]
+                {
+                    new Subject { Code = "CS201", Title = "Data Structures and Algorithms", Units = 3, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
+                    new Subject { Code = "CS202L", Title = "Object-Oriented Programming Laboratory", Units = 1, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, RequiresLaboratory = true, CurriculumId = bscs.Id },
+                    new Subject { Code = "MATH201", Title = "Discrete Mathematics", Units = 3, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
+                    new Subject { Code = "GE201", Title = "Science, Technology and Society", Units = 3, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
+                    new Subject { Code = "CS203", Title = "Computer Organization", Units = 3, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.SecondSemester, CurriculumId = bscs.Id }
+                };
+                db.Subjects.AddRange(year2);
+                if (cs101 is not null)
+                {
+                    db.SubjectPrerequisites.AddRange(
+                        new SubjectPrerequisite { SubjectId = year2[0].Id, PrerequisiteSubjectId = cs101.Id },
+                        new SubjectPrerequisite { SubjectId = year2[1].Id, PrerequisiteSubjectId = cs101.Id });
+                }
+                // Same-term co-requisite: the OOP lab accompanies Data Structures.
+                db.SubjectPrerequisites.Add(new SubjectPrerequisite { SubjectId = year2[1].Id, PrerequisiteSubjectId = year2[0].Id });
+                await db.SaveChangesAsync();
+            }
+
+            // ---- A whole second program: BSIT curriculum, first-year subjects ----
+            if (!await db.Curricula.AnyAsync(c => c.ProgramCode == "BSIT"))
+            {
+                var bsit = new Curriculum { ProgramCode = "BSIT", ProgramName = "BS Information Technology", IsActive = true };
+                db.Curricula.Add(bsit);
+                var year = await db.SchoolYears.FirstOrDefaultAsync(y => y.IsActive);
+                if (year is not null)
+                {
+                    db.CurriculumSchoolYears.Add(new CurriculumSchoolYear { CurriculumId = bsit.Id, SchoolYearId = year.Id });
+                }
+
+                var it = new[]
+                {
+                    new Subject { Code = "IT101", Title = "Introduction to Information Technology", Units = 3, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
+                    new Subject { Code = "IT102L", Title = "Computer Fundamentals Laboratory", Units = 1, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, RequiresLaboratory = true, CurriculumId = bsit.Id },
+                    new Subject { Code = "GE101", Title = "Understanding the Self", Units = 3, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
+                    new Subject { Code = "FIL101", Title = "Komunikasyon sa Akademikong Filipino", Units = 3, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
+                    new Subject { Code = "IT103", Title = "Web Systems Basics", Units = 3, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.SecondSemester, CurriculumId = bsit.Id }
+                };
+                db.Subjects.AddRange(it);
+                db.SubjectPrerequisites.Add(new SubjectPrerequisite { SubjectId = it[4].Id, PrerequisiteSubjectId = it[0].Id });
+                await db.SaveChangesAsync();
+            }
+
+            // ---- Extra faculty (BSIT needs its own teachers) + time preferences ----
+            var newFaculty = new (string First, string Last, string Email, string Program)[]
+            {
+                ("Liza", "Navarro", "faculty4@stialaminos.local", "BSIT"),
+                ("Marco", "Villanueva", "faculty5@stialaminos.local", "BSIT"),
+                ("Elena", "Ramos", "faculty6@stialaminos.local", "BSCS")
+            };
+            foreach (var (first, last, email, program) in newFaculty)
+            {
+                if (await db.Users.AnyAsync(u => u.Email == email))
+                {
+                    continue;
+                }
+                var user = new User
+                {
+                    FirstName = first,
+                    LastName = last,
+                    Email = email,
+                    Role = UserRole.FacultyMember,
+                    TermsAcceptedAtUtc = DateTime.UtcNow
+                };
+                user.PasswordHash = hasher.HashPassword(user, "Faculty@Sengen2026");
+                db.Users.Add(user);
+                db.FacultyProfiles.Add(new FacultyProfile
+                {
+                    UserId = user.Id,
+                    ProgramCode = program,
+                    MaxLoadUnits = 24,
+                    EmployeeId = $"STI-{1100 + Math.Abs(email.GetHashCode() % 800)}"
+                });
+            }
+            await db.SaveChangesAsync();
+
+            if (!await db.FacultyTimePreferences.AnyAsync())
+            {
+                var profiles = await db.FacultyProfiles.OrderBy(f => f.EmployeeId).Take(3).ToListAsync();
+                foreach (var (profile, index) in profiles.Select((p, i) => (p, i)))
+                {
+                    // Alternate morning-person / afternoon-person windows.
+                    var morning = index % 2 == 0;
+                    foreach (var day in new[] { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday })
+                    {
+                        db.FacultyTimePreferences.Add(new FacultyTimePreference
+                        {
+                            FacultyProfileId = profile.Id,
+                            Day = day,
+                            StartMinutes = morning ? 480 : 780,
+                            EndMinutes = morning ? 720 : 1050
+                        });
+                    }
+                }
+                await db.SaveChangesAsync();
+            }
+
+            // ---- Cohorts (class sections) and subject offerings for the active semester ----
+            var wantedCohorts = new (string Program, int Year, string Block)[]
+            {
+                ("BSCS", 1, "A"), ("BSCS", 1, "B"), ("BSCS", 2, "A"),
+                ("BSIT", 1, "A"), ("BSIT", 1, "B")
+            };
+            foreach (var (program, yearLevel, block) in wantedCohorts)
+            {
+                if (!await db.ClassSections.AnyAsync(c =>
+                    c.SemesterId == active.Id && c.ProgramCode == program && c.YearLevel == yearLevel && c.SectionName == block))
+                {
+                    db.ClassSections.Add(new ClassSection
+                    {
+                        SemesterId = active.Id,
+                        ProgramCode = program,
+                        YearLevel = yearLevel,
+                        SectionName = block
+                    });
+                }
+            }
+            await db.SaveChangesAsync();
+
+            // Offer every first-semester, non-archived subject to its matching cohorts.
+            var term = active.Term;
+            var offerSubjects = await db.Subjects
+                .Where(s => !s.IsArchived && s.Term == term)
+                .ToListAsync();
+            var cohorts = await db.ClassSections.Where(c => c.SemesterId == active.Id).ToListAsync();
+            foreach (var cohort in cohorts)
+            {
+                foreach (var subject in offerSubjects.Where(s => s.ProgramCode == cohort.ProgramCode && s.YearLevel == cohort.YearLevel))
+                {
+                    var code = $"{cohort.ProgramCode}-{cohort.YearLevel}{cohort.SectionName}-{subject.Code}";
+                    if (!await db.Sections.AnyAsync(x => x.SemesterId == active.Id && x.SectionCode == code))
+                    {
+                        db.Sections.Add(new Section
+                        {
+                            SubjectId = subject.Id,
+                            SemesterId = active.Id,
+                            SectionCode = code,
+                            ProgramCode = cohort.ProgramCode,
+                            YearLevel = cohort.YearLevel,
+                            Block = cohort.SectionName,
+                            Capacity = Section.MaxCapacity
+                        });
+                    }
+                }
+            }
+            await db.SaveChangesAsync();
+
+            // ---- Faculty loads: round-robin each cohort's subjects across its program's faculty ----
+            var facultyByProgram = (await db.FacultyProfiles.OrderBy(f => f.EmployeeId).ToListAsync())
+                .GroupBy(f => f.ProgramCode, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+            var loadIndexByProgram = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var cohort in cohorts)
+            {
+                if (!facultyByProgram.TryGetValue(cohort.ProgramCode, out var pool) || pool.Count == 0)
+                {
+                    continue;
+                }
+                foreach (var subject in offerSubjects.Where(s => s.ProgramCode == cohort.ProgramCode && s.YearLevel == cohort.YearLevel))
+                {
+                    if (await db.FacultyLoadAssignments.AnyAsync(l =>
+                        l.SemesterId == active.Id && l.SubjectId == subject.Id && l.ClassSectionId == cohort.Id))
+                    {
+                        continue;
+                    }
+                    var i = loadIndexByProgram.GetValueOrDefault(cohort.ProgramCode);
+                    db.FacultyLoadAssignments.Add(new FacultyLoadAssignment
+                    {
+                        FacultyProfileId = pool[i % pool.Count].Id,
+                        SubjectId = subject.Id,
+                        ClassSectionId = cohort.Id,
+                        SemesterId = active.Id
+                    });
+                    loadIndexByProgram[cohort.ProgramCode] = i + 1;
+                }
+            }
+            await db.SaveChangesAsync();
+
+            // ---- A batch of varied SIS registrations (statuses, docs, pre-authorization) ----
+            if (await db.StudentRegistrations.CountAsync() < 8)
+            {
+                var people = new (string Number, string Last, string First, RegistrationStatus Status, ProgramTrack Track, bool PreAuth, DocumentStatus Docs)[]
+                {
+                    ("2026-000101", "Aquino",   "Paolo",     RegistrationStatus.Submitted, ProgramTrack.ITP, false, DocumentStatus.NotSubmitted),
+                    ("2026-000102", "Bautista", "Karen",     RegistrationStatus.Submitted, ProgramTrack.ITP, false, DocumentStatus.XeroxCopy),
+                    ("2026-000103", "Corpuz",   "Miguel",    RegistrationStatus.Confirmed, ProgramTrack.ITP, true,  DocumentStatus.Submitted),
+                    ("2026-000104", "Domingo",  "Alyssa",    RegistrationStatus.Confirmed, ProgramTrack.HRS, true,  DocumentStatus.Submitted),
+                    ("2026-000105", "Estrada",  "Ramon",     RegistrationStatus.Confirmed, ProgramTrack.HRA, false, DocumentStatus.XeroxCopy),
+                    ("2026-000106", "Fernandez","Bianca",    RegistrationStatus.Rejected,  ProgramTrack.ITP, false, DocumentStatus.NotSubmitted),
+                    ("2026-000107", "Garcia",   "Noel",      RegistrationStatus.Submitted, ProgramTrack.HRS, false, DocumentStatus.Submitted),
+                    ("2026-000108", "Hernandez","Patricia",  RegistrationStatus.Confirmed, ProgramTrack.ITP, true,  DocumentStatus.Submitted)
+                };
+
+                foreach (var p in people)
+                {
+                    if (await db.StudentRegistrations.AnyAsync(r => r.StudentNumber == p.Number))
+                    {
+                        continue;
+                    }
+                    var reg = new StudentRegistration
+                    {
+                        StudentNumber = p.Number,
+                        Status = p.Status,
+                        StudentType = StudentType.NewStudent,
+                        Program = p.Track,
+                        SemesterId = active.Id,
+                        IsPreAuthorized = p.PreAuth,
+                        LastName = p.Last,
+                        FirstName = p.First,
+                        MiddleName = "Demo",
+                        DateOfBirth = new DateOnly(2007, 1 + Math.Abs(p.Number.GetHashCode() % 12), 1 + Math.Abs(p.Number.GetHashCode() % 27)),
+                        Birthplace = "Alaminos City, Pangasinan",
+                        Citizenship = "Filipino",
+                        CivilStatus = CivilStatus.Single,
+                        Gender = p.First.EndsWith('a') ? Gender.Female : Gender.Male,
+                        Email = "noreply.classsched.stialam@gmail.com",
+                        MobileNumber = "09170001234",
+                        AddressLine = "Demo St.",
+                        Barangay = "Poblacion",
+                        CityMunicipality = "Alaminos City",
+                        Province = "Pangasinan",
+                        ZipCode = "2404",
+                        LastSchoolLevel = LastSchoolLevel.SeniorHighSchool,
+                        SchoolName = "STI College Alaminos",
+                        SchoolProgram = "ICT",
+                        SchoolYear = "2025-2026",
+                        YearGradeLastAttended = YearGradeLevel.Grade12,
+                        LastTerm = AcademicTerm.Second,
+                        GuardianRelationship = GuardianRelationship.Mother,
+                        GuardianName = $"Guardian {p.Last}",
+                        GuardianMobile = "09170005678",
+                        TermsAcceptedAtUtc = DateTime.UtcNow.AddDays(-Math.Abs(p.Number.GetHashCode() % 30))
+                    };
+                    foreach (var docType in Enum.GetValues<DocumentType>())
+                    {
+                        reg.Documents.Add(new RegistrationDocument { DocumentType = docType, Status = p.Docs });
+                    }
+                    db.StudentRegistrations.Add(reg);
+                }
+                await db.SaveChangesAsync();
+            }
+
+            // ---- A finished prior school year whose first semester is archived (frozen schedule demo) ----
+            if (!await db.SchoolYears.AnyAsync(y => y.Name == "AY 2025-2026"))
+            {
+                var prior = new SchoolYear
+                {
+                    Name = "AY 2025-2026",
+                    IsActive = false,
+                    StartDate = new DateOnly(2025, 8, 11),
+                    EndDate = new DateOnly(2026, 6, 30)
+                };
+                db.SchoolYears.Add(prior);
+                db.Semesters.AddRange(
+                    new Semester
+                    {
+                        Name = "AY 2025-2026 — First Semester",
+                        Term = SemesterTerm.FirstSemester,
+                        IsActive = false,
+                        IsArchived = true,
+                        ArchivedAtUtc = DateTime.UtcNow.AddMonths(-6),
+                        StartDate = new DateOnly(2025, 8, 11),
+                        EndDate = new DateOnly(2025, 12, 19),
+                        SchoolYearId = prior.Id
+                    },
+                    new Semester
+                    {
+                        Name = "AY 2025-2026 — Second Semester",
+                        Term = SemesterTerm.SecondSemester,
+                        IsActive = false,
+                        IsArchived = true,
+                        ArchivedAtUtc = DateTime.UtcNow.AddMonths(-1),
+                        StartDate = new DateOnly(2026, 1, 12),
+                        EndDate = new DateOnly(2026, 5, 29),
+                        SchoolYearId = prior.Id
+                    });
+                await db.SaveChangesAsync();
+            }
         }
 
         /// <summary>
@@ -103,6 +444,22 @@ namespace SENGENSystem.Server.Common.Persistence
         private static async Task BackfillAcademicSetupAsync(AppDbContext db)
         {
             var changed = false;
+
+            // Employee IDs arrived with the faculty-loading reports; give pre-existing
+            // profiles a stable sequential number (idempotent: only fills blanks).
+            var withoutEmployeeId = await db.FacultyProfiles
+                .Where(f => f.EmployeeId == string.Empty)
+                .OrderBy(f => f.Id)
+                .ToListAsync();
+            if (withoutEmployeeId.Count > 0)
+            {
+                var next = 1000 + await db.FacultyProfiles.CountAsync(f => f.EmployeeId != string.Empty);
+                foreach (var profile in withoutEmployeeId)
+                {
+                    profile.EmployeeId = $"STI-{++next}";
+                }
+                changed = true;
+            }
 
             if (await db.Semesters.AnyAsync(s => s.SchoolYearId == null))
             {
@@ -364,7 +721,8 @@ namespace SENGENSystem.Server.Common.Persistence
                 {
                     UserId = user.Id,
                     ProgramCode = program,
-                    MaxLoadUnits = 24
+                    MaxLoadUnits = 24,
+                    EmployeeId = $"STI-{1000 + i}"
                 });
             }
             db.FacultyProfiles.AddRange(facultyProfiles);
