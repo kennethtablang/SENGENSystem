@@ -66,6 +66,22 @@ namespace SENGENSystem.Server.Features.Dashboard
                     : Math.Round(100.0 * docsComplete / registrations.Count, 1)
             };
 
+            // ---- Intake trend (FR-DASH-02): daily new registrations over the last 30 days,
+            // with a running total so the dashboard can chart momentum, not just today's count.
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var windowStart = today.AddDays(-29);
+            var byDay = registrations
+                .GroupBy(r => DateOnly.FromDateTime(r.CreatedAtUtc))
+                .ToDictionary(g => g.Key, g => g.Count());
+            var runningTotal = registrations.Count(r => DateOnly.FromDateTime(r.CreatedAtUtc) < windowStart);
+            var intakeTrend = new List<object>(30);
+            for (var day = windowStart; day <= today; day = day.AddDays(1))
+            {
+                var count = byDay.GetValueOrDefault(day);
+                runningTotal += count;
+                intakeTrend.Add(new { date = day.ToString("yyyy-MM-dd"), count, cumulative = runningTotal });
+            }
+
             // ---- Enlistment (FR-DASH-02 counts by section) ----
             var slotRequests = await db.SlotRequests.AsNoTracking()
                 .Where(r => r.Section!.SemesterId == semester.Id)
@@ -167,6 +183,7 @@ namespace SENGENSystem.Server.Features.Dashboard
                 semesters,
                 registration,
                 documents,
+                intakeTrend,
                 enlistment,
                 roomUtilization,
                 facultyLoad = new
