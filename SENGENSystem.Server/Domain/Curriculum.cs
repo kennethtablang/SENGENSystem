@@ -16,6 +16,16 @@ namespace SENGENSystem.Server.Domain
 
         public bool IsActive { get; set; }
 
+        /// <summary>
+        /// Retired curricula stay in the database with their subjects and history intact,
+        /// but leave the active catalog. Curricula are archived, never deleted.
+        /// </summary>
+        public bool IsArchived { get; set; }
+
+        public DateTime? ArchivedAtUtc { get; set; }
+
+        public string? ArchiveReason { get; set; }
+
         /// <summary>The subjects that make up this curriculum, across year levels.</summary>
         public ICollection<Subject> Subjects { get; set; } = new List<Subject>();
 

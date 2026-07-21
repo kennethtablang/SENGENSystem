@@ -29,6 +29,16 @@ namespace SENGENSystem.Server.Domain
 
         public bool IsPublished { get; set; }
 
+        /// <summary>
+        /// True once the Academic Head has finalized the draft: it is signed off as ready to
+        /// publish and locked from regeneration and board edits until reopened. Distinct from
+        /// <see cref="IsPublished"/>, which is the Registrar making it official to students/faculty.
+        /// The lifecycle is Draft → Finalized → Published (FR-SCHED-06, FR-PUB).
+        /// </summary>
+        public bool IsFinalized { get; set; }
+
+        public DateTime? FinalizedAtUtc { get; set; }
+
         /// <summary>True when a human adjusted this row rather than the engine (FR-FAC-02).</summary>
         public bool IsManualOverride { get; set; }
 

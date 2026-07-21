@@ -3,11 +3,17 @@ namespace SENGENSystem.Server.Domain
     /// <summary>
     /// An offering of a <see cref="Subject"/> for a semester that students enlist into. The
     /// (ProgramCode, YearLevel, Block) triple identifies the student cohort: sections sharing
-    /// a cohort must never overlap in time (FR-SCHED-02). Capacity is capped at 40 (FR-ENL-03).
+    /// a cohort must never overlap in time (FR-SCHED-02). Capacity is capped by
+    /// <see cref="SystemSettings.SectionCapacityCap"/> (FR-ENL-03).
     /// </summary>
     public class Section
     {
-        public const int MaxCapacity = 40;
+        /// <summary>
+        /// The out-of-the-box cap (FR-ENL-03). This is the seed value for
+        /// <see cref="SystemSettings.SectionCapacityCap"/> and the fallback used before the
+        /// settings row exists — the stored setting, not this constant, is the live authority.
+        /// </summary>
+        public const int DefaultCapacityCap = 40;
 
         public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -27,7 +33,7 @@ namespace SENGENSystem.Server.Domain
 
         public string Block { get; set; } = string.Empty; // e.g. "A"
 
-        public int Capacity { get; set; } = MaxCapacity;
+        public int Capacity { get; set; } = DefaultCapacityCap;
 
         /// <summary>
         /// Approved-enlistment seat count (FR-ENL-02/03). Guarded by a DB CHECK constraint

@@ -79,6 +79,23 @@ namespace SENGENSystem.Server.Domain
         SemesterExported = 41,
 
         // Bulk data export — the system parameters / setup master-data workbook
-        SystemParametersExported = 42
+        SystemParametersExported = 42,
+
+        // System parameters management (FR-SCHED-05) — the scheduling engine's inputs
+        SectionCapacityCapChanged = 43,
+        TimeSlotSaved = 44,
+        FacultyLoadLimitChanged = 45,
+
+        // Archiving — curricula retired instead of deleted, keeping their subjects and history
+        CurriculumArchived = 46,
+        CurriculumRestored = 47,
+
+        // Enrollment cycle — the Registrar moving a term from one stage to the next
+        EnrollmentStageChanged = 48,
+
+        // Schedule finalization — the Academic Head signing off a draft as ready to publish,
+        // and reopening it for further edits (FR-SCHED-06)
+        ScheduleFinalized = 49,
+        ScheduleReopened = 50
     }
 }

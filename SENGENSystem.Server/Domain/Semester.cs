@@ -16,6 +16,12 @@ namespace SENGENSystem.Server.Domain
         public bool IsActive { get; set; }
 
         /// <summary>
+        /// Where this term sits in the enrollment cycle (FR-SIS/FR-DOC/FR-ENL). Drives the
+        /// stage indicator in the top bar; the Registrar advances it as the term progresses.
+        /// </summary>
+        public EnrollmentStage EnrollmentStage { get; set; } = EnrollmentStage.Preparation;
+
+        /// <summary>
         /// Set once the term is finished: the semester's schedule becomes a frozen, read-only
         /// archive — the board, generator, and publisher refuse further changes to it.
         /// </summary>
