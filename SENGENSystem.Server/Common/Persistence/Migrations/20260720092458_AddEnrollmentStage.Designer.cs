@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SENGENSystem.Server.Common.Persistence;
 
@@ -11,9 +12,11 @@ using SENGENSystem.Server.Common.Persistence;
 namespace SENGENSystem.Server.Common.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260720092458_AddEnrollmentStage")]
+    partial class AddEnrollmentStage
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -383,12 +386,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.Property<Guid>("FacultyProfileId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("FinalizedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsFinalized")
-                        .HasColumnType("bit");
 
                     b.Property<bool>("IsManualOverride")
                         .HasColumnType("bit");

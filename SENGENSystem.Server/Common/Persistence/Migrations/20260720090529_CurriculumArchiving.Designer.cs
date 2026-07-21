@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SENGENSystem.Server.Common.Persistence;
 
@@ -11,9 +12,11 @@ using SENGENSystem.Server.Common.Persistence;
 namespace SENGENSystem.Server.Common.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260720090529_CurriculumArchiving")]
+    partial class CurriculumArchiving
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -384,12 +387,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Property<Guid>("FacultyProfileId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime?>("FinalizedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsFinalized")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("IsManualOverride")
                         .HasColumnType("bit");
 
@@ -511,13 +508,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
-
-                    b.Property<string>("EnrollmentStage")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Preparation");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
