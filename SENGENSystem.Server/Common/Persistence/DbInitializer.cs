@@ -20,6 +20,7 @@ namespace SENGENSystem.Server.Common.Persistence
 
             await db.Database.MigrateAsync();
 
+            await SeedSystemSettingsAsync(db);
             await SeedAdminAsync(db, hasher, config);
             await SeedStaffAsync(db, hasher);
             await SeedSchedulingSampleAsync(db, hasher);
@@ -27,6 +28,22 @@ namespace SENGENSystem.Server.Common.Persistence
             await BackfillAcademicSetupAsync(db);
             await SeedFacultyLoadAsync(db);
             await SeedRichDemoDataAsync(db, hasher);
+        }
+
+        /// <summary>
+        /// Creates the singleton system-parameters row at its default cap (FR-SCHED-05).
+        /// Idempotent: databases seeded before this feature existed pick the row up on the
+        /// next start, and an admin's edited cap is never reset back to the default.
+        /// </summary>
+        private static async Task SeedSystemSettingsAsync(AppDbContext db)
+        {
+            if (await db.SystemSettings.AnyAsync(s => s.Id == SystemSettings.SingletonId))
+            {
+                return;
+            }
+
+            db.SystemSettings.Add(new SystemSettings());
+            await db.SaveChangesAsync();
         }
 
         /// <summary>
@@ -229,7 +246,7 @@ namespace SENGENSystem.Server.Common.Persistence
                             ProgramCode = cohort.ProgramCode,
                             YearLevel = cohort.YearLevel,
                             Block = cohort.SectionName,
-                            Capacity = Section.MaxCapacity
+                            Capacity = Section.DefaultCapacityCap
                         });
                     }
                 }

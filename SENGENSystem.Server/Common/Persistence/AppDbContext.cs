@@ -53,6 +53,8 @@ namespace SENGENSystem.Server.Common.Persistence
 
         public DbSet<Notification> Notifications => Set<Notification>();
 
+        public DbSet<SystemSettings> SystemSettings => Set<SystemSettings>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<User>(user =>
@@ -78,6 +80,8 @@ namespace SENGENSystem.Server.Common.Persistence
                 semester.Property(s => s.Name).HasMaxLength(120).IsRequired();
                 semester.Property(s => s.Term).HasConversion<string>().HasMaxLength(20)
                     .HasDefaultValue(SemesterTerm.FirstSemester);
+                semester.Property(s => s.EnrollmentStage).HasConversion<string>().HasMaxLength(30)
+                    .HasDefaultValue(EnrollmentStage.Preparation);
                 // A semester is filed under a school year; keep the year even if a semester is removed,
                 // and block deleting a year that still has semesters (enforced in the endpoint as a 409).
                 semester.HasOne(s => s.SchoolYear)
@@ -166,9 +170,20 @@ namespace SENGENSystem.Server.Common.Persistence
                 faculty.HasIndex(f => f.UserId).IsUnique();
             });
 
+            modelBuilder.Entity<SystemSettings>(settings =>
+            {
+                // One row, always. The CHECK keeps a bad cap out of the table even if a caller
+                // bypasses the endpoint's validation; the lower bound of 1 stops a zero cap from
+                // making every section unenlistable.
+                settings.ToTable(t => t.HasCheckConstraint(
+                    "CK_SystemSettings_Singleton",
+                    $"[Id] = {SENGENSystem.Server.Domain.SystemSettings.SingletonId} AND [SectionCapacityCap] >= 1"));
+                settings.Property(s => s.Id).ValueGeneratedNever();
+            });
+
             modelBuilder.Entity<Section>(section =>
             {
-                // FR-ENL-03: the 40-slot cap is enforced at the database level — even a code
+                // FR-ENL-03: the seat cap is enforced at the database level — even a code
                 // path that skips the application check cannot oversell a section.
                 section.ToTable(t => t.HasCheckConstraint(
                     "CK_Sections_EnrolledCount",
