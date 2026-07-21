@@ -45,11 +45,20 @@ namespace SENGENSystem.Server.Features.Scheduling.GetSchedule
                 .Select(ScheduleRowDto.From)
                 .ToList();
 
+            // Draft = unpublished rows; the draft is "finalized" as a whole only when every
+            // draft row is locked. Drives the Finalize / Reopen control on the client.
+            var draft = rows.Where(a => !a.IsPublished).ToList();
+            var isFinalized = draft.Count > 0 && draft.All(a => a.IsFinalized);
+            var publishedCount = rows.Count - draft.Count;
+
             return Results.Ok(new
             {
                 semesterId = semester.Id,
                 semesterName = semester.Name,
                 count = schedule.Count,
+                isFinalized,
+                draftCount = draft.Count,
+                publishedCount,
                 schedule
             });
         }
