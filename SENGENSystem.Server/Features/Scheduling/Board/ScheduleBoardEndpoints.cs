@@ -165,6 +165,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             }
 
             if (await EnsureNotArchivedAsync(db, load.SemesterId, ct) is { } frozen) return frozen;
+            if (await EnsureNotFinalizedAsync(db, load.SemesterId, ct) is { } locked) return locked;
 
             var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == request.RoomId, ct);
             if (room is null) return Results.BadRequest(new { message = "The selected room no longer exists." });
@@ -241,6 +242,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             }
 
             if (await EnsureNotArchivedAsync(db, assignment.SemesterId, ct) is { } frozen) return frozen;
+            if (await EnsureNotFinalizedAsync(db, assignment.SemesterId, ct) is { } locked) return locked;
 
             var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == request.RoomId, ct);
             if (room is null) return Results.BadRequest(new { message = "The selected room no longer exists." });
@@ -276,6 +278,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             if (assignment is null) return Results.NotFound(new { message = "That placement no longer exists." });
 
             if (await EnsureNotArchivedAsync(db, assignment.SemesterId, ct) is { } frozen) return frozen;
+            if (await EnsureNotFinalizedAsync(db, assignment.SemesterId, ct) is { } locked) return locked;
 
             db.ScheduleAssignments.Remove(assignment);
             audit.Record(AuditAction.ScheduleOverridden,
@@ -296,6 +299,16 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 .FirstOrDefaultAsync(ct);
             return archived
                 ? Results.Conflict(new { message = "This semester is archived — its schedule is read-only." })
+                : null;
+        }
+
+        // A finalized draft is locked (FR-SCHED-06) — board edits refuse until it is reopened.
+        private static async Task<IResult?> EnsureNotFinalizedAsync(AppDbContext db, Guid semesterId, CancellationToken ct)
+        {
+            var finalized = await db.ScheduleAssignments.AsNoTracking()
+                .AnyAsync(a => a.SemesterId == semesterId && a.IsFinalized && !a.IsPublished, ct);
+            return finalized
+                ? Results.Conflict(new { message = "This schedule is finalized and locked. Reopen it on the Generate page to make changes." })
                 : null;
         }
 
@@ -355,7 +368,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 ProgramCode = cohort.ProgramCode,
                 YearLevel = cohort.YearLevel,
                 Block = cohort.SectionName,
-                Capacity = Section.MaxCapacity
+                Capacity = await db.GetSectionCapacityCapAsync(ct)
             };
             db.Sections.Add(section);
             return section;
