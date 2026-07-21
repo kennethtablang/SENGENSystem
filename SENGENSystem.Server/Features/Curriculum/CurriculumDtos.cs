@@ -11,11 +11,15 @@ namespace SENGENSystem.Server.Features.Curriculum
         string ProgramName,
         string Label,
         bool IsActive,
+        bool IsArchived,
+        DateTime? ArchivedAtUtc,
+        string? ArchiveReason,
         int SubjectCount,
         IReadOnlyList<SchoolYearRef> SchoolYears)
     {
         public static CurriculumDto From(Domain.Curriculum c, int subjectCount) =>
-            new(c.Id, c.ProgramCode, c.ProgramName, c.ProgramCode, c.IsActive, subjectCount,
+            new(c.Id, c.ProgramCode, c.ProgramName, c.ProgramCode, c.IsActive,
+                c.IsArchived, c.ArchivedAtUtc, c.ArchiveReason, subjectCount,
                 c.SchoolYears
                     .Where(l => l.SchoolYear is not null)
                     .OrderBy(l => l.SchoolYear!.StartDate)

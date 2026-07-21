@@ -11,6 +11,8 @@ namespace SENGENSystem.Server.Features.Curriculum.Curricula
     // to at most one curriculum. Activating one makes it the current catalog for its program.
     public record CurriculumRequest(string? ProgramCode, string? ProgramName, List<Guid>? SchoolYearIds);
 
+    public record ArchiveCurriculumRequest(string? Reason);
+
     public static class CurriculaEndpoints
     {
         public static IEndpointRouteBuilder MapCurricula(this IEndpointRouteBuilder app)
@@ -22,7 +24,8 @@ namespace SENGENSystem.Server.Features.Curriculum.Curricula
             group.MapGet("", ListAsync);
             group.MapPost("", CreateAsync);
             group.MapPut("/{id:guid}", UpdateAsync);
-            group.MapDelete("/{id:guid}", DeleteAsync);
+            group.MapPost("/{id:guid}/archive", ArchiveAsync);
+            group.MapPost("/{id:guid}/restore", RestoreAsync);
             group.MapPost("/{id:guid}/active", SetActiveAsync);
             return app;
         }
@@ -31,7 +34,8 @@ namespace SENGENSystem.Server.Features.Curriculum.Curricula
         {
             var curricula = await db.Curricula.AsNoTracking()
                 .Include(c => c.SchoolYears).ThenInclude(l => l.SchoolYear)
-                .OrderBy(c => c.ProgramCode)
+                .OrderBy(c => c.IsArchived) // archived catalogs sink to the bottom of the rail
+                .ThenBy(c => c.ProgramCode)
                 .ToListAsync(ct);
 
             var counts = await db.Subjects
@@ -102,27 +106,62 @@ namespace SENGENSystem.Server.Features.Curriculum.Curricula
             return Results.Ok(await LoadDtoAsync(db, id, ct));
         }
 
-        private static async Task<IResult> DeleteAsync(Guid id, AppDbContext db, AuditLog audit, CancellationToken ct)
+        // POST /api/curricula/{id}/archive — retire a curriculum instead of deleting it. Its subjects
+        // and their history stay intact; the catalog simply leaves circulation.
+        private static async Task<IResult> ArchiveAsync(
+            Guid id, ArchiveCurriculumRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
         {
             var curriculum = await db.Curricula.FirstOrDefaultAsync(c => c.Id == id, ct);
             if (curriculum is null) return Results.NotFound(new { message = "Curriculum not found." });
-
-            if (await db.Subjects.AnyAsync(s => s.CurriculumId == id, ct))
+            if (curriculum.IsArchived)
             {
-                return Results.Conflict(new { message = "This curriculum still has subjects. Delete or move them first." });
+                return Results.Conflict(new { message = $"The {curriculum.ProgramCode} curriculum is already archived." });
             }
 
-            db.Curricula.Remove(curriculum); // effectivity links cascade away
-            audit.Record(AuditAction.CurriculumSaved, $"Deleted the {curriculum.ProgramCode} curriculum.",
+            curriculum.IsArchived = true;
+            curriculum.IsActive = false; // an archived catalog can't be the active one
+            curriculum.ArchivedAtUtc = DateTime.UtcNow;
+            curriculum.ArchiveReason = string.IsNullOrWhiteSpace(request?.Reason) ? null : request.Reason.Trim();
+
+            audit.Record(AuditAction.CurriculumArchived,
+                $"Archived the {curriculum.ProgramCode} curriculum" +
+                (curriculum.ArchiveReason is null ? "." : $" ({curriculum.ArchiveReason})."),
                 "Curriculum", curriculum.Id.ToString());
             await db.SaveChangesAsync(ct);
-            return Results.NoContent();
+
+            return Results.Ok(await LoadDtoAsync(db, id, ct));
+        }
+
+        // POST /api/curricula/{id}/restore — bring an archived curriculum back into circulation.
+        private static async Task<IResult> RestoreAsync(Guid id, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var curriculum = await db.Curricula.FirstOrDefaultAsync(c => c.Id == id, ct);
+            if (curriculum is null) return Results.NotFound(new { message = "Curriculum not found." });
+            if (!curriculum.IsArchived)
+            {
+                return Results.Conflict(new { message = $"The {curriculum.ProgramCode} curriculum is not archived." });
+            }
+
+            curriculum.IsArchived = false;
+            curriculum.ArchivedAtUtc = null;
+            curriculum.ArchiveReason = null;
+
+            audit.Record(AuditAction.CurriculumRestored,
+                $"Restored the {curriculum.ProgramCode} curriculum from the archive.",
+                "Curriculum", curriculum.Id.ToString());
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(await LoadDtoAsync(db, id, ct));
         }
 
         private static async Task<IResult> SetActiveAsync(Guid id, AppDbContext db, AuditLog audit, CancellationToken ct)
         {
             var curriculum = await db.Curricula.FirstOrDefaultAsync(c => c.Id == id, ct);
             if (curriculum is null) return Results.NotFound(new { message = "Curriculum not found." });
+            if (curriculum.IsArchived)
+            {
+                return Results.Conflict(new { message = "Restore this curriculum before making it active." });
+            }
 
             // Single active catalog per program: clear the flag on other curricula of this program.
             await db.Curricula
