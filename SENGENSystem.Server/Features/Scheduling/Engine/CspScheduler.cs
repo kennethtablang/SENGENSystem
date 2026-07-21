@@ -4,16 +4,37 @@ using SENGENSystem.Server.Domain;
 namespace SENGENSystem.Server.Features.Scheduling.Engine
 {
     /// <summary>
-    /// Deterministic, rule-based CSP engine (no ML — FR-SCHED-08). Assigns every section a
-    /// room, time slot, and faculty member via backtracking search so that ALL hard
-    /// constraints hold (FR-SCHED-02, NFR-1):
-    ///   • a room is never double-booked in overlapping slots,
-    ///   • a faculty member is never double-assigned in overlapping slots,
-    ///   • sections of the same student cohort never overlap in time,
-    ///   • room capacity (and laboratory requirement) is respected,
-    ///   • faculty unit-load ceilings are respected.
-    /// Among consistent values it prefers those that balance faculty load and reduce cohort
-    /// idle gaps (soft constraints — FR-SCHED-03), but never at the cost of a hard constraint.
+    /// Rule-based CSP engine (no ML — FR-SCHED-08). Places every section into a room and time slot
+    /// by backtracking search. The engine is <b>deterministic for a given <see cref="ScheduleProblem.Seed"/></b>
+    /// but explores the solution space differently for different seeds, so regenerating produces a
+    /// different — yet equally conflict-free and optimised — timetable rather than always the same
+    /// one. The seed is returned and audited, so any arrangement stays reproducible.
+    ///
+    /// <para><b>Hard constraints — never violated (FR-SCHED-02, NFR-1):</b></para>
+    /// <list type="bullet">
+    /// <item>H1 — a room is never double-booked in overlapping slots.</item>
+    /// <item>H2 — a faculty member is never double-assigned in overlapping slots.</item>
+    /// <item>H3 — room capacity ≥ the section's seat capacity (and labs only in laboratories).</item>
+    /// <item>H4 — a member's allocated units never exceed their semester ceiling.</item>
+    /// <item>H5 — a member only ever teaches a subject they were allocated.</item>
+    /// <item>H6 — sections of one student cohort never overlap in time.</item>
+    /// </list>
+    ///
+    /// <para><b>Soft constraints — optimised, never at a hard constraint's expense:</b></para>
+    /// <list type="bullet">
+    /// <item>S1 — preferred teaching windows honoured where possible.</item>
+    /// <item>S2 — idle gaps between consecutive classes minimised, for cohorts and members alike.</item>
+    /// <item>S3 — equitable load across faculty (measured and reported; see the note below).</item>
+    /// </list>
+    ///
+    /// <para>
+    /// H3, H4 and H5 are settled <i>before</i> the search rather than tested inside it. Faculty
+    /// come from the Head's load allocation, so who teaches what — and therefore each member's
+    /// total load — is already fixed; re-checking it per candidate would be wasted work, and
+    /// failing deep in the search would produce a far worse error message than failing up front.
+    /// The consequence for S3 is deliberate: the engine cannot rebalance an uneven allocation,
+    /// so it measures the spread and hands that back for the Head to act on.
+    /// </para>
     ///
     /// When no schedule exists, the result carries actionable diagnostics: how deep the search
     /// got, which sections blocked it, and which constraint their candidates collided with.
@@ -38,10 +59,51 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 return ScheduleGenerationResult.Fail(preflight, 0);
             }
 
-            var timeSlotsById = problem.TimeSlots.ToDictionary(t => t.Id);
+            var facultyById = problem.Faculty.ToDictionary(f => f.FacultyProfileId);
 
-            // Precompute each section's candidate rooms and faculty (static domain filtering).
-            var domains = new Dictionary<Guid, (List<RoomOption> Rooms, List<FacultyOption> Faculty)>();
+            // ---- H4: unit ceilings. Load is fixed by the allocation, so this is a property of
+            // the inputs, not of any placement — decide it once, before searching.
+            var overloadReasons = new List<string>();
+            foreach (var byFaculty in problem.Sections.GroupBy(s => s.FacultyProfileId))
+            {
+                if (!facultyById.TryGetValue(byFaculty.Key, out var member))
+                {
+                    var orphaned = byFaculty
+                        .OrderBy(s => s.SectionCode, StringComparer.Ordinal)
+                        .Select(s => s.SectionCode);
+                    overloadReasons.Add(
+                        $"These sections are allocated to a faculty member who no longer exists: " +
+                        $"{string.Join(", ", orphaned)}. Reassign them on the Faculty load page.");
+                    continue;
+                }
+
+                var assigned = byFaculty.Sum(s => s.Units);
+                if (assigned > member.MaxLoadUnits)
+                {
+                    var sectionCodes = byFaculty
+                        .OrderBy(s => s.SectionCode, StringComparer.Ordinal)
+                        .Select(s => s.SectionCode);
+                    overloadReasons.Add(
+                        $"{member.Label} is allocated {assigned} units against a ceiling of {member.MaxLoadUnits} " +
+                        $"({assigned - member.MaxLoadUnits} over) across {string.Join(", ", sectionCodes)} — " +
+                        "rebalance the load allocation before generating.");
+                }
+            }
+            if (overloadReasons.Count > 0)
+            {
+                return ScheduleGenerationResult.Fail(overloadReasons, 0);
+            }
+
+            // ---- H3: candidate rooms per section (static domain filtering) ----
+            // ---- Weekly-hours coverage: candidate time *blocks* per section (FR-SCHED-04) ----
+            // A subject meets for Subject.Hours a week, but the grid is 90-minute periods, so a
+            // 3-hour subject must occupy a contiguous run of periods. Per required duration we
+            // precompute every contiguous block the grid offers; a section's time domain is the
+            // set of blocks long enough to cover its hours. Both domains are settled before the
+            // search so an impossible section fails with a clear message, not a dead end.
+            var domains = new Dictionary<Guid, List<RoomOption>>();
+            var timeDomains = new Dictionary<Guid, List<TimeSlot>>();
+            var blocksByDuration = new Dictionary<int, List<TimeSlot>>();
             var emptyDomainReasons = new List<string>();
 
             foreach (var section in problem.Sections)
@@ -50,24 +112,26 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                     .Where(r => r.Capacity >= section.Capacity && (!section.RequiresLaboratory || r.IsLaboratory))
                     .ToList();
 
-                var faculty = problem.Faculty
-                    .Where(f => string.Equals(f.ProgramCode, section.ProgramCode, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
                 if (rooms.Count == 0)
                 {
                     emptyDomainReasons.Add(
                         $"{section.SectionCode}: no room with capacity ≥ {section.Capacity}" +
                         (section.RequiresLaboratory ? " that is a laboratory." : "."));
                 }
+                domains[section.SectionId] = rooms;
 
-                if (faculty.Count == 0)
+                if (!blocksByDuration.TryGetValue(section.RequiredMinutes, out var blocks))
+                {
+                    blocks = BuildContiguousBlocks(problem.TimeSlots, section.RequiredMinutes);
+                    blocksByDuration[section.RequiredMinutes] = blocks;
+                }
+                if (blocks.Count == 0)
                 {
                     emptyDomainReasons.Add(
-                        $"{section.SectionCode}: no faculty member assigned to program '{section.ProgramCode}'.");
+                        $"{section.SectionCode}: needs a {section.RequiredMinutes / 60.0:0.#}-hour continuous block, " +
+                        "but no day has that many consecutive time slots — add adjacent time slots.");
                 }
-
-                domains[section.SectionId] = (rooms, faculty);
+                timeDomains[section.SectionId] = blocks;
             }
 
             if (emptyDomainReasons.Count > 0)
@@ -75,56 +139,76 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 return ScheduleGenerationResult.Fail(emptyDomainReasons, 0);
             }
 
-            // Aggregate feasibility: total units demanded per program vs. the ceiling its faculty
-            // can carry. Catches "not enough teachers" before any search runs.
-            foreach (var byProgram in problem.Sections.GroupBy(s => s.ProgramCode, StringComparer.OrdinalIgnoreCase))
+            // ---- Pigeonhole feasibility. One faculty member — or one student cohort — can
+            // occupy at most one time slot at a time, so needing more sections than there are
+            // slots is impossible no matter how the search branches. Catching it here costs
+            // one pass and replaces a 20-second doomed search with a sentence that names the
+            // problem.
+            var pigeonhole = new List<string>();
+            foreach (var byFaculty in problem.Sections.GroupBy(s => s.FacultyProfileId))
             {
-                var demand = byProgram.Sum(s => s.Units);
-                var supply = problem.Faculty
-                    .Where(f => string.Equals(f.ProgramCode, byProgram.Key, StringComparison.OrdinalIgnoreCase))
-                    .Sum(f => f.MaxLoadUnits);
-                if (demand > supply)
+                var count = byFaculty.Count();
+                if (count > problem.TimeSlots.Count)
                 {
-                    emptyDomainReasons.Add(
-                        $"Program '{byProgram.Key}' needs {demand} teaching units but its faculty can carry at most " +
-                        $"{supply} — raise unit-load ceilings or add faculty before regenerating.");
+                    pigeonhole.Add(
+                        $"{facultyById[byFaculty.Key].Label} is allocated {count} sections but only " +
+                        $"{problem.TimeSlots.Count} time slots exist — they cannot all be placed. " +
+                        "Add time slots or move sections to another member.");
                 }
             }
-
-            if (emptyDomainReasons.Count > 0)
+            foreach (var byCohort in problem.Sections.GroupBy(s => s.CohortKey, StringComparer.OrdinalIgnoreCase))
             {
-                return ScheduleGenerationResult.Fail(emptyDomainReasons, 0);
+                var count = byCohort.Count();
+                if (count > problem.TimeSlots.Count)
+                {
+                    pigeonhole.Add(
+                        $"Cohort {byCohort.Key} has {count} sections but only {problem.TimeSlots.Count} " +
+                        "time slots exist — they cannot all be placed without a clash.");
+                }
+            }
+            if (pigeonhole.Count > 0)
+            {
+                return ScheduleGenerationResult.Fail(pigeonhole, 0);
             }
 
-            // Most-constrained-variable ordering: hardest sections (fewest candidate rooms×faculty,
-            // labs, largest cohorts) are placed first to prune the search tree early.
+            // Most-constrained-variable ordering: hardest sections (fewest candidate placements —
+            // rooms × time blocks — labs, largest cohorts) are placed first to prune the search
+            // tree early. Among sections the heuristics rank equally, a seeded shuffle varies which
+            // goes first, so a new seed explores a different part of the solution space; SectionCode
+            // and SectionId remain the final tiebreakers, keeping the order total and reproducible
+            // for any given seed (FR-SCHED-08).
             var order = problem.Sections
-                .OrderBy(s => domains[s.SectionId].Rooms.Count * domains[s.SectionId].Faculty.Count)
+                .OrderBy(s => domains[s.SectionId].Count * timeDomains[s.SectionId].Count)
                 .ThenByDescending(s => s.RequiresLaboratory)
                 .ThenByDescending(s => s.Units)
+                .ThenBy(s => SeededKey(problem.Seed, s.SectionId, 0, 0))
+                .ThenBy(s => s.SectionCode, StringComparer.Ordinal)
+                .ThenBy(s => s.SectionId)
                 .ToList();
 
-            var facultyMaxLoad = problem.Faculty.ToDictionary(f => f.FacultyProfileId, f => f.MaxLoadUnits);
-            var state = new SearchState(timeSlotsById, facultyMaxLoad);
+            var state = new SearchState(facultyById, problem.Weights);
             var ctx = new SearchContext(Stopwatch.StartNew());
 
-            var solved = Backtrack(0, order, domains, problem.TimeSlots, state, ctx);
+            var solved = Backtrack(0, order, domains, timeDomains, problem.Seed, state, ctx);
 
             if (solved)
             {
-                return ScheduleGenerationResult.Ok(state.ToAssignments(), ctx.Steps);
+                var assignments = state.ToAssignments();
+                var report = OptimizationReport.Measure(
+                    assignments, problem.Sections, problem.Rooms, problem.Faculty);
+                return ScheduleGenerationResult.Ok(assignments, ctx.Steps, report);
             }
 
             var reasons = new List<string>
             {
                 ctx.Aborted
                     ? $"Search stopped at its safety limit ({ctx.Steps:N0} steps / {ctx.Clock.Elapsed.TotalSeconds:0}s) — " +
-                      "inputs look over-constrained (too many sections for the available rooms, time slots, or faculty)."
-                    : "No conflict-free schedule exists for the given sections, rooms, time slots, and faculty."
+                      "inputs look over-constrained (too many sections for the available rooms or time slots)."
+                    : "No conflict-free schedule exists for the given sections, rooms, and time slots."
             };
             reasons.Add(
                 $"The search placed at most {ctx.DeepestIndex} of {order.Count} sections before running out of options.");
-            reasons.AddRange(Diagnose(order, domains, problem.TimeSlots, timeSlotsById, facultyMaxLoad));
+            reasons.AddRange(Diagnose(order, domains, timeDomains, facultyById, problem.Weights));
 
             return ScheduleGenerationResult.Fail(reasons, ctx.Steps);
         }
@@ -143,8 +227,9 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         private bool Backtrack(
             int index,
             List<SectionVar> order,
-            Dictionary<Guid, (List<RoomOption> Rooms, List<FacultyOption> Faculty)> domains,
-            IReadOnlyList<TimeSlot> timeSlots,
+            Dictionary<Guid, List<RoomOption>> domains,
+            Dictionary<Guid, List<TimeSlot>> timeDomains,
+            int seed,
             SearchState state,
             SearchContext ctx)
         {
@@ -165,9 +250,8 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
             }
 
             var section = order[index];
-            var (rooms, faculty) = domains[section.SectionId];
 
-            foreach (var value in OrderCandidates(section, rooms, faculty, timeSlots, state))
+            foreach (var value in OrderCandidates(section, domains[section.SectionId], timeDomains[section.SectionId], seed, state))
             {
                 ctx.Steps++;
                 if (ctx.OverBudget())
@@ -182,11 +266,11 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 }
 
                 state.Assign(section, value);
-                if (Backtrack(index + 1, order, domains, timeSlots, state, ctx))
+                if (Backtrack(index + 1, order, domains, timeDomains, seed, state, ctx))
                 {
                     return true;
                 }
-                state.Unassign(section, value);
+                state.Unassign(section);
 
                 if (ctx.Aborted)
                 {
@@ -198,76 +282,95 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         }
 
         /// <summary>
-        /// Least-constraining / soft-preference value ordering: prefer the faculty member with
-        /// the lightest current load (balances distribution) and time slots that sit next to an
-        /// existing class for the cohort (reduces idle gaps). Purely an ordering heuristic —
-        /// consistency is still enforced by <see cref="SearchState.IsConsistent(SectionVar, SectionAssignment)"/>.
+        /// Soft-preference value ordering: try the (room, block) pairs with the lowest soft cost
+        /// first, so the first complete solution found is already a good one. Purely an
+        /// ordering heuristic — consistency is still enforced by
+        /// <see cref="SearchState.IsConsistent(SectionVar, SectionAssignment)"/>.
+        /// <para>
+        /// Among candidates with the <i>same</i> soft cost (common), a seeded shuffle decides the
+        /// order, so a different seed produces a different — but equally good — placement. A stable
+        /// (day, start, end, room) tail keeps the order total and reproducible for that seed; block
+        /// ids are not used because they are freshly generated each run.
+        /// </para>
         /// </summary>
         private static IEnumerable<SectionAssignment> OrderCandidates(
             SectionVar section,
             List<RoomOption> rooms,
-            List<FacultyOption> faculty,
-            IReadOnlyList<TimeSlot> timeSlots,
-            SearchState state)
-        {
-            var candidates =
-                from f in faculty
-                from t in timeSlots
-                from r in rooms
-                let softScore = state.SoftScore(section, r, t, f)
-                orderby softScore
-                select new SectionAssignment(section.SectionId, r.RoomId, t.Id, f.FacultyProfileId);
+            IReadOnlyList<TimeSlot> blocks,
+            int seed,
+            SearchState state) =>
+            from t in blocks
+            from r in rooms
+            let softScore = state.SoftScore(section, r, t)
+            orderby softScore,
+                SeededKey(seed, r.RoomId, t.StartMinutes, (int)t.Day),
+                t.Day, t.StartMinutes, t.EndMinutes, r.RoomId
+            select new SectionAssignment(section.SectionId, r.RoomId, t, section.FacultyProfileId);
 
-            return candidates;
+        /// <summary>
+        /// A stable, seed-dependent sort key. Deterministic for a given seed (and unchanged across
+        /// runs — it hashes the guid's bytes, not its <see cref="object.GetHashCode"/>), but a
+        /// different seed reorders otherwise-tied candidates, which is what gives each generation a
+        /// different valid arrangement.
+        /// </summary>
+        private static int SeededKey(int seed, Guid id, int a, int b)
+        {
+            unchecked
+            {
+                var h = 2166136261u ^ (uint)seed;
+                foreach (var by in id.ToByteArray())
+                {
+                    h = (h ^ by) * 16777619u;
+                }
+                h = (h ^ (uint)a) * 16777619u;
+                h = (h ^ (uint)b) * 16777619u;
+                return (int)h;
+            }
         }
 
         /// <summary>
         /// Failure explanation: replay a deterministic greedy pass (same ordering as the real
         /// search) and, for every section that cannot be placed, tally which hard constraint
         /// each of its candidates collided with. Cheap, deterministic, and tells the Academic
-        /// Head what to add or relax — rooms, slots, faculty, or unit ceilings (FR-SCHED-07).
+        /// Head what to add or relax — rooms, slots, or the load allocation (FR-SCHED-07).
         /// </summary>
         private static IEnumerable<string> Diagnose(
             List<SectionVar> order,
-            Dictionary<Guid, (List<RoomOption> Rooms, List<FacultyOption> Faculty)> domains,
-            IReadOnlyList<TimeSlot> timeSlots,
-            Dictionary<Guid, TimeSlot> timeSlotsById,
-            Dictionary<Guid, int> facultyMaxLoad)
+            Dictionary<Guid, List<RoomOption>> domains,
+            Dictionary<Guid, List<TimeSlot>> timeDomains,
+            Dictionary<Guid, FacultyOption> facultyById,
+            SoftWeights weights)
         {
             const int maxReports = 5;
-            var state = new SearchState(timeSlotsById, facultyMaxLoad);
+            var state = new SearchState(facultyById, weights);
             var reports = new List<string>();
 
             foreach (var section in order)
             {
-                var (rooms, faculty) = domains[section.SectionId];
+                var rooms = domains[section.SectionId];
                 var placedThisSection = false;
-                int roomBusy = 0, facultyBusy = 0, cohortBusy = 0, overload = 0, total = 0;
+                int roomBusy = 0, facultyBusy = 0, cohortBusy = 0, total = 0;
 
-                foreach (var f in faculty)
+                foreach (var t in timeDomains[section.SectionId])
                 {
-                    foreach (var t in timeSlots)
+                    foreach (var r in rooms)
                     {
-                        foreach (var r in rooms)
+                        total++;
+                        var value = new SectionAssignment(
+                            section.SectionId, r.RoomId, t, section.FacultyProfileId);
+                        if (state.IsConsistent(section, value, out var conflict))
                         {
-                            total++;
-                            var value = new SectionAssignment(section.SectionId, r.RoomId, t.Id, f.FacultyProfileId);
-                            if (state.IsConsistent(section, value, out var conflict))
-                            {
-                                state.Assign(section, value);
-                                placedThisSection = true;
-                                break;
-                            }
-
-                            switch (conflict)
-                            {
-                                case ConflictKind.RoomBusy: roomBusy++; break;
-                                case ConflictKind.FacultyBusy: facultyBusy++; break;
-                                case ConflictKind.CohortBusy: cohortBusy++; break;
-                                case ConflictKind.FacultyOverload: overload++; break;
-                            }
+                            state.Assign(section, value);
+                            placedThisSection = true;
+                            break;
                         }
-                        if (placedThisSection) break;
+
+                        switch (conflict)
+                        {
+                            case ConflictKind.RoomBusy: roomBusy++; break;
+                            case ConflictKind.FacultyBusy: facultyBusy++; break;
+                            case ConflictKind.CohortBusy: cohortBusy++; break;
+                        }
                     }
                     if (placedThisSection) break;
                 }
@@ -278,7 +381,6 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                     if (roomBusy > 0) parts.Add($"{roomBusy} hit an occupied room");
                     if (facultyBusy > 0) parts.Add($"{facultyBusy} hit a busy faculty member");
                     if (cohortBusy > 0) parts.Add($"{cohortBusy} clashed with the cohort's other classes");
-                    if (overload > 0) parts.Add($"{overload} exceeded a faculty unit-load ceiling");
                     reports.Add(
                         $"{section.SectionCode}: none of its {total} candidate placements fit — " +
                         string.Join(", ", parts) + ".");
@@ -289,10 +391,54 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
             {
                 reports.Add(
                     "Every section fits on its own but their combination is infeasible — " +
-                    "add rooms or time slots, or spread sections across more faculty.");
+                    "add rooms or time slots, or spread the load allocation across more faculty.");
             }
 
             return reports;
+        }
+
+        /// <summary>
+        /// Every contiguous block the grid can offer that covers <paramref name="requiredMinutes"/>.
+        /// A block is a run of adjacent periods on one day (each period abuts the next, so a lunch
+        /// gap breaks the run); it grows only until it first covers the requirement, so a 3-hour
+        /// subject on a 90-minute grid yields one 3-hour block per valid start, not a 4.5-hour one.
+        /// Blocks are synthetic <see cref="TimeSlot"/>s (new ids) spanning the whole run; the
+        /// endpoint persists each as an on-demand period, the same way the manual board does.
+        /// </summary>
+        private static List<TimeSlot> BuildContiguousBlocks(IReadOnlyList<TimeSlot> baseSlots, int requiredMinutes)
+        {
+            var blocks = new List<TimeSlot>();
+            if (requiredMinutes <= 0) return blocks;
+
+            var seen = new HashSet<(DayOfWeek, int, int)>();
+            foreach (var byDay in baseSlots.GroupBy(s => s.Day))
+            {
+                var day = byDay.OrderBy(s => s.StartMinutes).ThenBy(s => s.EndMinutes).ToList();
+                for (var i = 0; i < day.Count; i++)
+                {
+                    var start = day[i].StartMinutes;
+                    var end = day[i].EndMinutes;
+                    var covered = end - start;
+                    var j = i;
+
+                    // Extend into the next period only while it abuts the current one (no gap).
+                    while (covered < requiredMinutes
+                        && j + 1 < day.Count
+                        && day[j + 1].StartMinutes == day[j].EndMinutes)
+                    {
+                        j++;
+                        end = day[j].EndMinutes;
+                        covered += day[j].EndMinutes - day[j].StartMinutes;
+                    }
+
+                    if (covered >= requiredMinutes && seen.Add((day[i].Day, start, end)))
+                    {
+                        blocks.Add(new TimeSlot { Day = day[i].Day, StartMinutes = start, EndMinutes = end });
+                    }
+                }
+            }
+
+            return blocks;
         }
     }
 }
