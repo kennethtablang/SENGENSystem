@@ -321,7 +321,7 @@ namespace SENGENSystem.Server.Features.Reports
             });
         }
 
-        private static string Humanize(string pascal)
+        internal static string Humanize(string pascal)
         {
             var spaced = System.Text.RegularExpressions.Regex.Replace(pascal, "([a-z])([A-Z])", "$1 $2");
             return spaced.Length == 0 ? spaced : char.ToUpperInvariant(spaced[0]) + spaced[1..].ToLowerInvariant();
