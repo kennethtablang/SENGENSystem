@@ -8,7 +8,9 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
 {
     // Vertical slice: the Academic Head triggers CSP schedule generation for a semester
     // and reviews the result before publishing (FR-SCHED-01/06, FR-FAC-04).
-    public record GenerateScheduleRequest(Guid? SemesterId);
+    // Seed is optional: omit it for a fresh random arrangement each run, or pass a specific one
+    // to reproduce a previous timetable exactly (the value is returned on every response).
+    public record GenerateScheduleRequest(Guid? SemesterId, int? Seed = null);
 
     public record GenerateScheduleResponse(
         Guid SemesterId,
@@ -16,14 +18,34 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
         int SectionCount,
         int AssignedCount,
         int Steps,
-        IReadOnlyList<ScheduleRowDto> Schedule);
+        int Seed,
+        IReadOnlyList<ScheduleRowDto> Schedule,
+        OptimizationSummaryDto Optimization);
+
+    /// <summary>
+    /// What the run achieved on the soft constraints. Zero hard violations is guaranteed;
+    /// this is how good the result is <i>within</i> that guarantee, so the Academic Head can
+    /// judge the timetable rather than take it on trust (FR-DASH-03).
+    /// </summary>
+    public record OptimizationSummaryDto(
+        int PreferencesHonored,
+        int PreferencesApplicable,
+        double PreferenceHonorRatePct,
+        double CohortIdleHours,
+        double FacultyIdleHours,
+        double LoadSpread,
+        int MinLoadUnits,
+        int MaxLoadUnits,
+        bool LoadLooksUneven,
+        double AverageRoomFitPct);
 
     public static class GenerateScheduleEndpoint
     {
         public static IEndpointRouteBuilder MapGenerateSchedule(this IEndpointRouteBuilder app)
         {
             app.MapPost("/api/scheduling/generate", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.AcademicHead)));
+                .RequireAuthorization(policy => policy.RequireRole(
+                    nameof(UserRole.AcademicHead), nameof(UserRole.SchoolAdmin)));
             return app;
         }
 
@@ -33,8 +55,11 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             CspScheduler scheduler,
             AuditLog audit,
             Features.Reports.Live.ReportsBroadcaster broadcaster,
+            ILoggerFactory loggerFactory,
+            HttpContext http,
             CancellationToken cancellationToken)
         {
+            var logger = loggerFactory.CreateLogger("ScheduleGeneration");
             var semester = request.SemesterId is { } id
                 ? await db.Semesters.FirstOrDefaultAsync(s => s.Id == id, cancellationToken)
                 : await db.Semesters.FirstOrDefaultAsync(s => s.IsActive, cancellationToken);
@@ -49,9 +74,26 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 return Results.Conflict(new { message = $"“{semester.Name}” is archived — its schedule is read-only." });
             }
 
+            // A finalized draft is a deliberate sign-off; regenerating would silently discard it.
+            // Require an explicit reopen first (FR-SCHED-06).
+            var finalizedDraftExists = await db.ScheduleAssignments
+                .AnyAsync(a => a.SemesterId == semester.Id && a.IsFinalized && !a.IsPublished, cancellationToken);
+            if (finalizedDraftExists)
+            {
+                return Results.Conflict(new
+                {
+                    message = $"The {semester.Name} schedule is finalized and locked. Reopen it before regenerating."
+                });
+            }
+
+            // Ordering is not cosmetic here. The engine breaks scoring ties by input order, so
+            // an unordered query would let SQL Server's row order decide the timetable — two
+            // runs over identical data could differ, contradicting FR-SCHED-08. Every input the
+            // engine sees is given a total order.
             var sections = await db.Sections
                 .Include(s => s.Subject)
                 .Where(s => s.SemesterId == semester.Id)
+                .OrderBy(s => s.SectionCode).ThenBy(s => s.Id)
                 .ToListAsync(cancellationToken);
 
             if (sections.Count == 0)
@@ -101,9 +143,16 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 });
             }
 
-            var rooms = await db.Rooms.ToListAsync(cancellationToken);
-            var timeSlots = await db.TimeSlots.ToListAsync(cancellationToken);
-            var faculty = await db.FacultyProfiles.ToListAsync(cancellationToken);
+            var rooms = await db.Rooms
+                .OrderBy(r => r.Name).ThenBy(r => r.Id)
+                .ToListAsync(cancellationToken);
+            var timeSlots = await db.TimeSlots
+                .OrderBy(t => t.Day).ThenBy(t => t.StartMinutes).ThenBy(t => t.Id)
+                .ToListAsync(cancellationToken);
+            var faculty = await db.FacultyProfiles
+                .Include(f => f.User)
+                .OrderBy(f => f.EmployeeId).ThenBy(f => f.Id)
+                .ToListAsync(cancellationToken);
 
             // Clear 400s for empty resource pools — friendlier than a doomed solver run.
             var missing = new List<string>();
@@ -127,8 +176,61 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                         .Select(p => new PreferredWindow(p.Day, p.StartMinutes, p.EndMinutes))
                         .ToList());
 
+            // H5 — faculty are only ever placed on subjects they were allocated. The engine does
+            // not choose who teaches: it reads the Academic Head's load allocation (FR-FAC-01)
+            // and places those decisions into rooms and time slots. A load assignment and a
+            // section are linked through the cohort the subject is delivered to — Section
+            // carries (SubjectId, ProgramCode, YearLevel, Block), ClassSection the matching
+            // (ProgramCode, YearLevel, SectionName).
+            var allocations = await db.FacultyLoadAssignments.AsNoTracking()
+                .Where(l => l.SemesterId == semester.Id)
+                .Include(l => l.ClassSection)
+                .ToListAsync(cancellationToken);
+
+            var facultyBySection = new Dictionary<Guid, Guid>();
+            var unallocated = new List<string>();
+            foreach (var s in sections)
+            {
+                var match = allocations.FirstOrDefault(l =>
+                    l.SubjectId == s.SubjectId
+                    && l.ClassSection != null
+                    && string.Equals(l.ClassSection.ProgramCode, s.ProgramCode, StringComparison.OrdinalIgnoreCase)
+                    && l.ClassSection.YearLevel == s.YearLevel
+                    && string.Equals(l.ClassSection.SectionName, s.Block, StringComparison.OrdinalIgnoreCase));
+
+                if (match is null)
+                {
+                    unallocated.Add(
+                        $"{s.SectionCode}: no faculty member is allocated to teach {s.Subject!.Code} " +
+                        $"to {s.ProgramCode} {s.YearLevel}-{s.Block}.");
+                    continue;
+                }
+
+                facultyBySection[s.Id] = match.FacultyProfileId;
+            }
+
+            if (unallocated.Count > 0)
+            {
+                // Allocation is now a precondition of generation, not something the engine
+                // improvises. Failing here — with the exact sections named — is far more
+                // actionable than a dead end deep in the search.
+                return Results.UnprocessableEntity(new
+                {
+                    message = "Every section needs a faculty allocation before a schedule can be generated. "
+                        + "Assign the missing subjects on the Faculty load page, then regenerate.",
+                    reasons = unallocated,
+                    steps = 0
+                });
+            }
+
+            // A fresh seed per run makes each generation a different valid arrangement; a caller
+            // can pin one to reproduce an earlier timetable. Non-negative so it reads cleanly in
+            // the audit trail and can be re-entered by hand.
+            var seed = request.Seed ?? Random.Shared.Next(1, int.MaxValue);
+
             var problem = new ScheduleProblem
             {
+                Seed = seed,
                 Sections = sections.Select(s => new SectionVar(
                     s.Id,
                     s.SectionCode,
@@ -136,11 +238,24 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                     s.CohortKey,
                     s.Capacity,
                     s.Subject?.Units ?? 0,
-                    s.Subject?.RequiresLaboratory ?? false)).ToList(),
+                    s.Subject?.RequiresLaboratory ?? false,
+                    facultyBySection[s.Id],
+                    // Weekly contact hours drive how long a block the engine must reserve. Fall
+                    // back to units (then a single period) for any subject predating Subject.Hours.
+                    RequiredMinutes: (s.Subject!.Hours > 0
+                        ? s.Subject.Hours
+                        : Math.Max(s.Subject.Units, 1)) * 60)).ToList(),
                 Rooms = rooms.Select(r => new RoomOption(r.Id, r.Capacity, r.IsLaboratory)).ToList(),
                 TimeSlots = timeSlots,
                 Faculty = faculty.Select(f => new FacultyOption(
-                    f.Id, f.ProgramCode, f.MaxLoadUnits, preferences.GetValueOrDefault(f.Id))).ToList()
+                    f.Id,
+                    f.ProgramCode,
+                    f.MaxLoadUnits,
+                    preferences.GetValueOrDefault(f.Id),
+                    // Name + employee ID so a failure message identifies a person, not a GUID.
+                    string.IsNullOrWhiteSpace(f.EmployeeId)
+                        ? f.User?.FullName ?? "(unknown)"
+                        : $"{f.User?.FullName ?? "(unknown)"} ({f.EmployeeId})")).ToList()
             };
 
             ScheduleGenerationResult result;
@@ -156,15 +271,34 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             }
             catch (Exception ex)
             {
-                // An engine bug must never bubble up as a bare 500 with no context.
+                // An engine bug must never bubble up as a bare 500 with no context. Give whoever
+                // hit this a lead they can act on: a trace id that ties the message they see to
+                // the full stack trace in the logs, plus the exception's own summary. This is an
+                // Academic-Head-only endpoint, so surfacing the exception type/message is a
+                // reportable diagnostic, not a leak to the public.
+                var traceId = http.TraceIdentifier;
+                logger.LogError(ex,
+                    "Schedule generation for {Semester} ({SemesterId}) crashed [trace {TraceId}]",
+                    semester.Name, semester.Id, traceId);
                 audit.Record(AuditAction.ScheduleGenerationFailed,
-                    $"Schedule generation for {semester.Name} crashed: {ex.Message}",
+                    $"Schedule generation for {semester.Name} crashed [trace {traceId}]: " +
+                    $"{ex.GetType().Name}: {ex.Message}",
                     "Semester", semester.Id.ToString());
                 await db.SaveChangesAsync(cancellationToken);
                 return Results.Problem(
                     title: "Schedule generation failed unexpectedly.",
-                    detail: "The scheduling engine hit an internal error. The attempt was recorded in the audit trail — try again, and report this if it persists.",
-                    statusCode: StatusCodes.Status500InternalServerError);
+                    detail: $"The scheduling engine hit an internal error ({ex.GetType().Name}: {ex.Message}). " +
+                        $"Quote reference {traceId} when reporting this — it points to the full diagnostics in the server log.",
+                    statusCode: StatusCodes.Status500InternalServerError,
+                    extensions: new Dictionary<string, object?>
+                    {
+                        ["reference"] = traceId,
+                        ["reasons"] = new[]
+                        {
+                            $"{ex.GetType().Name}: {ex.Message}",
+                            $"Diagnostic reference: {traceId} (find the full stack trace in the server log by this id)."
+                        }
+                    });
             }
 
             if (!result.Success)
@@ -188,21 +322,43 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 .ToListAsync(cancellationToken);
             db.ScheduleAssignments.RemoveRange(existingDraft);
 
+            // The engine returns each section as one contiguous block covering its weekly hours,
+            // which may span several base periods (e.g. a 3-hour subject over two 90-minute slots).
+            // The grid stores only atomic periods, so persist (find-or-create) a TimeSlot for the
+            // whole block — the same on-demand period pattern the manual board uses. A cache keeps
+            // blocks with identical (day, start, end) mapped to a single row.
+            var slotCache = new Dictionary<(DayOfWeek, int, int), TimeSlot>();
+            foreach (var t in timeSlots) slotCache.TryAdd((t.Day, t.StartMinutes, t.EndMinutes), t);
+
+            TimeSlot ResolveSlot(TimeSlot block)
+            {
+                var key = (block.Day, block.StartMinutes, block.EndMinutes);
+                if (slotCache.TryGetValue(key, out var existing)) return existing;
+                var created = new TimeSlot { Day = block.Day, StartMinutes = block.StartMinutes, EndMinutes = block.EndMinutes };
+                db.TimeSlots.Add(created);
+                slotCache[key] = created;
+                return created;
+            }
+
             foreach (var a in result.Assignments)
             {
+                var slot = ResolveSlot(a.Slot);
                 db.ScheduleAssignments.Add(new ScheduleAssignment
                 {
                     SemesterId = semester.Id,
                     SectionId = a.SectionId,
                     RoomId = a.RoomId,
-                    TimeSlotId = a.TimeSlotId,
+                    TimeSlotId = slot.Id,
                     FacultyProfileId = a.FacultyProfileId
                 });
             }
 
+            var opt = result.Optimization;
             audit.Record(AuditAction.ScheduleGenerated,
-                $"Generated a conflict-free schedule for {semester.Name}: " +
-                $"{result.Assignments.Count} of {sections.Count} sections placed in {result.Steps:N0} search steps.",
+                $"Generated a conflict-free schedule for {semester.Name} (seed {seed}): " +
+                $"{result.Assignments.Count} of {sections.Count} sections placed in {result.Steps:N0} search steps " +
+                $"({opt.PreferenceHonorRatePct}% of time preferences honored, " +
+                $"{opt.CohortIdleHours}h cohort idle time).",
                 "Semester", semester.Id.ToString());
 
             await db.SaveChangesAsync(cancellationToken);
@@ -216,7 +372,19 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 sections.Count,
                 result.Assignments.Count,
                 result.Steps,
-                schedule));
+                seed,
+                schedule,
+                new OptimizationSummaryDto(
+                    opt.PreferencesHonored,
+                    opt.PreferencesApplicable,
+                    opt.PreferenceHonorRatePct,
+                    opt.CohortIdleHours,
+                    opt.FacultyIdleHours,
+                    opt.LoadSpread,
+                    opt.MinLoadUnits,
+                    opt.MaxLoadUnits,
+                    opt.LoadLooksUneven,
+                    opt.AverageRoomFitPct)));
         }
 
         /// <summary>
