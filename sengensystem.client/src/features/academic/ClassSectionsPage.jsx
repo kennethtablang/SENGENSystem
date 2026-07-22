@@ -5,12 +5,13 @@ import { confirmDelete } from '../shell/confirm';
 import { listClassSections, createClassSection, updateClassSection, deleteClassSection } from './api';
 import './academic.css';
 
-const YEARS = [3];
+// STI's courses run 2–3 years (HRA 3, HRS 2, ITP 2), so a cohort can sit at any of these.
+const YEARS = [1, 2, 3];
 
 function ClassSectionModal({ record, semesters, programs, defaultSemesterId, defaultProgram, onClose, onChanged }) {
     const isCreate = !record;
     const [form, setForm] = useState(isCreate
-        ? { semesterId: defaultSemesterId || '', programCode: defaultProgram || '', yearLevel: '3', sectionName: '' }
+        ? { semesterId: defaultSemesterId || '', programCode: defaultProgram || '', yearLevel: '1', sectionName: '' }
         : { semesterId: record.semesterId, programCode: record.programCode, yearLevel: String(record.yearLevel), sectionName: record.sectionName });
     const [fieldErrors, setFieldErrors] = useState({});
     const [error, setError] = useState('');

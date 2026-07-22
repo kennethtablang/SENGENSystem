@@ -5,11 +5,20 @@ import { confirmDelete } from '../shell/confirm';
 import { listRooms, createRoom, updateRoom, deleteRoom, listBuildings } from './api';
 import './academic.css';
 
+// A room is one of three things, and which one is a hard scheduling constraint: laboratory
+// hours can only be plotted in the laboratory their subject requires, and lecture hours only
+// in a lecture room. STI Alaminos has one Computer Lab and one Kitchen Lab.
+const roomKinds = [
+    { value: 'LectureRoom', label: 'Lecture room', hint: 'Ordinary classroom — lecture hours only.' },
+    { value: 'ComputerLaboratory', label: 'Computer laboratory', hint: 'Required by ITP laboratory subjects.' },
+    { value: 'KitchenLaboratory', label: 'Kitchen laboratory', hint: 'Required by HRA/HRS laboratory subjects.' }
+];
+
 function RoomModal({ record, buildings, defaultBuildingId, onClose, onChanged }) {
     const isCreate = !record;
     const [form, setForm] = useState(isCreate
-        ? { name: '', capacity: '', isLaboratory: false, buildingId: defaultBuildingId || '' }
-        : { name: record.name, capacity: String(record.capacity), isLaboratory: record.isLaboratory, buildingId: record.buildingId || '' });
+        ? { name: '', capacity: '', kind: 'LectureRoom', buildingId: defaultBuildingId || '' }
+        : { name: record.name, capacity: String(record.capacity), kind: record.kind, buildingId: record.buildingId || '' });
     const [fieldErrors, setFieldErrors] = useState({});
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -22,7 +31,7 @@ function RoomModal({ record, buildings, defaultBuildingId, onClose, onChanged })
         return {
             name: form.name,
             capacity: form.capacity === '' ? null : Number(form.capacity),
-            isLaboratory: form.isLaboratory,
+            kind: form.kind,
             buildingId: form.buildingId || null
         };
     }
@@ -86,11 +95,14 @@ function RoomModal({ record, buildings, defaultBuildingId, onClose, onChanged })
                     <input id="room-cap" type="number" min="1" value={form.capacity} onChange={set('capacity')} placeholder="40" />
                     {err('capacity') && <p className="field-error">{err('capacity')}</p>}
                 </div>
-                <label className="setup-checkbox">
-                    <input type="checkbox" checked={form.isLaboratory}
-                        onChange={e => setForm(prev => ({ ...prev, isLaboratory: e.target.checked }))} />
-                    This room is a laboratory
-                </label>
+                <div className="field">
+                    <label htmlFor="room-kind">Room type</label>
+                    <select id="room-kind" value={form.kind} onChange={set('kind')}>
+                        {roomKinds.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                    </select>
+                    <p className="field-hint">{roomKinds.find(k => k.value === form.kind)?.hint}</p>
+                    {err('kind') && <p className="field-error">{err('kind')}</p>}
+                </div>
             </form>
         </SetupModal>
     );
@@ -135,7 +147,8 @@ export default function RoomsPage() {
                 <div>
                     <h2>Rooms</h2>
                     <p className="setup-sub">
-                        Manage teaching rooms. Capacity and the laboratory flag are inputs to the scheduling engine.
+                        Add lecture rooms and laboratories. Capacity and room type are hard constraints in the
+                        scheduling engine — a subject’s laboratory hours can only be plotted in the laboratory it requires.
                     </p>
                 </div>
                 <div className="setup-controls">
@@ -179,9 +192,9 @@ export default function RoomsPage() {
                                     <td className="setup-muted">{r.buildingName || '—'}</td>
                                     <td className="setup-num">{r.capacity}</td>
                                     <td>
-                                        {r.isLaboratory
-                                            ? <span className="chip chip-lab">Laboratory</span>
-                                            : <span className="chip chip-muted">Lecture</span>}
+                                        <span className={`chip ${r.isLaboratory ? 'chip-lab' : 'chip-muted'}`}>
+                                            {r.kindLabel}
+                                        </span>
                                     </td>
                                 </tr>
                             ))}
