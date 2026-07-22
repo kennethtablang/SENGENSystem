@@ -54,15 +54,16 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         {
             if (assignments.Count == 0) return Empty;
 
-            var sectionById = sections.ToDictionary(s => s.SectionId);
+            // Keyed by meeting, not by section: a lecture-laboratory section appears twice.
+            var sectionByKey = sections.ToDictionary(s => s.Key);
             var roomById = rooms.ToDictionary(r => r.RoomId);
             var facultyById = faculty.ToDictionary(f => f.FacultyProfileId);
 
             var placed = assignments
-                .Where(a => sectionById.ContainsKey(a.SectionId))
+                .Where(a => sectionByKey.ContainsKey((a.SectionId, a.Component)))
                 .Select(a => new
                 {
-                    Section = sectionById[a.SectionId],
+                    Section = sectionByKey[(a.SectionId, a.Component)],
                     Slot = a.Slot,
                     Room = roomById.GetValueOrDefault(a.RoomId),
                     a.FacultyProfileId
@@ -81,6 +82,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
             var facultyIdle = IdleHours(placed.Select(p => (Key: p.FacultyProfileId.ToString(), p.Slot)));
 
             // ---- S3: equity of the allocation the Head made ----
+            // Units live on one component per section, so a split subject still counts once.
             var unitsByFaculty = placed
                 .GroupBy(p => p.FacultyProfileId)
                 .ToDictionary(g => g.Key, g => g.Sum(p => p.Section.Units));

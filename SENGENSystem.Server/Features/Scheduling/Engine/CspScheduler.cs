@@ -14,11 +14,23 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
     /// <list type="bullet">
     /// <item>H1 — a room is never double-booked in overlapping slots.</item>
     /// <item>H2 — a faculty member is never double-assigned in overlapping slots.</item>
-    /// <item>H3 — room capacity ≥ the section's seat capacity (and labs only in laboratories).</item>
+    /// <item>H3a — room capacity ≥ the section's seat capacity.</item>
+    /// <item>H3b — room <i>kind</i> matches the meeting: lecture hours only in a lecture room,
+    /// laboratory hours only in the laboratory the subject requires (Computer or Kitchen). The rule
+    /// binds in both directions — a pure lecture may not occupy a laboratory, because the campus has
+    /// one Computer Lab and one Kitchen Lab against numerous lecture rooms.</item>
     /// <item>H4 — a member's allocated units never exceed their semester ceiling.</item>
     /// <item>H5 — a member only ever teaches a subject they were allocated.</item>
-    /// <item>H6 — sections of one student cohort never overlap in time.</item>
+    /// <item>H6 — sections of one student cohort never overlap in time. This is also what keeps a
+    /// lecture-laboratory subject's two meetings from colliding with each other.</item>
     /// </list>
+    ///
+    /// <para>
+    /// A lecture-laboratory subject enters the search as <b>two variables</b>, not one: its lecture
+    /// hours and its laboratory hours are placed independently, in different rooms, at different
+    /// times. Scheduling them as a single long block would strand the lecture hours inside the one
+    /// shared laboratory.
+    /// </para>
     ///
     /// <para><b>Soft constraints — optimised, never at a hard constraint's expense:</b></para>
     /// <list type="bullet">
@@ -70,19 +82,23 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 {
                     var orphaned = byFaculty
                         .OrderBy(s => s.SectionCode, StringComparer.Ordinal)
-                        .Select(s => s.SectionCode);
+                        .Select(s => s.SectionCode)
+                        .Distinct(StringComparer.Ordinal);
                     overloadReasons.Add(
                         $"These sections are allocated to a faculty member who no longer exists: " +
                         $"{string.Join(", ", orphaned)}. Reassign them on the Faculty load page.");
                     continue;
                 }
 
+                // Units sit on one component per section, so this sums a section once even when
+                // its lecture and laboratory halves are scheduled separately.
                 var assigned = byFaculty.Sum(s => s.Units);
                 if (assigned > member.MaxLoadUnits)
                 {
                     var sectionCodes = byFaculty
                         .OrderBy(s => s.SectionCode, StringComparer.Ordinal)
-                        .Select(s => s.SectionCode);
+                        .Select(s => s.SectionCode)
+                        .Distinct(StringComparer.Ordinal);
                     overloadReasons.Add(
                         $"{member.Label} is allocated {assigned} units against a ceiling of {member.MaxLoadUnits} " +
                         $"({assigned - member.MaxLoadUnits} over) across {string.Join(", ", sectionCodes)} — " +
@@ -94,31 +110,34 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 return ScheduleGenerationResult.Fail(overloadReasons, 0);
             }
 
-            // ---- H3: candidate rooms per section (static domain filtering) ----
-            // ---- Weekly-hours coverage: candidate time *blocks* per section (FR-SCHED-04) ----
-            // A subject meets for Subject.Hours a week, but the grid is 90-minute periods, so a
-            // 3-hour subject must occupy a contiguous run of periods. Per required duration we
-            // precompute every contiguous block the grid offers; a section's time domain is the
+            // ---- H3a/H3b: candidate rooms per meeting (static domain filtering) ----
+            // ---- Weekly-hours coverage: candidate time *blocks* per meeting (FR-SCHED-04) ----
+            // A meeting runs for its component's weekly hours, but the grid is 90-minute periods,
+            // so a 3-hour laboratory must occupy a contiguous run of periods. Per required duration
+            // we precompute every contiguous block the grid offers; a meeting's time domain is the
             // set of blocks long enough to cover its hours. Both domains are settled before the
-            // search so an impossible section fails with a clear message, not a dead end.
-            var domains = new Dictionary<Guid, List<RoomOption>>();
-            var timeDomains = new Dictionary<Guid, List<TimeSlot>>();
+            // search so an impossible meeting fails with a clear message, not a dead end.
+            var domains = new Dictionary<(Guid, ClassComponent), List<RoomOption>>();
+            var timeDomains = new Dictionary<(Guid, ClassComponent), List<TimeSlot>>();
             var blocksByDuration = new Dictionary<int, List<TimeSlot>>();
             var emptyDomainReasons = new List<string>();
 
             foreach (var section in problem.Sections)
             {
                 var rooms = problem.Rooms
-                    .Where(r => r.Capacity >= section.Capacity && (!section.RequiresLaboratory || r.IsLaboratory))
+                    .Where(r => r.Capacity >= section.Capacity && r.Kind == section.RequiredRoomKind)
                     .ToList();
 
                 if (rooms.Count == 0)
                 {
-                    emptyDomainReasons.Add(
-                        $"{section.SectionCode}: no room with capacity ≥ {section.Capacity}" +
-                        (section.RequiresLaboratory ? " that is a laboratory." : "."));
+                    var anyOfKind = problem.Rooms.Any(r => r.Kind == section.RequiredRoomKind);
+                    emptyDomainReasons.Add(anyOfKind
+                        ? $"{section.Label}: no {section.RequiredRoomKind.Label().ToLowerInvariant()} " +
+                          $"has capacity ≥ {section.Capacity}."
+                        : $"{section.Label}: needs a {section.RequiredRoomKind.Label().ToLowerInvariant()} " +
+                          "and none is configured — add one in Academic setup → Rooms.");
                 }
-                domains[section.SectionId] = rooms;
+                domains[section.Key] = rooms;
 
                 if (!blocksByDuration.TryGetValue(section.RequiredMinutes, out var blocks))
                 {
@@ -128,10 +147,10 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 if (blocks.Count == 0)
                 {
                     emptyDomainReasons.Add(
-                        $"{section.SectionCode}: needs a {section.RequiredMinutes / 60.0:0.#}-hour continuous block, " +
+                        $"{section.Label}: needs a {section.RequiredMinutes / 60.0:0.#}-hour continuous block, " +
                         "but no day has that many consecutive time slots — add adjacent time slots.");
                 }
-                timeDomains[section.SectionId] = blocks;
+                timeDomains[section.Key] = blocks;
             }
 
             if (emptyDomainReasons.Count > 0)
@@ -140,10 +159,11 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
             }
 
             // ---- Pigeonhole feasibility. One faculty member — or one student cohort — can
-            // occupy at most one time slot at a time, so needing more sections than there are
-            // slots is impossible no matter how the search branches. Catching it here costs
-            // one pass and replaces a 20-second doomed search with a sentence that names the
-            // problem.
+            // occupy at most one time slot at a time, so needing more meetings than there are
+            // slots is impossible no matter how the search branches. Counted in meetings, not
+            // sections, because a lecture-laboratory subject needs two of them. Catching it here
+            // costs one pass and replaces a 20-second doomed search with a sentence that names
+            // the problem.
             var pigeonhole = new List<string>();
             foreach (var byFaculty in problem.Sections.GroupBy(s => s.FacultyProfileId))
             {
@@ -151,7 +171,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 if (count > problem.TimeSlots.Count)
                 {
                     pigeonhole.Add(
-                        $"{facultyById[byFaculty.Key].Label} is allocated {count} sections but only " +
+                        $"{facultyById[byFaculty.Key].Label} is allocated {count} class meetings but only " +
                         $"{problem.TimeSlots.Count} time slots exist — they cannot all be placed. " +
                         "Add time slots or move sections to another member.");
                 }
@@ -162,7 +182,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 if (count > problem.TimeSlots.Count)
                 {
                     pigeonhole.Add(
-                        $"Cohort {byCohort.Key} has {count} sections but only {problem.TimeSlots.Count} " +
+                        $"Cohort {byCohort.Key} has {count} class meetings but only {problem.TimeSlots.Count} " +
                         "time slots exist — they cannot all be placed without a clash.");
                 }
             }
@@ -178,12 +198,13 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
             // and SectionId remain the final tiebreakers, keeping the order total and reproducible
             // for any given seed (FR-SCHED-08).
             var order = problem.Sections
-                .OrderBy(s => domains[s.SectionId].Count * timeDomains[s.SectionId].Count)
+                .OrderBy(s => domains[s.Key].Count * timeDomains[s.Key].Count)
                 .ThenByDescending(s => s.RequiresLaboratory)
                 .ThenByDescending(s => s.Units)
-                .ThenBy(s => SeededKey(problem.Seed, s.SectionId, 0, 0))
+                .ThenBy(s => SeededKey(problem.Seed, s.SectionId, 0, (int)s.Component))
                 .ThenBy(s => s.SectionCode, StringComparer.Ordinal)
                 .ThenBy(s => s.SectionId)
+                .ThenBy(s => (int)s.Component)
                 .ToList();
 
             var state = new SearchState(facultyById, problem.Weights);
@@ -207,7 +228,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                     : "No conflict-free schedule exists for the given sections, rooms, and time slots."
             };
             reasons.Add(
-                $"The search placed at most {ctx.DeepestIndex} of {order.Count} sections before running out of options.");
+                $"The search placed at most {ctx.DeepestIndex} of {order.Count} class meetings before running out of options.");
             reasons.AddRange(Diagnose(order, domains, timeDomains, facultyById, problem.Weights));
 
             return ScheduleGenerationResult.Fail(reasons, ctx.Steps);
@@ -227,8 +248,8 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         private bool Backtrack(
             int index,
             List<SectionVar> order,
-            Dictionary<Guid, List<RoomOption>> domains,
-            Dictionary<Guid, List<TimeSlot>> timeDomains,
+            Dictionary<(Guid, ClassComponent), List<RoomOption>> domains,
+            Dictionary<(Guid, ClassComponent), List<TimeSlot>> timeDomains,
             int seed,
             SearchState state,
             SearchContext ctx)
@@ -251,7 +272,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
 
             var section = order[index];
 
-            foreach (var value in OrderCandidates(section, domains[section.SectionId], timeDomains[section.SectionId], seed, state))
+            foreach (var value in OrderCandidates(section, domains[section.Key], timeDomains[section.Key], seed, state))
             {
                 ctx.Steps++;
                 if (ctx.OverBudget())
@@ -305,7 +326,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
             orderby softScore,
                 SeededKey(seed, r.RoomId, t.StartMinutes, (int)t.Day),
                 t.Day, t.StartMinutes, t.EndMinutes, r.RoomId
-            select new SectionAssignment(section.SectionId, r.RoomId, t, section.FacultyProfileId);
+            select new SectionAssignment(section.SectionId, section.Component, r.RoomId, t, section.FacultyProfileId);
 
         /// <summary>
         /// A stable, seed-dependent sort key. Deterministic for a given seed (and unchanged across
@@ -336,8 +357,8 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         /// </summary>
         private static IEnumerable<string> Diagnose(
             List<SectionVar> order,
-            Dictionary<Guid, List<RoomOption>> domains,
-            Dictionary<Guid, List<TimeSlot>> timeDomains,
+            Dictionary<(Guid, ClassComponent), List<RoomOption>> domains,
+            Dictionary<(Guid, ClassComponent), List<TimeSlot>> timeDomains,
             Dictionary<Guid, FacultyOption> facultyById,
             SoftWeights weights)
         {
@@ -347,17 +368,17 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
 
             foreach (var section in order)
             {
-                var rooms = domains[section.SectionId];
+                var rooms = domains[section.Key];
                 var placedThisSection = false;
                 int roomBusy = 0, facultyBusy = 0, cohortBusy = 0, total = 0;
 
-                foreach (var t in timeDomains[section.SectionId])
+                foreach (var t in timeDomains[section.Key])
                 {
                     foreach (var r in rooms)
                     {
                         total++;
                         var value = new SectionAssignment(
-                            section.SectionId, r.RoomId, t, section.FacultyProfileId);
+                            section.SectionId, section.Component, r.RoomId, t, section.FacultyProfileId);
                         if (state.IsConsistent(section, value, out var conflict))
                         {
                             state.Assign(section, value);
@@ -382,7 +403,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                     if (facultyBusy > 0) parts.Add($"{facultyBusy} hit a busy faculty member");
                     if (cohortBusy > 0) parts.Add($"{cohortBusy} clashed with the cohort's other classes");
                     reports.Add(
-                        $"{section.SectionCode}: none of its {total} candidate placements fit — " +
+                        $"{section.Label}: none of its {total} candidate placements fit — " +
                         string.Join(", ", parts) + ".");
                 }
             }

@@ -5,7 +5,13 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
     // Pure inputs to the CSP engine, decoupled from EF so the solver stays unit-testable.
 
     /// <summary>
-    /// A section that needs a (room, time slot) placement — one CSP variable.
+    /// One meeting that needs a (room, time slot) placement — one CSP variable.
+    /// <para>
+    /// A section is <i>not</i> always one variable. A lecture-laboratory subject contributes two:
+    /// its lecture hours and its laboratory hours meet separately, in different kinds of room, so
+    /// the engine places them independently and the cohort constraint (H6) keeps them from
+    /// colliding with each other. A lecture-only or laboratory-only subject contributes one.
+    /// </para>
     /// <para>
     /// The teaching faculty is <b>not</b> a decision variable. It arrives already decided from
     /// the Academic Head's load allocation (FR-FAC-01), which is what makes hard constraint H5
@@ -13,6 +19,19 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
     /// checked: the engine cannot invent an assignment the Head did not authorise.
     /// </para>
     /// </summary>
+    /// <param name="Units">
+    /// Counted once per section, not once per component: the laboratory half of a
+    /// lecture-laboratory subject carries 0 so faculty load (H4) and the equity report are not
+    /// double-counted by the split.
+    /// </param>
+    /// <param name="RequiredRoomKind">
+    /// The only room kind this meeting may occupy (H3b). Lecture hours require a lecture room;
+    /// laboratory hours require the specific laboratory the subject is taught in.
+    /// </param>
+    /// <param name="RequiredMinutes">
+    /// Weekly contact minutes this meeting must occupy. The base grid is 90-minute periods, so a
+    /// 3-hour laboratory must fill a <i>contiguous</i> run of periods rather than a single one.
+    /// </param>
     public sealed record SectionVar(
         Guid SectionId,
         string SectionCode,
@@ -20,14 +39,23 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         string CohortKey,
         int Capacity,
         int Units,
-        bool RequiresLaboratory,
+        ClassComponent Component,
+        RoomKind RequiredRoomKind,
         Guid FacultyProfileId,
-        // Weekly contact minutes the section must occupy (Subject.Hours × 60). The base grid is
-        // 90-minute periods, so a 3-hour subject must fill a *contiguous* run of periods rather
-        // than a single one — this is what the search covers, and the Weekly Hours Tracker's basis.
-        int RequiredMinutes);
+        int RequiredMinutes)
+    {
+        /// <summary>Identifies the variable: a section plus which of its meetings this is.</summary>
+        public (Guid SectionId, ClassComponent Component) Key => (SectionId, Component);
 
-    public sealed record RoomOption(Guid RoomId, int Capacity, bool IsLaboratory);
+        public bool RequiresLaboratory => RequiredRoomKind.IsLaboratory();
+
+        /// <summary>How this meeting reads in a diagnostic — "BSIT-1A-IT102 (laboratory)".</summary>
+        public string Label => Component == ClassComponent.Laboratory
+            ? $"{SectionCode} (laboratory)"
+            : $"{SectionCode} (lecture)";
+    }
+
+    public sealed record RoomOption(Guid RoomId, int Capacity, RoomKind Kind);
 
     /// <summary>A faculty member's preferred teaching window (soft constraint S1).</summary>
     public sealed record PreferredWindow(DayOfWeek Day, int StartMinutes, int EndMinutes)
@@ -57,10 +85,16 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
 
     /// <summary>
     /// A concrete value chosen for a section variable: a room and a contiguous time block that
-    /// covers the section's full weekly hours. <see cref="Slot"/> is the block itself (which may
-    /// span several base periods), not a reference to a single stored period.
+    /// covers that meeting's weekly hours. <see cref="Slot"/> is the block itself (which may
+    /// span several base periods), not a reference to a single stored period. A section can
+    /// appear twice — once per <see cref="Component"/>.
     /// </summary>
-    public sealed record SectionAssignment(Guid SectionId, Guid RoomId, TimeSlot Slot, Guid FacultyProfileId);
+    public sealed record SectionAssignment(
+        Guid SectionId,
+        ClassComponent Component,
+        Guid RoomId,
+        TimeSlot Slot,
+        Guid FacultyProfileId);
 
     /// <summary>
     /// Relative importance of the soft constraints (S1–S2 plus room fit). Every term the

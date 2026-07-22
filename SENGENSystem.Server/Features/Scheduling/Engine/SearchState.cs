@@ -26,6 +26,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
     {
         private readonly record struct Placed(
             Guid SectionId,
+            ClassComponent Component,
             string CohortKey,
             int Units,
             Guid RoomId,
@@ -75,9 +76,11 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                     return false;
                 }
 
+                // H6 cohort clash. This is also what keeps a lecture-laboratory subject's two
+                // meetings apart: they share a cohort, so they can never be placed at the same time.
                 if (placed.CohortKey == section.CohortKey)
                 {
-                    conflict = ConflictKind.CohortBusy;    // H6 cohort clash
+                    conflict = ConflictKind.CohortBusy;
                     return false;
                 }
             }
@@ -89,6 +92,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         public void Assign(SectionVar section, SectionAssignment value) =>
             _placed.Add(new Placed(
                 section.SectionId,
+                section.Component,
                 section.CohortKey,
                 section.Units,
                 value.RoomId,
@@ -98,9 +102,11 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         public void Unassign(SectionVar section)
         {
             // The search unwinds in stack order, so the matching placement is the last one added.
+            // Matched on the *component* too: a lecture-laboratory section has two placements in
+            // flight at once, and undoing the wrong one would corrupt the state silently.
             for (var i = _placed.Count - 1; i >= 0; i--)
             {
-                if (_placed[i].SectionId == section.SectionId)
+                if (_placed[i].SectionId == section.SectionId && _placed[i].Component == section.Component)
                 {
                     _placed.RemoveAt(i);
                     return;
@@ -183,7 +189,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
 
         public IReadOnlyList<SectionAssignment> ToAssignments() =>
             _placed
-                .Select(p => new SectionAssignment(p.SectionId, p.RoomId, p.Slot, p.FacultyProfileId))
+                .Select(p => new SectionAssignment(p.SectionId, p.Component, p.RoomId, p.Slot, p.FacultyProfileId))
                 .ToList();
     }
 }
