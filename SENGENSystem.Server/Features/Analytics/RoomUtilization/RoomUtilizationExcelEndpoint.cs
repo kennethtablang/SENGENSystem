@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
@@ -125,7 +125,7 @@ namespace SENGENSystem.Server.Features.Analytics.RoomUtilization
                 sheet.Cell(row, 1).Value = r.Name;
                 sheet.Cell(row, 2).Value = r.Building?.Name ?? "Unassigned";
                 sheet.Cell(row, 3).Value = r.Capacity;
-                sheet.Cell(row, 4).Value = r.IsLaboratory ? "Laboratory" : "Lecture";
+                sheet.Cell(row, 4).Value = r.Kind.Label();
                 sheet.Cell(row, 5).Value = mine.Count;
                 sheet.Cell(row, 6).Value = Math.Round(totalHours, 1);
                 sheet.Cell(row, 7).Value = Math.Round(windowHours, 1);
@@ -197,7 +197,7 @@ namespace SENGENSystem.Server.Features.Analytics.RoomUtilization
                 sheet.Cell(row, 1).Value = r.Name;
                 sheet.Cell(row, 2).Value = r.Building?.Name ?? "Unassigned";
                 sheet.Cell(row, 3).Value = r.Capacity;
-                sheet.Cell(row, 4).Value = r.IsLaboratory ? "Laboratory" : "Lecture";
+                sheet.Cell(row, 4).Value = r.Kind.Label();
                 sheet.Cell(row, 5).Value = mine.Count;
                 sheet.Cell(row, 6).Value = Math.Round(hours, 1);
                 sheet.Cell(row, 7).Value = pct / 100.0;

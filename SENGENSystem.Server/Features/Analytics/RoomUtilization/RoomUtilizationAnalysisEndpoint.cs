@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.Reports;
@@ -134,7 +134,7 @@ namespace SENGENSystem.Server.Features.Analytics.RoomUtilization
                     room = r.Name,
                     building = r.Building?.Name ?? "Unassigned",
                     buildingCode = r.Building?.Code,
-                    type = r.IsLaboratory ? "Laboratory" : "Lecture",
+                    type = r.Kind.Label(),
                     isLaboratory = r.IsLaboratory,
                     capacity = r.Capacity,
                     classes = stats?.Classes ?? 0,
