@@ -157,7 +157,9 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
             else if (semester is null) errors["semesterId"] = ["The selected semester no longer exists."];
 
             if (string.IsNullOrWhiteSpace(programCode)) errors["programCode"] = ["Please choose a course."];
-            if (yearLevel != 3) errors["yearLevel"] = ["Year level must be 3."];
+            // 1–3, matching Subject.YearLevel. Pinning this to 3 made the two-year courses
+            // (HRS and ITP) impossible to run: every cohort in them is Year 1 or Year 2.
+            if (yearLevel is < 1 or > 3) errors["yearLevel"] = ["Year level must be between 1 and 3."];
             if (string.IsNullOrWhiteSpace(sectionName)) errors["sectionName"] = ["A section name is required."];
 
             if (errors.Count == 0)
