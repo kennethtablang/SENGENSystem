@@ -6,18 +6,32 @@ using SENGENSystem.Server.Domain;
 namespace SENGENSystem.Server.Features.Curriculum.Subjects
 {
     // Vertical slice: the Academic Head manages the subjects within a curriculum (FR-SCHED-04/05).
-    // Subjects carry units, year level, a laboratory flag, and prerequisites (other subjects in the
-    // same curriculum). A subject already used by a section can't be deleted.
+    // Subjects carry units, year level, prerequisites, and — the scheduling-critical part — how
+    // they are delivered: lecture only, laboratory only, or lecture-laboratory with an explicit
+    // hour split and the laboratory kind (Computer/Kitchen) the laboratory half requires.
+    // A subject already used by a section can't be deleted.
     public record SubjectRequest(
         Guid? CurriculumId,
         string? Code,
         string? Title,
         int? Units,
-        int? Hours,
         int? YearLevel,
         string? Term,
-        bool RequiresLaboratory,
+        string? Delivery,
+        int? LectureHours,
+        int? LaboratoryHours,
+        string? LabRoomKind,
         List<Guid>? PrerequisiteSubjectIds);
+
+    /// <summary>The validated delivery shape of a subject: its split hours and required laboratory.</summary>
+    internal readonly record struct DeliveryPlan(
+        SubjectDelivery Delivery,
+        int LectureHours,
+        int LaboratoryHours,
+        RoomKind? LabRoomKind)
+    {
+        public int TotalHours => LectureHours + LaboratoryHours;
+    }
 
     public record ArchiveSubjectRequest(string? Reason);
 
@@ -59,7 +73,7 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
         private static async Task<IResult> CreateAsync(
             SubjectRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
         {
-            var (ok, code, title, units, hours, year, term, curriculum, problem) = await ValidateAsync(request, null, db, ct);
+            var (ok, code, title, units, plan, year, term, curriculum, problem) = await ValidateAsync(request, null, db, ct);
             if (!ok) return problem;
 
             var subject = new Subject
@@ -69,11 +83,10 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
                 Code = code,
                 Title = title,
                 Units = units,
-                Hours = hours,
                 YearLevel = year,
-                Term = term,
-                RequiresLaboratory = request.RequiresLaboratory
+                Term = term
             };
+            Apply(subject, plan);
             db.Subjects.Add(subject);
 
             await ReconcilePrerequisitesAsync(db, subject.Id, curriculum.Id, request.PrerequisiteSubjectIds, ct);
@@ -91,7 +104,7 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             var subject = await db.Subjects.FirstOrDefaultAsync(s => s.Id == id, ct);
             if (subject is null) return Results.NotFound(new { message = "Subject not found." });
 
-            var (ok, code, title, units, hours, year, term, curriculum, problem) = await ValidateAsync(request, id, db, ct);
+            var (ok, code, title, units, plan, year, term, curriculum, problem) = await ValidateAsync(request, id, db, ct);
             if (!ok) return problem;
 
             subject.CurriculumId = curriculum!.Id;
@@ -99,10 +112,9 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             subject.Code = code;
             subject.Title = title;
             subject.Units = units;
-            subject.Hours = hours;
             subject.YearLevel = year;
             subject.Term = term;
-            subject.RequiresLaboratory = request.RequiresLaboratory;
+            Apply(subject, plan);
 
             await ReconcilePrerequisitesAsync(db, subject.Id, curriculum.Id, request.PrerequisiteSubjectIds, ct);
 
@@ -212,7 +224,19 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             return SubjectDto.From(subject);
         }
 
-        private static async Task<(bool Ok, string Code, string Title, int Units, int Hours, int Year, SemesterTerm Term, Domain.Curriculum? Curriculum, IResult Problem)>
+        /// <summary>Writes a validated delivery plan onto the subject, keeping the total in sync.</summary>
+        private static void Apply(Subject subject, DeliveryPlan plan)
+        {
+            subject.Delivery = plan.Delivery;
+            subject.LectureHours = plan.LectureHours;
+            subject.LaboratoryHours = plan.LaboratoryHours;
+            subject.LabRoomKind = plan.LabRoomKind;
+            // Hours is the total the board plots against; it is never edited directly, so the
+            // split and the total can't drift apart.
+            subject.Hours = plan.TotalHours;
+        }
+
+        private static async Task<(bool Ok, string Code, string Title, int Units, DeliveryPlan Plan, int Year, SemesterTerm Term, Domain.Curriculum? Curriculum, IResult Problem)>
             ValidateAsync(SubjectRequest request, Guid? subjectId, AppDbContext db, CancellationToken ct)
         {
             var code = request.Code?.Trim().ToUpperInvariant() ?? string.Empty;
@@ -223,6 +247,8 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             {
                 errors["term"] = ["Please choose the term this subject is offered in."];
             }
+
+            var plan = ValidateDelivery(request, errors);
 
             Domain.Curriculum? curriculum = null;
             if (request.CurriculumId is not { } cid)
@@ -242,10 +268,6 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
             {
                 errors["units"] = ["Units must be between 1 and 20."];
             }
-            if (request.Hours is not { } hours || hours is < 1 or > 40)
-            {
-                errors["hours"] = ["Weekly hours must be between 1 and 40."];
-            }
             if (request.YearLevel is not { } year || year is < 1 or > 3)
             {
                 errors["yearLevel"] = ["Year level must be between 1 and 3."];
@@ -260,10 +282,58 @@ namespace SENGENSystem.Server.Features.Curriculum.Subjects
 
             if (errors.Count > 0)
             {
-                return (false, code, title, 0, 0, 0, default, null, Results.ValidationProblem(errors));
+                return (false, code, title, 0, default, 0, default, null, Results.ValidationProblem(errors));
             }
 
-            return (true, code, title, request.Units!.Value, request.Hours!.Value, request.YearLevel!.Value, term, curriculum, Results.Empty);
+            return (true, code, title, request.Units!.Value, plan, request.YearLevel!.Value, term, curriculum, Results.Empty);
+        }
+
+        /// <summary>
+        /// Validates the lecture/laboratory split. The rules are what make the engine's room-kind
+        /// hard constraint meaningful: a laboratory component must say <i>which</i> laboratory it
+        /// needs, and a lecture-laboratory subject must state both halves — an unstated half would
+        /// silently become an unschedulable meeting later.
+        /// </summary>
+        private static DeliveryPlan ValidateDelivery(SubjectRequest request, Dictionary<string, string[]> errors)
+        {
+            if (!Enum.TryParse<SubjectDelivery>(request.Delivery, ignoreCase: true, out var delivery)
+                || !Enum.IsDefined(delivery))
+            {
+                errors["delivery"] = ["Choose whether this subject is lecture only, laboratory only, or lecture-laboratory."];
+                return default;
+            }
+
+            var lecture = delivery.HasLecture() ? request.LectureHours ?? 0 : 0;
+            var lab = delivery.HasLaboratory() ? request.LaboratoryHours ?? 0 : 0;
+
+            if (delivery.HasLecture() && lecture is < 1 or > 40)
+            {
+                errors["lectureHours"] = ["Lecture hours must be between 1 and 40."];
+            }
+            if (delivery.HasLaboratory() && lab is < 1 or > 40)
+            {
+                errors["laboratoryHours"] = ["Laboratory hours must be between 1 and 40."];
+            }
+            if (lecture + lab > 40)
+            {
+                errors["lectureHours"] = ["Lecture and laboratory hours together can't exceed 40 a week."];
+            }
+
+            RoomKind? labKind = null;
+            if (delivery.HasLaboratory())
+            {
+                if (!Enum.TryParse<RoomKind>(request.LabRoomKind, ignoreCase: true, out var parsed)
+                    || !parsed.IsLaboratory())
+                {
+                    errors["labRoomKind"] = ["Choose which laboratory this subject needs — computer or kitchen."];
+                }
+                else
+                {
+                    labKind = parsed;
+                }
+            }
+
+            return new DeliveryPlan(delivery, lecture, lab, labKind);
         }
     }
 }
