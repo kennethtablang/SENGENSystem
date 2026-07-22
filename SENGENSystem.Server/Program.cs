@@ -9,6 +9,7 @@ using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.AcademicSetup.Buildings;
+using SENGENSystem.Server.Features.Analytics.RoomUtilization;
 using SENGENSystem.Server.Features.AcademicSetup.ClassSections;
 using SENGENSystem.Server.Features.AcademicSetup.Rooms;
 using SENGENSystem.Server.Features.AcademicSetup.SchoolYears;
@@ -17,6 +18,7 @@ using SENGENSystem.Server.Features.Audit.GetAuditTrail;
 using SENGENSystem.Server.Features.Curriculum.Curricula;
 using SENGENSystem.Server.Features.Curriculum.Subjects;
 using SENGENSystem.Server.Features.Dashboard;
+using SENGENSystem.Server.Features.EnrollmentCycle;
 using SENGENSystem.Server.Features.Documents.Checklist;
 using SENGENSystem.Server.Features.Documents.Reminders;
 using SENGENSystem.Server.Features.Enlistment.Approvals;
@@ -42,14 +44,18 @@ using SENGENSystem.Server.Features.Registration.Manage;
 using SENGENSystem.Server.Features.Reports;
 using SENGENSystem.Server.Features.Reports.FacultyLoading;
 using SENGENSystem.Server.Features.Reports.Live;
+using SENGENSystem.Server.Features.Reports.RoomGrid;
 using SENGENSystem.Server.Features.Reports.SemesterExport;
 using SENGENSystem.Server.Features.Reports.SystemExport;
 using SENGENSystem.Server.Features.Registration.RegisterStudent;
 using SENGENSystem.Server.Features.Registration.TermActivation;
+using SENGENSystem.Server.Features.SystemParameters;
 using SENGENSystem.Server.Features.Scheduling.Board;
 using SENGENSystem.Server.Features.Scheduling.Engine;
+using SENGENSystem.Server.Features.Scheduling.Finalize;
 using SENGENSystem.Server.Features.Scheduling.GenerateSchedule;
 using SENGENSystem.Server.Features.Scheduling.GetSchedule;
+using SENGENSystem.Server.Features.Scheduling.SoftConstraints;
 using SENGENSystem.Server.Features.Scheduling.MySchedule;
 using SENGENSystem.Server.Features.UserManagement.CreateUser;
 using SENGENSystem.Server.Features.UserManagement.ListUsers;
@@ -63,10 +69,21 @@ namespace SENGENSystem.Server
     {
         public static async Task Main(string[] args)
         {
+            // QuestPDF is used for the Consolidated Faculty Loading Report (FR-RPT-02).
+            // The Community license is free for organizations under $1M USD annual revenue;
+            // above that threshold this must be changed to a purchased license type.
+            QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
             var builder = WebApplication.CreateBuilder(args);
 
             builder.Services.AddControllers();
             builder.Services.AddOpenApi();
+
+            // Without this, an unhandled exception returns a bare 500 with an *empty* body, so the
+            // client has nothing to show but a generic "Something went wrong". ProblemDetails +
+            // the exception handler below guarantee every failure carries a JSON body with a
+            // message and a trace id the user can quote when reporting it.
+            builder.Services.AddProblemDetails();
 
             builder.Services.AddDbContext<AppDbContext>(options =>
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -122,6 +139,38 @@ namespace SENGENSystem.Server
 
             await DbInitializer.InitializeAsync(app.Services);
 
+            // Global safety net: turn any unhandled exception into a JSON ProblemDetails response
+            // instead of an empty-bodied 500. Registered first so it wraps the whole pipeline.
+            app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+            {
+                var feature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>();
+                var ex = feature?.Error;
+                var traceId = context.TraceIdentifier;
+
+                var logger = context.RequestServices
+                    .GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("UnhandledException");
+                logger.LogError(ex, "Unhandled exception on {Path} [trace {TraceId}]",
+                    feature?.Path, traceId);
+
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                context.Response.ContentType = "application/problem+json";
+
+                // This is an internal institutional system, so the exception summary is a
+                // reportable diagnostic rather than a leak — it gives staff a real lead instead
+                // of a shrug. The trace id ties it to the full stack trace in the server log.
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    title = "The server hit an unexpected error.",
+                    detail = ex is null
+                        ? "An unknown error occurred."
+                        : $"{ex.GetType().Name}: {ex.Message}",
+                    status = StatusCodes.Status500InternalServerError,
+                    reference = traceId,
+                    message = ex is null ? "An unknown error occurred." : $"{ex.GetType().Name}: {ex.Message}"
+                });
+            }));
+
             app.UseDefaultFiles();
             app.MapStaticAssets();
 
@@ -151,6 +200,8 @@ namespace SENGENSystem.Server
             // Scheduling slice (FR-SCHED, FR-FAC)
             app.MapGenerateSchedule();
             app.MapGetSchedule();
+            app.MapSoftConstraints();
+            app.MapFinalizeSchedule();
             app.MapScheduleBoard();
             app.MapMySchedule();
 
@@ -182,6 +233,9 @@ namespace SENGENSystem.Server
             app.MapMyEnlistment();
             app.MapEnlistmentApprovals();
 
+            // Enrollment cycle slice — the active term's stage banner; Registrar advances it
+            app.MapEnrollmentStage();
+
             // Academic setup slice — School Admin manages school years, semesters, buildings, rooms
             app.MapSchoolYears();
             app.MapSemesters();
@@ -198,6 +252,10 @@ namespace SENGENSystem.Server
             app.MapFacultyLoad();
             app.MapFacultyPreferences();
 
+            // System parameters slice — School Admin tunes the scheduling engine's institutional
+            // inputs: allowable time slots, unit-load ceilings, section seat cap (FR-SCHED-05)
+            app.MapSystemParameters();
+
             // User management slice — School Admin account CRUD (FR-AUTH-07)
             app.MapListUsers();
             app.MapCreateUser();
@@ -209,9 +267,14 @@ namespace SENGENSystem.Server
             app.MapDashboardMetrics();
             app.MapSchedulingTransparency();
 
+            // Analytics slice — institution-wide classroom usage analysis (FR-DASH-02)
+            app.MapRoomUtilizationAnalysis();
+            app.MapRoomUtilizationExcel();
+
             // Reports slice — semester-scoped, exportable reports (FR-RPT) + live push channel
             app.MapReports();
             app.MapFacultyLoadingReports();
+            app.MapRoomGridSchedule();
             app.MapSemesterExport();
             app.MapSystemParametersExport();
             app.MapHub<ReportsHub>("/hubs/reports");
