@@ -31,9 +31,11 @@ namespace SENGENSystem.Server.Features.FacultyLoad
         Guid? AssignedToProfileId,
         string? AssignedToName)
     {
+        // Type reads as "Lecture only" / "Laboratory only" / "Lecture–Laboratory" — a mixed subject
+        // is two meetings on the timetable, which is worth seeing while allocating the load.
         public static LoadRowDto From(Subject s, ClassSection c, bool isAssigned, Guid? assignedToProfileId, string? assignedToName) =>
             new(s.Id, c.Id, s.Code, s.Title, s.ProgramCode, c.YearLevel, c.SectionName, s.Units,
-                s.RequiresLaboratory ? "Laboratory" : "Lecture", isAssigned, assignedToProfileId, assignedToName);
+                s.Delivery.Label(), isAssigned, assignedToProfileId, assignedToName);
     }
 
     /// <summary>Modal payload: the faculty being edited plus every assignable subject×class-section row.</summary>
