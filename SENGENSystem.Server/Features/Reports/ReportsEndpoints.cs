@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
@@ -200,7 +200,7 @@ namespace SENGENSystem.Server.Features.Reports
                     return new object[]
                     {
                         r.Name, r.Building?.Name ?? string.Empty, r.Capacity,
-                        r.IsLaboratory ? "Laboratory" : "Lecture",
+                        r.Kind.Label(),
                         agg.Classes, Math.Round(agg.Hours, 1),
                         Math.Round(agg.WindowHours, 1),
                         Math.Round(100.0 * agg.WindowHours / WindowHoursPerWeek, 1)
