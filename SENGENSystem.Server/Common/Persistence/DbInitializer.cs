@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Domain;
 
@@ -26,6 +26,7 @@ namespace SENGENSystem.Server.Common.Persistence
             await SeedSchedulingSampleAsync(db, hasher);
             await SeedReturningStudentsAsync(db);
             await BackfillAcademicSetupAsync(db);
+            await SeedStiProgramsAsync(db);
             await SeedFacultyLoadAsync(db);
             await SeedRichDemoDataAsync(db, hasher);
         }
@@ -93,10 +94,10 @@ namespace SENGENSystem.Server.Common.Persistence
                 var annex = new Building { Name = "Annex Building", Code = "AX" };
                 db.Buildings.Add(annex);
                 db.Rooms.AddRange(
-                    new Room { Name = "Annex 101", Capacity = 50, IsLaboratory = false, BuildingId = annex.Id },
-                    new Room { Name = "Annex 102", Capacity = 35, IsLaboratory = false, BuildingId = annex.Id },
-                    new Room { Name = "Computer Lab B", Capacity = 40, IsLaboratory = true, BuildingId = annex.Id },
-                    new Room { Name = "AVR", Capacity = 60, IsLaboratory = false, BuildingId = annex.Id });
+                    new Room { Name = "Annex 101", Capacity = 50, Kind = RoomKind.LectureRoom, BuildingId = annex.Id },
+                    new Room { Name = "Annex 102", Capacity = 35, Kind = RoomKind.LectureRoom, BuildingId = annex.Id },
+                    new Room { Name = "Computer Lab B", Capacity = 40, Kind = RoomKind.ComputerLaboratory, BuildingId = annex.Id },
+                    new Room { Name = "AVR", Capacity = 60, Kind = RoomKind.LectureRoom, BuildingId = annex.Id });
                 await db.SaveChangesAsync();
             }
 
@@ -107,11 +108,11 @@ namespace SENGENSystem.Server.Common.Persistence
                 var cs101 = await db.Subjects.FirstOrDefaultAsync(s => s.CurriculumId == bscs.Id && s.Code == "CS101");
                 var year2 = new[]
                 {
-                    new Subject { Code = "CS201", Title = "Data Structures and Algorithms", Units = 3, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
-                    new Subject { Code = "CS202L", Title = "Object-Oriented Programming Laboratory", Units = 1, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, RequiresLaboratory = true, CurriculumId = bscs.Id },
-                    new Subject { Code = "MATH201", Title = "Discrete Mathematics", Units = 3, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
-                    new Subject { Code = "GE201", Title = "Science, Technology and Society", Units = 3, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
-                    new Subject { Code = "CS203", Title = "Computer Organization", Units = 3, Hours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.SecondSemester, CurriculumId = bscs.Id }
+                    new Subject { Code = "CS201", Title = "Data Structures and Algorithms", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
+                    new Subject { Code = "CS202L", Title = "Object-Oriented Programming Laboratory", Units = 1, Hours = 3, Delivery = SubjectDelivery.LaboratoryOnly, LaboratoryHours = 3, LabRoomKind = RoomKind.ComputerLaboratory, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
+                    new Subject { Code = "MATH201", Title = "Discrete Mathematics", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
+                    new Subject { Code = "GE201", Title = "Science, Technology and Society", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.FirstSemester, CurriculumId = bscs.Id },
+                    new Subject { Code = "CS203", Title = "Computer Organization", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = "BSCS", YearLevel = 2, Term = SemesterTerm.SecondSemester, CurriculumId = bscs.Id }
                 };
                 db.Subjects.AddRange(year2);
                 if (cs101 is not null)
@@ -138,11 +139,11 @@ namespace SENGENSystem.Server.Common.Persistence
 
                 var it = new[]
                 {
-                    new Subject { Code = "IT101", Title = "Introduction to Information Technology", Units = 3, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
-                    new Subject { Code = "IT102L", Title = "Computer Fundamentals Laboratory", Units = 1, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, RequiresLaboratory = true, CurriculumId = bsit.Id },
-                    new Subject { Code = "GE101", Title = "Understanding the Self", Units = 3, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
-                    new Subject { Code = "FIL101", Title = "Komunikasyon sa Akademikong Filipino", Units = 3, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
-                    new Subject { Code = "IT103", Title = "Web Systems Basics", Units = 3, Hours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.SecondSemester, CurriculumId = bsit.Id }
+                    new Subject { Code = "IT101", Title = "Introduction to Information Technology", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
+                    new Subject { Code = "IT102L", Title = "Computer Fundamentals Laboratory", Units = 1, Hours = 3, Delivery = SubjectDelivery.LaboratoryOnly, LaboratoryHours = 3, LabRoomKind = RoomKind.ComputerLaboratory, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
+                    new Subject { Code = "GE101", Title = "Understanding the Self", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
+                    new Subject { Code = "FIL101", Title = "Komunikasyon sa Akademikong Filipino", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = bsit.Id },
+                    new Subject { Code = "IT103", Title = "Web Systems Basics", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = "BSIT", YearLevel = 1, Term = SemesterTerm.SecondSemester, CurriculumId = bsit.Id }
                 };
                 db.Subjects.AddRange(it);
                 db.SubjectPrerequisites.Add(new SubjectPrerequisite { SubjectId = it[4].Id, PrerequisiteSubjectId = it[0].Id });
@@ -390,6 +391,107 @@ namespace SENGENSystem.Server.Common.Persistence
         /// Development-only: give the first faculty member a small starting load in the active
         /// semester so the Faculty Load screen has data to show. Idempotent — runs only once.
         /// </summary>
+        /// <summary>
+        /// The programs STI Alaminos actually offers — HRA (3-yr Hotel and Restaurant
+        /// Administration), HRS (2-yr Hospitality and Restaurant Services), and ITP (2-yr
+        /// Information Technology) — plus the one Kitchen Laboratory the campus has.
+        /// <para>
+        /// The subjects deliberately span all three delivery modes, because that is what makes
+        /// the room-kind hard constraint testable: ITP laboratory hours need the Computer
+        /// Laboratory, HRA/HRS laboratory hours need the Kitchen Laboratory, and the campus has
+        /// exactly one of each, so the two programs genuinely contend for time.
+        /// </para>
+        /// Each block is idempotent, keyed on the program code / room name.
+        /// </summary>
+        private static async Task SeedStiProgramsAsync(AppDbContext db)
+        {
+            if (!await db.Rooms.AnyAsync(r => r.Kind == RoomKind.KitchenLaboratory))
+            {
+                var building = await db.Buildings.OrderBy(b => b.Name).FirstOrDefaultAsync();
+                if (building is not null)
+                {
+                    db.Rooms.Add(new Room
+                    {
+                        Name = "Kitchen Laboratory",
+                        Capacity = 30,
+                        Kind = RoomKind.KitchenLaboratory,
+                        BuildingId = building.Id
+                    });
+                    await db.SaveChangesAsync();
+                }
+            }
+
+            var schoolYear = await db.SchoolYears.FirstOrDefaultAsync(y => y.IsActive);
+
+            // (code, title, units, delivery, lecture hrs, lab hrs, lab kind, year, term)
+            var programs = new (string Code, string Name, (string Code, string Title, int Units,
+                SubjectDelivery Delivery, int Lec, int Lab, RoomKind? LabKind, int Year, SemesterTerm Term)[] Subjects)[]
+            {
+                ("ITP", "2-yr Information Technology Program",
+                [
+                    ("ITP101", "Computer Programming 1", 3, SubjectDelivery.LectureLaboratory, 2, 3, RoomKind.ComputerLaboratory, 1, SemesterTerm.FirstSemester),
+                    ("ITP102", "Web Design and Development", 3, SubjectDelivery.LectureLaboratory, 2, 3, RoomKind.ComputerLaboratory, 1, SemesterTerm.FirstSemester),
+                    ("ITP111", "Purposive Communication", 3, SubjectDelivery.LectureOnly, 3, 0, null, 1, SemesterTerm.FirstSemester),
+                    ("ITP103", "Database Management Systems", 3, SubjectDelivery.LectureLaboratory, 2, 3, RoomKind.ComputerLaboratory, 1, SemesterTerm.SecondSemester),
+                    ("ITP201", "Networking 1", 3, SubjectDelivery.LectureLaboratory, 2, 3, RoomKind.ComputerLaboratory, 2, SemesterTerm.FirstSemester),
+                    ("ITP202", "Systems Analysis and Design", 3, SubjectDelivery.LectureOnly, 3, 0, null, 2, SemesterTerm.SecondSemester)
+                ]),
+                ("HRA", "3-yr Hotel and Restaurant Administration",
+                [
+                    ("HRA101", "Fundamentals of Food Service Operations", 3, SubjectDelivery.LectureLaboratory, 2, 3, RoomKind.KitchenLaboratory, 1, SemesterTerm.FirstSemester),
+                    ("HRA102", "Introduction to the Hospitality Industry", 3, SubjectDelivery.LectureOnly, 3, 0, null, 1, SemesterTerm.FirstSemester),
+                    ("HRA103", "Culinary Arts 1", 2, SubjectDelivery.LaboratoryOnly, 0, 3, RoomKind.KitchenLaboratory, 1, SemesterTerm.SecondSemester),
+                    ("HRA201", "Food and Beverage Service", 3, SubjectDelivery.LectureLaboratory, 2, 3, RoomKind.KitchenLaboratory, 2, SemesterTerm.FirstSemester),
+                    ("HRA202", "Front Office Management", 3, SubjectDelivery.LectureOnly, 3, 0, null, 2, SemesterTerm.SecondSemester),
+                    ("HRA301", "Hospitality Operations Practicum", 3, SubjectDelivery.LectureOnly, 3, 0, null, 3, SemesterTerm.FirstSemester)
+                ]),
+                ("HRS", "2-yr Hospitality and Restaurant Services",
+                [
+                    ("HRS101", "Basic Food Preparation", 3, SubjectDelivery.LectureLaboratory, 2, 3, RoomKind.KitchenLaboratory, 1, SemesterTerm.FirstSemester),
+                    ("HRS102", "Housekeeping Services", 3, SubjectDelivery.LectureOnly, 3, 0, null, 1, SemesterTerm.FirstSemester),
+                    ("HRS103", "Bartending and Beverage Service", 2, SubjectDelivery.LaboratoryOnly, 0, 3, RoomKind.KitchenLaboratory, 1, SemesterTerm.SecondSemester),
+                    ("HRS201", "Front Office Services", 3, SubjectDelivery.LectureOnly, 3, 0, null, 2, SemesterTerm.FirstSemester)
+                ])
+            };
+
+            foreach (var (code, name, subjects) in programs)
+            {
+                if (await db.Curricula.AnyAsync(c => c.ProgramCode == code))
+                {
+                    continue;
+                }
+
+                var curriculum = new Curriculum { ProgramCode = code, ProgramName = name, IsActive = true };
+                db.Curricula.Add(curriculum);
+                if (schoolYear is not null)
+                {
+                    db.CurriculumSchoolYears.Add(
+                        new CurriculumSchoolYear { CurriculumId = curriculum.Id, SchoolYearId = schoolYear.Id });
+                }
+
+                foreach (var s in subjects)
+                {
+                    db.Subjects.Add(new Subject
+                    {
+                        Code = s.Code,
+                        Title = s.Title,
+                        Units = s.Units,
+                        Delivery = s.Delivery,
+                        LectureHours = s.Lec,
+                        LaboratoryHours = s.Lab,
+                        LabRoomKind = s.LabKind,
+                        Hours = s.Lec + s.Lab,
+                        ProgramCode = code,
+                        YearLevel = s.Year,
+                        Term = s.Term,
+                        CurriculumId = curriculum.Id
+                    });
+                }
+            }
+
+            await db.SaveChangesAsync();
+        }
+
         private static async Task SeedFacultyLoadAsync(AppDbContext db)
         {
             if (await db.FacultyLoadAssignments.AnyAsync())
@@ -680,10 +782,10 @@ namespace SENGENSystem.Server.Common.Persistence
 
             var rooms = new[]
             {
-                new Room { Name = "Room 301", Capacity = 45, IsLaboratory = false, BuildingId = mainBuilding.Id },
-                new Room { Name = "Room 302", Capacity = 45, IsLaboratory = false, BuildingId = mainBuilding.Id },
-                new Room { Name = "Room 201", Capacity = 40, IsLaboratory = false, BuildingId = mainBuilding.Id },
-                new Room { Name = "Computer Lab A", Capacity = 40, IsLaboratory = true, BuildingId = mainBuilding.Id }
+                new Room { Name = "Room 301", Capacity = 45, Kind = RoomKind.LectureRoom, BuildingId = mainBuilding.Id },
+                new Room { Name = "Room 302", Capacity = 45, Kind = RoomKind.LectureRoom, BuildingId = mainBuilding.Id },
+                new Room { Name = "Room 201", Capacity = 40, Kind = RoomKind.LectureRoom, BuildingId = mainBuilding.Id },
+                new Room { Name = "Computer Lab A", Capacity = 40, Kind = RoomKind.ComputerLaboratory, BuildingId = mainBuilding.Id }
             };
             db.Rooms.AddRange(rooms);
 
@@ -705,11 +807,11 @@ namespace SENGENSystem.Server.Common.Persistence
 
             var subjects = new[]
             {
-                new Subject { Code = "CS101", Title = "Introduction to Computing", Units = 3, Hours = 3, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = curriculum.Id },
-                new Subject { Code = "MATH101", Title = "College Algebra", Units = 3, Hours = 3, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = curriculum.Id },
-                new Subject { Code = "ENG101", Title = "Purposive Communication", Units = 3, Hours = 3, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = curriculum.Id },
-                new Subject { Code = "PE101", Title = "Physical Education 1", Units = 2, Hours = 2, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.SecondSemester, CurriculumId = curriculum.Id },
-                new Subject { Code = "CS102L", Title = "Programming Laboratory", Units = 1, Hours = 3, ProgramCode = program, YearLevel = 1, RequiresLaboratory = true, Term = SemesterTerm.SecondSemester, CurriculumId = curriculum.Id }
+                new Subject { Code = "CS101", Title = "Introduction to Computing", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = curriculum.Id },
+                new Subject { Code = "MATH101", Title = "College Algebra", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = curriculum.Id },
+                new Subject { Code = "ENG101", Title = "Purposive Communication", Units = 3, Hours = 3, Delivery = SubjectDelivery.LectureOnly, LectureHours = 3, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.FirstSemester, CurriculumId = curriculum.Id },
+                new Subject { Code = "PE101", Title = "Physical Education 1", Units = 2, Hours = 2, Delivery = SubjectDelivery.LectureOnly, LectureHours = 2, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.SecondSemester, CurriculumId = curriculum.Id },
+                new Subject { Code = "CS102L", Title = "Programming Laboratory", Units = 1, Hours = 3, Delivery = SubjectDelivery.LaboratoryOnly, LaboratoryHours = 3, LabRoomKind = RoomKind.ComputerLaboratory, ProgramCode = program, YearLevel = 1, Term = SemesterTerm.SecondSemester, CurriculumId = curriculum.Id }
             };
             db.Subjects.AddRange(subjects);
 

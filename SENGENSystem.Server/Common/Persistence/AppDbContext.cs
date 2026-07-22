@@ -101,6 +101,10 @@ namespace SENGENSystem.Server.Common.Persistence
             modelBuilder.Entity<Room>(room =>
             {
                 room.Property(r => r.Name).HasMaxLength(60).IsRequired();
+                // Stored as text so the schema reads plainly in ad-hoc SQL; rooms that predate
+                // the kind default to a lecture room and the migration promotes the old labs.
+                room.Property(r => r.Kind).HasConversion<string>().HasMaxLength(30)
+                    .HasDefaultValue(RoomKind.LectureRoom);
                 room.HasOne(r => r.Building)
                     .WithMany(b => b.Rooms)
                     .HasForeignKey(r => r.BuildingId)
@@ -135,6 +139,9 @@ namespace SENGENSystem.Server.Common.Persistence
                 // Existing rows (pre-term) default to First Semester.
                 subject.Property(s => s.Term).HasConversion<string>().HasMaxLength(20)
                     .HasDefaultValue(SemesterTerm.FirstSemester);
+                subject.Property(s => s.Delivery).HasConversion<string>().HasMaxLength(30)
+                    .HasDefaultValue(SubjectDelivery.LectureOnly);
+                subject.Property(s => s.LabRoomKind).HasConversion<string>().HasMaxLength(30);
                 // A subject code is unique within its curriculum (the same code may recur across
                 // curriculum versions), rather than globally.
                 subject.HasIndex(s => new { s.CurriculumId, s.Code }).IsUnique();
