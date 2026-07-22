@@ -11,11 +11,16 @@ namespace SENGENSystem.Server.Features.Scheduling
         string SubjectTitle,
         string CohortKey,
         string Room,
+        string RoomKind,
+        // Which meeting of the subject this row is — "Lecture" or "Laboratory". A
+        // lecture-laboratory subject produces one row of each, in different rooms.
+        string Component,
         string Day,
         string Time,
         string Faculty,
         bool IsPublished,
-        bool IsManualOverride)
+        bool IsManualOverride,
+        bool IsFinalized)
     {
         public static ScheduleRowDto From(ScheduleAssignment a) =>
             new(
@@ -26,12 +31,24 @@ namespace SENGENSystem.Server.Features.Scheduling
                 a.Section?.Subject?.Title ?? string.Empty,
                 a.Section?.CohortKey ?? string.Empty,
                 a.Room?.Name ?? string.Empty,
+                (a.Room?.Kind ?? Domain.RoomKind.LectureRoom).ToString(),
+                ComponentOf(a).ToString(),
                 a.TimeSlot?.Day.ToString() ?? string.Empty,
                 a.TimeSlot is null ? string.Empty : $"{Format(a.TimeSlot.StartMinutes)}–{Format(a.TimeSlot.EndMinutes)}",
                 a.FacultyProfile?.User?.FullName ?? string.Empty,
                 a.IsPublished,
-                a.IsManualOverride);
+                a.IsManualOverride,
+                a.IsFinalized);
 
         private static string Format(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
+
+        /// <summary>
+        /// Which component a placement is, read off the room it occupies. The room-kind hard
+        /// constraint (H3b) makes this exact rather than a guess: laboratory hours are only ever
+        /// in a laboratory and lecture hours only ever in a lecture room, so no separate column
+        /// is needed on the assignment.
+        /// </summary>
+        internal static ClassComponent ComponentOf(ScheduleAssignment a) =>
+            a.Room?.Kind.IsLaboratory() == true ? ClassComponent.Laboratory : ClassComponent.Lecture;
     }
 }
