@@ -37,10 +37,10 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 .Select(s => new BoardSemesterDto(s.Id, s.Name, s.IsActive, s.IsArchived))
                 .ToListAsync(ct);
 
-            var rooms = await db.Rooms.AsNoTracking()
-                .OrderBy(r => r.Name)
-                .Select(r => new BoardRoomDto(r.Id, r.Name, r.Capacity, r.IsLaboratory))
-                .ToListAsync(ct);
+            // Materialised before projecting: Room.IsLaboratory is derived from Kind, not a column.
+            var rooms = (await db.Rooms.AsNoTracking().OrderBy(r => r.Name).ToListAsync(ct))
+                .Select(r => new BoardRoomDto(r.Id, r.Name, r.Capacity, r.Kind.ToString(), r.Kind.Label(), r.IsLaboratory))
+                .ToList();
 
             var semester = await ResolveSemesterAsync(semesterId, db, ct);
             if (semester is null)
@@ -78,33 +78,58 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 .Include(a => a.FacultyProfile).ThenInclude(f => f!.User)
                 .ToListAsync(ct);
 
-            // A load row is "placed" once a schedule entry exists for the same faculty, subject,
-            // and cohort. Keyed on that triple so pool and calendar stay in sync.
-            var placedKeys = entries
-                .Where(a => a.Section is not null)
-                .Select(a => (a.FacultyProfileId, a.Section!.SubjectId, a.Section.CohortKey))
-                .ToHashSet();
+            // Minutes already plotted per (faculty, subject, cohort, component). A component is
+            // "done" when its own hours are covered — a lecture-laboratory subject can be half
+            // plotted, which is exactly what the tracker and the pool need to show.
+            var plotted = PlottedMinutes(entries);
 
-            var pool = loads
+            // The load rows expanded into meetings: one per delivery component of the subject.
+            var meetings = loads
                 .Where(l => l.Subject is not null && l.ClassSection is not null)
-                .Where(l => !placedKeys.Contains((l.FacultyProfileId, l.SubjectId, CohortKey(l.ClassSection!))))
                 .OrderBy(l => l.FacultyProfile?.User?.LastName)
                 .ThenBy(l => l.ClassSection!.ProgramCode).ThenBy(l => l.ClassSection!.YearLevel)
                 .ThenBy(l => l.ClassSection!.SectionName).ThenBy(l => l.Subject!.Code)
-                .Select(l => new PoolItemDto(
-                    l.Id,
-                    l.SubjectId,
-                    l.Subject!.Code,
-                    l.Subject.Title,
-                    l.Subject.Units,
-                    l.Subject.RequiresLaboratory,
-                    l.FacultyProfileId,
-                    l.FacultyProfile?.User?.FullName ?? "(unknown)",
-                    l.ClassSection!.ProgramCode,
-                    l.ClassSection.YearLevel,
-                    l.ClassSection.SectionName,
-                    l.ClassSection.DisplayName,
-                    CohortKey(l.ClassSection)))
+                .SelectMany(l => l.Subject!.Components().Select(c => (Load: l, Component: c)))
+                .ToList();
+
+            var pool = meetings
+                .Select(m =>
+                {
+                    var subject = m.Load.Subject!;
+                    var cohort = m.Load.ClassSection!;
+                    var cohortKey = CohortKey(cohort);
+                    var required = subject.HoursFor(m.Component);
+                    var done = plotted.GetValueOrDefault(
+                        (m.Load.FacultyProfileId, m.Load.SubjectId, cohortKey, m.Component)) / 60.0;
+                    var kind = subject.RoomKindFor(m.Component);
+                    return new PoolItemDto(
+                        PoolKey(m.Load.Id, m.Component),
+                        m.Load.Id,
+                        m.Component.ToString(),
+                        m.Component.ToString(),
+                        m.Load.SubjectId,
+                        subject.Code,
+                        subject.Title,
+                        subject.Units,
+                        subject.Delivery.ToString(),
+                        subject.Delivery.ShortLabel(),
+                        required,
+                        Math.Round(done, 2),
+                        Math.Round(Math.Max(0, required - done), 2),
+                        kind.ToString(),
+                        kind.Label(),
+                        kind.IsLaboratory(),
+                        m.Load.FacultyProfileId,
+                        m.Load.FacultyProfile?.User?.FullName ?? "(unknown)",
+                        cohort.ProgramCode,
+                        cohort.YearLevel,
+                        cohort.SectionName,
+                        cohort.DisplayName,
+                        cohortKey);
+                })
+                // Still draggable while any of its own hours are unplotted; a fully covered
+                // meeting leaves the pool.
+                .Where(p => p.RemainingHours > 0)
                 .ToList();
 
             var entryDtos = entries
@@ -112,23 +137,32 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 .Select(ToEntryDto)
                 .ToList();
 
-            // Weekly Hours Tracker: one row per assigned subject (faculty × subject × class section)
-            // with the weekly hours it requires. Plotted hours are summed on the client from entries.
-            var hoursTracker = loads
-                .Where(l => l.Subject is not null && l.ClassSection is not null)
-                .OrderBy(l => l.FacultyProfile?.User?.LastName)
-                .ThenBy(l => l.ClassSection!.ProgramCode).ThenBy(l => l.ClassSection!.YearLevel)
-                .ThenBy(l => l.ClassSection!.SectionName).ThenBy(l => l.Subject!.Code)
-                .Select(l => new SubjectHoursDto(
-                    l.Id,
-                    l.FacultyProfileId,
-                    l.SubjectId,
-                    l.Subject!.Code,
-                    l.Subject.Title,
-                    l.FacultyProfile?.User?.FullName ?? "(unknown)",
-                    l.ClassSection!.DisplayName,
-                    CohortKey(l.ClassSection),
-                    l.Subject.Hours))
+            // Weekly Hours Tracker: one row per meeting (faculty × subject × class section ×
+            // component) with the weekly hours that component requires. Plotted hours are summed
+            // on the client from the live entries so the reading updates on every drag.
+            var hoursTracker = meetings
+                .Select(m =>
+                {
+                    var subject = m.Load.Subject!;
+                    var cohort = m.Load.ClassSection!;
+                    var kind = subject.RoomKindFor(m.Component);
+                    return new SubjectHoursDto(
+                        PoolKey(m.Load.Id, m.Component),
+                        m.Load.Id,
+                        m.Load.FacultyProfileId,
+                        m.Load.SubjectId,
+                        subject.Code,
+                        subject.Title,
+                        m.Component.ToString(),
+                        m.Component.ToString(),
+                        subject.Delivery.ShortLabel(),
+                        kind.ToString(),
+                        kind.Label(),
+                        m.Load.FacultyProfile?.User?.FullName ?? "(unknown)",
+                        cohort.DisplayName,
+                        CohortKey(cohort),
+                        subject.HoursFor(m.Component));
+                })
                 .ToList();
 
             var faculty = facultyProfiles.Select(f => new BoardFacultyDto(f.Id, f.User?.FullName ?? "(unknown)")).ToList();
@@ -170,21 +204,52 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == request.RoomId, ct);
             if (room is null) return Results.BadRequest(new { message = "The selected room no longer exists." });
 
+            var subject = load.Subject;
+            if (!Enum.TryParse<ClassComponent>(request.Component, ignoreCase: true, out var component)
+                || !subject.Components().Contains(component))
+            {
+                return Results.BadRequest(new
+                {
+                    message = $"{subject.Code} is {subject.Delivery.Label().ToLowerInvariant()} — " +
+                        "it has no such meeting to place. Refresh the board."
+                });
+            }
+
+            // H3b, enforced by hand exactly as the engine enforces it in a generated schedule:
+            // laboratory hours only in the laboratory the subject requires, lecture hours only in
+            // a lecture room. Without this the single Computer Lab could be spent on lectures.
+            var requiredKind = subject.RoomKindFor(component);
+            if (room.Kind != requiredKind)
+            {
+                return Results.Conflict(new
+                {
+                    message = $"{subject.Code}’s {component.ToString().ToLowerInvariant()} hours need a " +
+                        $"{requiredKind.Label().ToLowerInvariant()}, and “{room.Name}” is a " +
+                        $"{room.Kind.Label().ToLowerInvariant()}."
+                });
+            }
+
             var cohort = load.ClassSection;
             var cohortKey = CohortKey(cohort);
 
-            // One placement per (faculty, subject, cohort) — the pool already hides placed rows,
-            // but guard against a double POST.
-            var alreadyPlaced = await db.ScheduleAssignments
-                .AnyAsync(a => a.SemesterId == load.SemesterId
-                    && a.FacultyProfileId == load.FacultyProfileId
-                    && a.Section!.SubjectId == load.SubjectId
-                    && a.Section.ProgramCode == cohort.ProgramCode
-                    && a.Section.YearLevel == cohort.YearLevel
-                    && a.Section.Block == cohort.SectionName, ct);
-            if (alreadyPlaced)
+            // The pool hides a meeting once its own hours are covered; re-check here so a stale
+            // board (or a double POST) cannot over-plot it.
+            var existing = await db.ScheduleAssignments.AsNoTracking()
+                .Where(a => a.SemesterId == load.SemesterId)
+                .Include(a => a.Section)
+                .Include(a => a.Room)
+                .Include(a => a.TimeSlot)
+                .ToListAsync(ct);
+            var alreadyPlottedMinutes = PlottedMinutes(existing)
+                .GetValueOrDefault((load.FacultyProfileId, load.SubjectId, cohortKey, component));
+            var requiredMinutes = subject.HoursFor(component) * 60;
+            if (alreadyPlottedMinutes >= requiredMinutes)
             {
-                return Results.Conflict(new { message = $"{load.Subject.Code} for {cohort.DisplayName} is already on the calendar." });
+                return Results.Conflict(new
+                {
+                    message = $"{subject.Code}’s {component.ToString().ToLowerInvariant()} hours for " +
+                        $"{cohort.DisplayName} are already fully plotted."
+                });
             }
 
             var conflict = await CheckConflictAsync(
@@ -210,7 +275,9 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             db.ScheduleAssignments.Add(assignment);
 
             audit.Record(AuditAction.ScheduleOverridden,
-                $"Placed {load.Subject.Code} ({cohort.DisplayName}) with {load.FacultyProfile?.User?.FullName} in {room.Name}, {DayName(request.Day)} {Hhmm(request.StartMinutes)}–{Hhmm(request.EndMinutes)}.",
+                $"Placed {load.Subject.Code} {component.ToString().ToLowerInvariant()} ({cohort.DisplayName}) " +
+                $"with {load.FacultyProfile?.User?.FullName} in {room.Name}, " +
+                $"{DayName(request.Day)} {Hhmm(request.StartMinutes)}–{Hhmm(request.EndMinutes)}.",
                 "ScheduleAssignment", assignment.Id.ToString());
             await db.SaveChangesAsync(ct);
 
@@ -234,6 +301,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
 
             var assignment = await db.ScheduleAssignments
                 .Include(a => a.Section).ThenInclude(s => s!.Subject)
+                .Include(a => a.Room)
                 .Include(a => a.FacultyProfile).ThenInclude(f => f!.User)
                 .FirstOrDefaultAsync(a => a.Id == assignmentId, ct);
             if (assignment?.Section is null)
@@ -246,6 +314,22 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
 
             var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == request.RoomId, ct);
             if (room is null) return Results.BadRequest(new { message = "The selected room no longer exists." });
+
+            // Which meeting this is comes from the room it currently occupies, so re-rooming it
+            // into a different kind would silently reclassify lecture hours as laboratory hours.
+            // Same H3b rule as placement: the target room must suit this meeting.
+            var movingComponent = ScheduleRowDto.ComponentOf(assignment);
+            var movingSubject = assignment.Section.Subject;
+            if (movingSubject is not null && room.Kind != movingSubject.RoomKindFor(movingComponent))
+            {
+                return Results.Conflict(new
+                {
+                    message = $"This is {movingSubject.Code}’s {movingComponent.ToString().ToLowerInvariant()} meeting — " +
+                        $"it needs a {movingSubject.RoomKindFor(movingComponent).Label().ToLowerInvariant()}, " +
+                        $"and “{room.Name}” is a {room.Kind.Label().ToLowerInvariant()}. " +
+                        "Remove it and place it again to change which meeting it is."
+                });
+            }
 
             var conflict = await CheckConflictAsync(
                 db, assignment.SemesterId, assignment.Id, request.RoomId, room.Name,
@@ -386,24 +470,49 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             return slot;
         }
 
-        private static BoardEntryDto ToEntryDto(ScheduleAssignment a) => new(
-            a.Id,
-            a.RoomId,
-            a.Room?.Name ?? string.Empty,
-            (int)(a.TimeSlot?.Day ?? DayOfWeek.Monday),
-            a.TimeSlot?.StartMinutes ?? 0,
-            a.TimeSlot?.EndMinutes ?? 0,
-            a.Section?.SubjectId ?? Guid.Empty,
-            a.Section?.Subject?.Code ?? string.Empty,
-            a.Section?.Subject?.Title ?? string.Empty,
-            a.Section?.Subject?.Units ?? 0,
-            a.Section?.Subject?.RequiresLaboratory ?? false,
-            a.FacultyProfileId,
-            a.FacultyProfile?.User?.FullName ?? string.Empty,
-            a.Section?.CohortKey ?? string.Empty,
-            a.Section is null ? string.Empty : CohortLabel(a.Section),
-            a.IsPublished,
-            a.IsManualOverride);
+        private static BoardEntryDto ToEntryDto(ScheduleAssignment a)
+        {
+            var kind = a.Room?.Kind ?? Domain.RoomKind.LectureRoom;
+            return new BoardEntryDto(
+                a.Id,
+                a.RoomId,
+                a.Room?.Name ?? string.Empty,
+                kind.ToString(),
+                ScheduleRowDto.ComponentOf(a).ToString(),
+                (int)(a.TimeSlot?.Day ?? DayOfWeek.Monday),
+                a.TimeSlot?.StartMinutes ?? 0,
+                a.TimeSlot?.EndMinutes ?? 0,
+                a.Section?.SubjectId ?? Guid.Empty,
+                a.Section?.Subject?.Code ?? string.Empty,
+                a.Section?.Subject?.Title ?? string.Empty,
+                a.Section?.Subject?.Units ?? 0,
+                (a.Section?.Subject?.Delivery ?? SubjectDelivery.LectureOnly).ShortLabel(),
+                a.Section?.Subject?.RequiresLaboratory ?? false,
+                a.FacultyProfileId,
+                a.FacultyProfile?.User?.FullName ?? string.Empty,
+                a.Section?.CohortKey ?? string.Empty,
+                a.Section is null ? string.Empty : CohortLabel(a.Section),
+                a.IsPublished,
+                a.IsManualOverride);
+        }
+
+        /// <summary>
+        /// Minutes already on the calendar per (faculty, subject, cohort, component). The
+        /// component is read off each placement's room, which the room-kind constraint keeps
+        /// exact — so a lecture-laboratory subject's two halves are counted separately.
+        /// </summary>
+        private static Dictionary<(Guid, Guid, string, ClassComponent), int> PlottedMinutes(
+            IEnumerable<ScheduleAssignment> assignments) =>
+            assignments
+                .Where(a => a.Section is not null && a.TimeSlot is not null)
+                .GroupBy(a => (
+                    a.FacultyProfileId,
+                    a.Section!.SubjectId,
+                    a.Section.CohortKey,
+                    ScheduleRowDto.ComponentOf(a)))
+                .ToDictionary(g => g.Key, g => g.Sum(a => a.TimeSlot!.EndMinutes - a.TimeSlot.StartMinutes));
+
+        private static string PoolKey(Guid loadId, ClassComponent component) => $"{loadId}:{component}";
 
         private static string CohortKey(ClassSection c) => $"{c.ProgramCode}-{c.YearLevel}-{c.SectionName}";
         private static string CohortLabel(Section s) => $"{s.ProgramCode} {s.YearLevel}-{s.Block}";
