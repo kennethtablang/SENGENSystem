@@ -16,6 +16,9 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
         Guid SemesterId,
         string SemesterName,
         int SectionCount,
+        // Meetings, not sections: a lecture-laboratory subject is placed as two separate
+        // meetings, so this is the number the "placed" count is measured against.
+        int MeetingCount,
         int AssignedCount,
         int Steps,
         int Seed,
@@ -228,24 +231,57 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             // the audit trail and can be re-entered by hand.
             var seed = request.Seed ?? Random.Shared.Next(1, int.MaxValue);
 
+            // Each section becomes one variable per delivery component: a lecture-laboratory
+            // subject is two meetings (lecture hours in a lecture room, laboratory hours in the
+            // laboratory it requires), everything else is one. Units are attached to the first
+            // component only so faculty load is not counted twice for a split subject.
+            var meetings = new List<SectionVar>();
+            var malformed = new List<string>();
+            foreach (var s in sections)
+            {
+                var subject = s.Subject!;
+                var first = true;
+                foreach (var component in subject.Components())
+                {
+                    var hours = subject.HoursFor(component);
+                    if (hours <= 0)
+                    {
+                        malformed.Add(
+                            $"{s.SectionCode}: {subject.Code} is {subject.Delivery.Label().ToLowerInvariant()} " +
+                            $"but has no {component.ToString().ToLowerInvariant()} hours set — fix it on the Subjects page.");
+                        continue;
+                    }
+
+                    meetings.Add(new SectionVar(
+                        s.Id,
+                        s.SectionCode,
+                        s.ProgramCode,
+                        s.CohortKey,
+                        s.Capacity,
+                        first ? subject.Units : 0,
+                        component,
+                        subject.RoomKindFor(component),
+                        facultyBySection[s.Id],
+                        RequiredMinutes: hours * 60));
+                    first = false;
+                }
+            }
+
+            if (malformed.Count > 0)
+            {
+                return Results.UnprocessableEntity(new
+                {
+                    message = "Some subjects have an incomplete lecture/laboratory hour split.",
+                    reasons = malformed,
+                    steps = 0
+                });
+            }
+
             var problem = new ScheduleProblem
             {
                 Seed = seed,
-                Sections = sections.Select(s => new SectionVar(
-                    s.Id,
-                    s.SectionCode,
-                    s.ProgramCode,
-                    s.CohortKey,
-                    s.Capacity,
-                    s.Subject?.Units ?? 0,
-                    s.Subject?.RequiresLaboratory ?? false,
-                    facultyBySection[s.Id],
-                    // Weekly contact hours drive how long a block the engine must reserve. Fall
-                    // back to units (then a single period) for any subject predating Subject.Hours.
-                    RequiredMinutes: (s.Subject!.Hours > 0
-                        ? s.Subject.Hours
-                        : Math.Max(s.Subject.Units, 1)) * 60)).ToList(),
-                Rooms = rooms.Select(r => new RoomOption(r.Id, r.Capacity, r.IsLaboratory)).ToList(),
+                Sections = meetings,
+                Rooms = rooms.Select(r => new RoomOption(r.Id, r.Capacity, r.Kind)).ToList(),
                 TimeSlots = timeSlots,
                 Faculty = faculty.Select(f => new FacultyOption(
                     f.Id,
@@ -356,7 +392,8 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             var opt = result.Optimization;
             audit.Record(AuditAction.ScheduleGenerated,
                 $"Generated a conflict-free schedule for {semester.Name} (seed {seed}): " +
-                $"{result.Assignments.Count} of {sections.Count} sections placed in {result.Steps:N0} search steps " +
+                $"{result.Assignments.Count} of {meetings.Count} class meetings across {sections.Count} sections " +
+                $"placed in {result.Steps:N0} search steps " +
                 $"({opt.PreferenceHonorRatePct}% of time preferences honored, " +
                 $"{opt.CohortIdleHours}h cohort idle time).",
                 "Semester", semester.Id.ToString());
@@ -370,6 +407,7 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 semester.Id,
                 semester.Name,
                 sections.Count,
+                meetings.Count,
                 result.Assignments.Count,
                 result.Steps,
                 seed,
