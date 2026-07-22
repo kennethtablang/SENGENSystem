@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Persistence;
@@ -84,7 +84,7 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
                     b.Name, b.Code ?? "—",
                     r?.Name ?? "(no rooms yet)",
                     r?.Capacity ?? 0,
-                    r is null ? "" : r.IsLaboratory ? "Laboratory" : "Lecture"
+                    r is null ? "" : r.Kind.Label()
                 })
                 .ToList();
             ReportsEndpoints.WriteTableSheet(workbook, "Buildings & rooms", "Buildings & rooms", Scope,
@@ -126,7 +126,11 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
                     {
                         c.ProgramCode, s.Code, s.Title, s.Units, s.Hours,
                         s.YearLevel, s.Term == SemesterTerm.SecondSemester ? "2nd sem" : "1st sem",
-                        s.RequiresLaboratory ? "Yes" : "No",
+                        s.Delivery.Label(),
+                        s.Delivery == SubjectDelivery.LectureLaboratory
+                            ? $"{s.LectureHours}h lec + {s.LaboratoryHours}h lab"
+                            : "—",
+                        s.LabRoomKind?.Label() ?? "—",
                         prereqBySubject.GetValueOrDefault(s.Id, ""),
                         s.IsArchived
                             ? $"Archived{(s.ArchiveReason is null ? "" : $" — {s.ArchiveReason}")}"
@@ -134,7 +138,8 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
                     }))
                 .ToList();
             ReportsEndpoints.WriteTableSheet(workbook, "Subjects", "Curriculum subjects", Scope,
-                ["Program", "Code", "Title", "Units", "Hrs/week", "Year", "Term", "Lab", "Prerequisites", "Status"], subjectRows);
+                ["Program", "Code", "Title", "Units", "Hrs/week", "Year", "Term", "Delivery",
+                 "Hour split", "Laboratory needed", "Prerequisites", "Status"], subjectRows);
 
             var classRows = classSections
                 .Select(c => new object[]
@@ -199,7 +204,12 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
                 ("School years", schoolYears.Count),
                 ("Semesters", schoolYears.Sum(y => y.Semesters.Count)),
                 ("Buildings", buildings.Count),
-                ("Rooms (lecture / laboratory)", $"{rooms.Count(r => !r.IsLaboratory)} / {rooms.Count(r => r.IsLaboratory)}"),
+                // Broken out by kind: the two laboratories are the scarce resource the whole
+                // timetable contends for, so "how many labs" alone doesn't say enough.
+                ("Rooms (lecture / computer lab / kitchen lab)",
+                    $"{rooms.Count(r => r.Kind == RoomKind.LectureRoom)} / " +
+                    $"{rooms.Count(r => r.Kind == RoomKind.ComputerLaboratory)} / " +
+                    $"{rooms.Count(r => r.Kind == RoomKind.KitchenLaboratory)}"),
                 ("Allowable time slots", timeSlots.Count),
                 ("Curricula", curricula.Count),
                 ("Subjects (active / archived)", $"{subjects.Count(s => !s.IsArchived)} / {subjects.Count(s => s.IsArchived)}"),
