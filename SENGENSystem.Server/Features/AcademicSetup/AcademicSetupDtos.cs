@@ -61,12 +61,15 @@ namespace SENGENSystem.Server.Features.AcademicSetup
         Guid Id,
         string Name,
         int Capacity,
+        string Kind,
+        string KindLabel,
         bool IsLaboratory,
         Guid? BuildingId,
         string? BuildingName)
     {
         public static RoomDto From(Room r) =>
-            new(r.Id, r.Name, r.Capacity, r.IsLaboratory, r.BuildingId, r.Building?.Name);
+            new(r.Id, r.Name, r.Capacity, r.Kind.ToString(), r.Kind.Label(), r.IsLaboratory,
+                r.BuildingId, r.Building?.Name);
     }
 
     public record ClassSectionDto(

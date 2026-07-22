@@ -5,10 +5,11 @@ using SENGENSystem.Server.Domain;
 
 namespace SENGENSystem.Server.Features.AcademicSetup.Rooms
 {
-    // Vertical slice: the School Admin manages teaching rooms within a building. Capacity and the
-    // laboratory flag are hard-constraint inputs to the scheduling engine (FR-SCHED-02). Safe
-    // delete refuses to remove a room already placed in the schedule (409).
-    public record RoomRequest(string? Name, int? Capacity, bool IsLaboratory, Guid? BuildingId);
+    // Vertical slice: the School Admin manages teaching rooms within a building — lecture rooms
+    // and the Computer/Kitchen laboratories alike. Capacity and kind are hard-constraint inputs to
+    // the scheduling engine (FR-SCHED-02): laboratory hours are placed only in the laboratory the
+    // subject requires. Safe delete refuses to remove a room already placed in the schedule (409).
+    public record RoomRequest(string? Name, int? Capacity, string? Kind, Guid? BuildingId);
 
     public static class RoomsEndpoints
     {
@@ -43,18 +44,19 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Rooms
         private static async Task<IResult> CreateAsync(
             RoomRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
         {
-            var (ok, name, capacity, buildingId, problem) = await ValidateAsync(request, db, ct);
+            var (ok, name, capacity, kind, buildingId, problem) = await ValidateAsync(request, db, ct);
             if (!ok) return problem;
 
             var room = new Room
             {
                 Name = name,
                 Capacity = capacity,
-                IsLaboratory = request.IsLaboratory,
+                Kind = kind,
                 BuildingId = buildingId
             };
             db.Rooms.Add(room);
-            audit.Record(AuditAction.RoomSaved, $"Created room “{room.Name}”.", "Room", room.Id.ToString());
+            audit.Record(AuditAction.RoomSaved, $"Created {kind.Label().ToLowerInvariant()} “{room.Name}”.",
+                "Room", room.Id.ToString());
             await db.SaveChangesAsync(ct);
 
             await db.Entry(room).Reference(r => r.Building).LoadAsync(ct);
@@ -67,15 +69,27 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Rooms
             var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (room is null) return Results.NotFound(new { message = "Room not found." });
 
-            var (ok, name, capacity, buildingId, problem) = await ValidateAsync(request, db, ct);
+            var (ok, name, capacity, kind, buildingId, problem) = await ValidateAsync(request, db, ct);
             if (!ok) return problem;
+
+            // Re-typing an occupied room would silently break the room-kind hard constraint on
+            // classes already plotted there (a lecture stranded in the kitchen laboratory).
+            if (kind != room.Kind && await db.ScheduleAssignments.AnyAsync(a => a.RoomId == id, ct))
+            {
+                return Results.Conflict(new
+                {
+                    message = $"“{room.Name}” already has classes scheduled in it, so its type can't be changed. " +
+                        "Remove those placements first, or create a separate room."
+                });
+            }
 
             room.Name = name;
             room.Capacity = capacity;
-            room.IsLaboratory = request.IsLaboratory;
+            room.Kind = kind;
             room.BuildingId = buildingId;
 
-            audit.Record(AuditAction.RoomSaved, $"Updated room “{room.Name}”.", "Room", room.Id.ToString());
+            audit.Record(AuditAction.RoomSaved, $"Updated room “{room.Name}” ({kind.Label().ToLowerInvariant()}).",
+                "Room", room.Id.ToString());
             await db.SaveChangesAsync(ct);
 
             await db.Entry(room).Reference(r => r.Building).LoadAsync(ct);
@@ -98,13 +112,18 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Rooms
             return Results.NoContent();
         }
 
-        private static async Task<(bool Ok, string Name, int Capacity, Guid? BuildingId, IResult Problem)>
+        private static async Task<(bool Ok, string Name, int Capacity, RoomKind Kind, Guid? BuildingId, IResult Problem)>
             ValidateAsync(RoomRequest request, AppDbContext db, CancellationToken ct)
         {
             var name = request.Name?.Trim() ?? string.Empty;
             var errors = new Dictionary<string, string[]>();
 
             if (string.IsNullOrWhiteSpace(name)) errors["name"] = ["A room name is required."];
+
+            if (!Enum.TryParse<RoomKind>(request.Kind, ignoreCase: true, out var kind) || !Enum.IsDefined(kind))
+            {
+                errors["kind"] = ["Please choose whether this is a lecture room, computer laboratory, or kitchen laboratory."];
+            }
 
             if (request.Capacity is not { } cap || cap <= 0)
             {
@@ -122,10 +141,10 @@ namespace SENGENSystem.Server.Features.AcademicSetup.Rooms
 
             if (errors.Count > 0)
             {
-                return (false, name, 0, null, Results.ValidationProblem(errors));
+                return (false, name, 0, default, null, Results.ValidationProblem(errors));
             }
 
-            return (true, name, request.Capacity!.Value, request.BuildingId, Results.Empty);
+            return (true, name, request.Capacity!.Value, kind, request.BuildingId, Results.Empty);
         }
     }
 }
