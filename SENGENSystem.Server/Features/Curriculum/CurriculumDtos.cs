@@ -42,6 +42,15 @@ namespace SENGENSystem.Server.Features.Curriculum
         int Hours,
         int YearLevel,
         string Term,
+        // How the subject meets: LectureOnly / LaboratoryOnly / LectureLaboratory, with the hour
+        // split and — when it has a laboratory half — which laboratory that half requires.
+        string Delivery,
+        string DeliveryLabel,
+        string DeliveryShort,
+        int LectureHours,
+        int LaboratoryHours,
+        string? LabRoomKind,
+        string? LabRoomKindLabel,
         bool RequiresLaboratory,
         bool IsArchived,
         DateTime? ArchivedAtUtc,
@@ -49,7 +58,11 @@ namespace SENGENSystem.Server.Features.Curriculum
         IReadOnlyList<SubjectRefDto> Prerequisites)
     {
         public static SubjectDto From(Subject s) =>
-            new(s.Id, s.CurriculumId, s.Code, s.Title, s.Units, s.Hours, s.YearLevel, s.Term.ToString(), s.RequiresLaboratory,
+            new(s.Id, s.CurriculumId, s.Code, s.Title, s.Units, s.Hours, s.YearLevel, s.Term.ToString(),
+                s.Delivery.ToString(), s.Delivery.Label(), s.Delivery.ShortLabel(),
+                s.LectureHours, s.LaboratoryHours,
+                s.LabRoomKind?.ToString(), s.LabRoomKind?.Label(),
+                s.RequiresLaboratory,
                 s.IsArchived, s.ArchivedAtUtc, s.ArchiveReason,
                 s.Prerequisites
                     .Where(p => p.PrerequisiteSubject is not null)
