@@ -17,6 +17,9 @@ export default function FacultyAssignModal({ faculty, semesterId, onClose, onSav
     const [course, setCourse] = useState('All');
     const [section, setSection] = useState('All');
     const [type, setType] = useState('All');
+    // FR-FAC-01: focus the list on subjects no faculty holds yet, so the Head can see at a
+    // glance what still needs a teacher for the semester.
+    const [unassignedOnly, setUnassignedOnly] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -47,8 +50,12 @@ export default function FacultyAssignModal({ faculty, semesterId, onClose, onSav
             (course === 'All' || r.course === course)
             && (section === 'All' || `${r.course} ${r.yearLevel}-${r.section}` === section)
             && (type === 'All' || r.type === type)
+            // "Unassigned" = no faculty holds this subject×section yet (available to pick up).
+            && (!unassignedOnly || !r.assignedToProfileId)
             && (q === '' || r.code.toLowerCase().includes(q) || r.title.toLowerCase().includes(q)));
-    }, [rows, search, course, section, type]);
+    }, [rows, search, course, section, type, unassignedOnly]);
+
+    const unassignedCount = useMemo(() => rows.filter(r => !r.assignedToProfileId).length, [rows]);
 
     const totalUnits = useMemo(
         () => rows.filter(r => selected.has(keyOf(r))).reduce((sum, r) => sum + r.units, 0),
@@ -121,8 +128,18 @@ export default function FacultyAssignModal({ faculty, semesterId, onClose, onSav
                 <label className="fl-filter">
                     <span>Type</span>
                     <select value={type} onChange={e => setType(e.target.value)}>
-                        {['All', 'Lecture', 'Laboratory'].map(t => <option key={t} value={t}>{t}</option>)}
+                        {['All', 'Lecture only', 'Laboratory only', 'Lecture–Laboratory']
+                            .map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
+                </label>
+                <label className="fl-filter-check" title="Show only subjects no faculty holds yet">
+                    <input
+                        type="checkbox"
+                        checked={unassignedOnly}
+                        onChange={e => setUnassignedOnly(e.target.checked)}
+                    />
+                    <span>Unassigned only</span>
+                    <span className="fl-filter-badge">{unassignedCount}</span>
                 </label>
             </div>
 
@@ -131,7 +148,11 @@ export default function FacultyAssignModal({ faculty, semesterId, onClose, onSav
             ) : rows.length === 0 ? (
                 <p className="fl-empty">No class sections for this semester yet. Create classes under Academic setup → Class sections first.</p>
             ) : visible.length === 0 ? (
-                <p className="fl-empty">No classes match these filters.</p>
+                <p className="fl-empty">
+                    {unassignedOnly
+                        ? 'Every subject that matches these filters is already assigned to a faculty member.'
+                        : 'No classes match these filters.'}
+                </p>
             ) : (
                 <div className="fl-subject-list">
                     <div className="fl-subject-head">
@@ -173,7 +194,7 @@ export default function FacultyAssignModal({ faculty, semesterId, onClose, onSav
                                 <span className="fl-col-year">Y{r.yearLevel}</span>
                                 <span className="fl-col-units">{r.units}u</span>
                                 <span className="fl-col-type">
-                                    <span className={r.type === 'Laboratory' ? 'chip chip-lab' : 'chip chip-muted'}>{r.type}</span>
+                                    <span className={r.type === 'Lecture only' ? 'chip chip-muted' : 'chip chip-lab'}>{r.type}</span>
                                 </span>
                             </label>
                         );
