@@ -28,7 +28,7 @@ const steps = [
     {
         icon: 'bolt',
         title: 'Schedules are generated',
-        text: 'The Academic Head allocates subjects to faculty, then the scheduling engine builds a timetable with zero room, faculty, or section conflicts — honoring faculty load limits and time preferences. Manual fine-tuning happens on a drag-and-drop board.'
+        text: 'The Academic Head allocates subjects to faculty first — the engine places that allocation, it never invents one. It then builds a timetable with zero room, faculty, or class-block conflicts, within capacity and unit-load limits, while optimizing time preferences and idle gaps. Manual fine-tuning happens on a drag-and-drop board.'
     },
     {
         icon: 'send',
@@ -88,7 +88,11 @@ const faqs = [
     },
     {
         q: 'How are schedules guaranteed conflict-free?',
-        a: 'Generation is a constraint-satisfaction search: no room, instructor, or class block can ever be double-booked, room capacity and laboratory requirements are enforced, and faculty load ceilings are respected. Preferences like faculty time windows are optimized on top of those hard guarantees.'
+        a: 'Generation is a constraint-satisfaction search built on six hard constraints it can never violate: no room double-booking, no faculty double-assignment, room capacity (and laboratory requirement) met, faculty load within the STI unit ceiling, faculty only ever on subjects they were allocated, and no student block scheduled twice at once. On top of those guarantees it optimizes three soft constraints — preferred teaching windows, minimal idle gaps for students and staff, and equitable load — and reports how it did on each, so the Academic Head can see the trade-offs rather than take them on trust. A soft constraint is never traded for a hard one.'
+    },
+    {
+        q: 'Why does generation ask me to allocate faculty load first?',
+        a: 'The engine does not decide who teaches what — you do, on the Faculty load page. It takes your allocation and places it into rooms and time slots. That is what makes "faculty only teach subjects they were allocated" a structural guarantee rather than a rule that might be missed. The trade-off is that a section with no allocation stops generation, naming exactly what is missing. It also means the engine cannot rebalance an uneven load: it measures the spread and flags it for you to correct.'
     },
     {
         q: 'Why don’t I see a module someone else has?',
