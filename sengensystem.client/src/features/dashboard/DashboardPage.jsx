@@ -7,7 +7,11 @@ import { myEnlistment } from '../enlistment/api';
 import { getMySchedule } from '../scheduling/api';
 import { subscribeToReports } from '../reports/live';
 import { LiveChip } from '../reports/ReportsPage';
-import { Donut, TrendChart, LoadColumns } from './charts';
+import {
+    Donut, TrendChart, LoadColumns, Sparkline, Meter,
+    Funnel, Heatmap, RankedBars, StackedBars
+} from './charts';
+import Tip, { TipBody } from '../shell/Tooltip';
 import '../reports/reports.css'; // LiveChip styles
 import './dashboard.css';
 
@@ -17,6 +21,25 @@ import './dashboard.css';
    their live enrollment journey; faculty see their teaching week at a glance. */
 
 const STAFF_ROLES = ['SchoolAdmin', 'AcademicHead', 'Registrar', 'AdmissionOfficer'];
+
+// Enum names the API returns, spelled the way the SIS form spells them.
+const PROGRAM_LABEL = {
+    ITP: 'Information Technology Program',
+    HRS: 'Hospitality and Restaurant Services',
+    HRA: 'Hotel and Restaurant Administration'
+};
+
+const DOCUMENT_LABEL = {
+    Form138_SF9: 'Form 138 / SF9',
+    Form137_SF10: 'Form 137 / SF10',
+    GoodMoral: 'Good moral',
+    PsaBirthCertificate: 'PSA birth cert.',
+    OfficialTranscript: 'Transcript',
+    HonorableDismissal: 'Honorable dismissal',
+    HepaA: 'Hepatitis A',
+    HepaB: 'Hepatitis B',
+    Xray: 'Chest X-ray'
+};
 
 const flagChip = {
     Overloaded: 'chip chip-yellow',
@@ -64,6 +87,44 @@ function Bar({ pct }) {
         </span>
     );
 }
+
+/* A KPI tile: headline figure, caption, a supporting line, and an explanatory
+   tooltip so every number on the board says where it comes from. */
+function Kpi({ value, label, sub, tone = '', tip, spark }) {
+    return (
+        <Tip as="div" className={`dash-kpi card ${tone}`.trim()} content={tip}>
+            <span className="dash-kpi-label">{label}</span>
+            <span className="dash-kpi-num">{value}</span>
+            {sub && <span className="dash-kpi-sub">{sub}</span>}
+            {spark && <span className="dash-kpi-spark">{spark}</span>}
+        </Tip>
+    );
+}
+
+/* One line of the operational-health panel: label, meter, figure. */
+function HealthRow({ label, figure, pct, tone, tip }) {
+    return (
+        <Tip as="li" className="health-row" content={tip}>
+            <span className="health-label">{label}</span>
+            <Meter pct={pct} tone={tone} />
+            <span className="health-figure">{figure}</span>
+        </Tip>
+    );
+}
+
+const relTime = (iso) => {
+    const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
+    return `${Math.round(mins / 1440)}d ago`;
+};
+
+// "SubjectArchived" → "Subject archived"
+const humanize = (pascal) => pascal
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/^./, c => c.toUpperCase())
+    .replace(/(?<= )[A-Z](?=[a-z])/g, c => c.toLowerCase());
 
 // ---------- Staff dashboard ----------
 
@@ -115,8 +176,20 @@ function StaffDashboard() {
         );
     }
 
-    const { registration, documents, intakeTrend, enlistment, roomUtilization, facultyLoad } = data;
+    const {
+        registration, documents, intakeTrend, enlistment, roomUtilization, facultyLoad,
+        seats = {}, schedule = {}, inventory = {}, activity = [], semester = {},
+        programMix = [], documentMix = [], scheduleHeat = []
+    } = data;
     const requestsTotal = enlistment.pending + enlistment.approved + enlistment.rejected;
+    const trendValues = (intakeTrend || []).map(p => p.cumulative);
+    const last7 = (intakeTrend || []).slice(-7).reduce((sum, p) => sum + p.count, 0);
+    const overloaded = facultyLoad.members.filter(f => f.flag === 'Overloaded').length;
+    const unassigned = facultyLoad.members.filter(f => f.flag === 'Unassigned').length;
+    const idleRooms = roomUtilization.filter(r => r.utilizationPct === 0).length;
+    const meanRoomUse = roomUtilization.length === 0
+        ? 0
+        : Math.round(roomUtilization.reduce((sum, r) => sum + r.utilizationPct, 0) / roomUtilization.length);
 
     return (
         <>
@@ -134,14 +207,250 @@ function StaffDashboard() {
                 </>
             } />
 
-            <div className="dash-stats">
-                <Stat value={registration.total} label="SIS registrations" />
-                <Stat value={registration.confirmed} label="Confirmed" />
-                <Stat value={`${documents.completionRatePct}%`} label="Document checklists complete" />
-                <Stat value={registration.preAuthorized} label="Pre-authorized" />
-                <Stat value={enlistment.pending} label="Slot requests pending" />
-                <Stat value={enlistment.approved} label="Seats approved" />
+            {/* Term context strip: which term these numbers describe, and how far into it we are. */}
+            <section className="card dash-term">
+                <div className="dash-term-id">
+                    <h3>{data.semesterName}</h3>
+                    <span className={semester.isActive ? 'chip chip-active' : 'chip chip-muted'}>
+                        {semester.isActive ? 'Active term' : 'Inactive term'}
+                    </span>
+                    {schedule.isPublished
+                        ? <span className="chip chip-blue">Timetable published</span>
+                        : schedule.assignments > 0 && <span className="chip chip-yellow">Timetable in draft</span>}
+                </div>
+                {semester.daysTotal > 0 && (
+                    <Tip
+                        as="div"
+                        className="dash-term-progress"
+                        content={<TipBody
+                            title="Term progress"
+                            rows={[
+                                ['Starts', semester.startDate],
+                                ['Ends', semester.endDate],
+                                ['Day', `${semester.daysElapsed} of ${semester.daysTotal}`],
+                                ['Remaining', `${semester.daysRemaining} days`]
+                            ]}
+                        />}
+                    >
+                        <Meter pct={semester.progressPct} />
+                        <span className="dash-term-figure">
+                            {semester.progressPct}% elapsed · {semester.daysRemaining} days left
+                        </span>
+                    </Tip>
+                )}
+            </section>
+
+            <div className="dash-kpis">
+                <Kpi
+                    label="SIS registrations"
+                    value={registration.total}
+                    sub={`+${last7} in the last 7 days`}
+                    spark={<Sparkline values={trendValues} />}
+                    tip={<TipBody
+                        title="Student registrations this term"
+                        rows={[
+                            ['Submitted', registration.submitted],
+                            ['Confirmed', registration.confirmed],
+                            ['Rejected', registration.rejected],
+                            ['Linked to accounts', registration.linkedAccounts],
+                            ['New this week', last7]
+                        ]}
+                        note="Every SIS record filed against the selected semester (FR-SIS)."
+                    />}
+                />
+                <Kpi
+                    label="Confirmed by Registrar"
+                    value={registration.confirmed}
+                    sub={`${registration.total === 0 ? 0 : Math.round((100 * registration.confirmed) / registration.total)}% of intake`}
+                    tone="tone-good"
+                    tip={<TipBody
+                        title="Confirmed registrations"
+                        rows={[
+                            ['Confirmed', registration.confirmed],
+                            ['Still submitted', registration.submitted],
+                            ['Rejected', registration.rejected]
+                        ]}
+                        note="A student must be confirmed before the Admission Office can clear them."
+                    />}
+                />
+                <Kpi
+                    label="Document checklists complete"
+                    value={`${documents.completionRatePct}%`}
+                    sub={`${documents.complete} complete · ${documents.incomplete} outstanding`}
+                    tone={documents.completionRatePct < 50 ? 'tone-warn' : ''}
+                    tip={<TipBody
+                        title="Admission requirements (FR-DOC-04)"
+                        rows={[
+                            ['Complete', documents.complete],
+                            ['Incomplete', documents.incomplete],
+                            ['Completion rate', `${documents.completionRatePct}%`]
+                        ]}
+                        note="A checklist counts as complete only when every required paper is received."
+                    />}
+                />
+                <Kpi
+                    label="Cleared to enlist"
+                    value={registration.preAuthorized}
+                    sub={`${Math.max(0, registration.total - registration.preAuthorized)} not yet cleared`}
+                    tip={<TipBody
+                        title="Pre-authorized students (FR-PRE-04)"
+                        rows={[
+                            ['Cleared', registration.preAuthorized],
+                            ['Awaiting clearance', Math.max(0, registration.total - registration.preAuthorized)],
+                            ['Of confirmed', `${registration.confirmed === 0 ? 0 : Math.round((100 * registration.preAuthorized) / registration.confirmed)}%`]
+                        ]}
+                        note="Clearance is what unlocks online enlistment for a student."
+                    />}
+                />
+                <Kpi
+                    label="Slot requests pending"
+                    value={enlistment.pending}
+                    sub={`${enlistment.approved} approved · ${enlistment.rejected} rejected`}
+                    tone={enlistment.pending > 0 ? 'tone-warn' : ''}
+                    tip={<TipBody
+                        title="Enlistment queue"
+                        rows={[
+                            ['Pending decision', enlistment.pending],
+                            ['Approved', enlistment.approved],
+                            ['Rejected', enlistment.rejected],
+                            ['Approval rate', requestsTotal === 0 ? '—' : `${Math.round((100 * enlistment.approved) / requestsTotal)}%`]
+                        ]}
+                        note="Pending requests hold a seat that nobody else can take."
+                    />}
+                />
+                <Kpi
+                    label="Seat utilization"
+                    value={`${seats.fillPct ?? 0}%`}
+                    sub={`${seats.taken ?? 0} of ${seats.capacity ?? 0} seats taken`}
+                    tone={(seats.fillPct ?? 0) > 90 ? 'tone-warn' : ''}
+                    tip={<TipBody
+                        title="Seats across scheduled sections"
+                        rows={[
+                            ['Capacity', seats.capacity ?? 0],
+                            ['Taken', seats.taken ?? 0],
+                            ['Free', seats.free ?? 0],
+                            ['Sections at capacity', seats.sectionsFull ?? 0],
+                            ['Sections with no enrollees', seats.sectionsEmpty ?? 0]
+                        ]}
+                        note="Counts only sections that already have a place on the schedule board."
+                    />}
+                />
+                <Kpi
+                    label="Students holding seats"
+                    value={enlistment.studentsEnlisted ?? 0}
+                    sub={`${registration.preAuthorized === 0 ? 0 : Math.round((100 * (enlistment.studentsEnlisted ?? 0)) / registration.preAuthorized)}% of cleared students`}
+                    tip={<TipBody
+                        title="Enlisted students"
+                        rows={[
+                            ['With a seat', enlistment.studentsEnlisted ?? 0],
+                            ['Cleared but not enlisted',
+                                Math.max(0, registration.preAuthorized - (enlistment.studentsEnlisted ?? 0))],
+                            ['Approved requests', enlistment.approved]
+                        ]}
+                        note="Distinct students, not requests — one student may hold several seats."
+                    />}
+                />
+                <Kpi
+                    label="Classes on the board"
+                    value={schedule.assignments ?? 0}
+                    sub={`${schedule.published ?? 0} published · ${schedule.draft ?? 0} draft`}
+                    tone={schedule.isPublished ? 'tone-good' : 'tone-warn'}
+                    tip={<TipBody
+                        title="Schedule assignments"
+                        rows={[
+                            ['Total', schedule.assignments ?? 0],
+                            ['Published', schedule.published ?? 0],
+                            ['Draft', schedule.draft ?? 0],
+                            ['Manual overrides', schedule.manualOverrides ?? 0],
+                            ['Rooms in use', `${schedule.roomsUsed ?? 0}/${inventory.rooms ?? 0}`]
+                        ]}
+                        note="Draft classes are invisible to students until the term is published."
+                    />}
+                />
             </div>
+
+            {/* Operational health: the four things that stall a term, each as a meter. */}
+            <section className="card dash-health">
+                <h3>Operational health <small>(hover any row for the breakdown)</small></h3>
+                <ul className="health-list">
+                    <HealthRow
+                        label="Schedule coverage"
+                        pct={schedule.coveragePct ?? 0}
+                        tone={(schedule.coveragePct ?? 0) < 100 ? 'meter-warn' : 'meter-ok'}
+                        figure={`${schedule.sectionsScheduled ?? 0}/${schedule.sectionsTotal ?? 0} sections`}
+                        tip={<TipBody
+                            title="Sections placed on the board"
+                            rows={[
+                                ['Scheduled', schedule.sectionsScheduled ?? 0],
+                                ['Unscheduled', schedule.sectionsUnscheduled ?? 0],
+                                ['Total assignments', schedule.assignments ?? 0],
+                                ['Manual overrides', schedule.manualOverrides ?? 0],
+                                ['Rooms in use', `${schedule.roomsUsed ?? 0}/${inventory.rooms ?? 0}`]
+                            ]}
+                            note="Unscheduled sections cannot be enlisted in by students."
+                        />}
+                    />
+                    <HealthRow
+                        label="Timetable published"
+                        pct={(schedule.assignments ?? 0) === 0 ? 0 : (100 * (schedule.published ?? 0)) / schedule.assignments}
+                        tone={schedule.isPublished ? 'meter-ok' : 'meter-warn'}
+                        figure={`${schedule.published ?? 0}/${schedule.assignments ?? 0} classes`}
+                        tip={<TipBody
+                            title="Publication state (FR-SCHED-06)"
+                            rows={[
+                                ['Published', schedule.published ?? 0],
+                                ['Still draft', schedule.draft ?? 0]
+                            ]}
+                            note="Students and faculty only see published assignments."
+                        />}
+                    />
+                    <HealthRow
+                        label="Document clearance"
+                        pct={documents.completionRatePct}
+                        tone={documents.completionRatePct < 50 ? 'meter-warn' : 'meter-ok'}
+                        figure={`${documents.complete}/${registration.total} students`}
+                        tip={<TipBody
+                            title="Admission paperwork"
+                            rows={[['Complete', documents.complete], ['Outstanding', documents.incomplete]]}
+                            note="Drives how many students can be cleared for enlistment."
+                        />}
+                    />
+                    <HealthRow
+                        label="Room utilization"
+                        pct={meanRoomUse}
+                        tone={meanRoomUse < 25 ? 'meter-warn' : 'meter-ok'}
+                        figure={`${meanRoomUse}% mean · ${idleRooms} idle`}
+                        tip={<TipBody
+                            title="Room usage across Mon–Fri, 08:00–17:00 (45 h/week)"
+                            rows={[
+                                ['Rooms', inventory.rooms ?? roomUtilization.length],
+                                ['Laboratories', inventory.laboratories ?? '—'],
+                                ['Unused rooms', idleRooms],
+                                ['Mean utilization', `${meanRoomUse}%`]
+                            ]}
+                            note="Idle rooms are spare capacity the scheduler can still draw on."
+                        />}
+                    />
+                    <HealthRow
+                        label="Faculty load balance"
+                        pct={facultyLoad.members.length === 0
+                            ? 0
+                            : (100 * (facultyLoad.members.length - overloaded - unassigned)) / facultyLoad.members.length}
+                        tone={overloaded > 0 ? 'meter-bad' : 'meter-ok'}
+                        figure={`${overloaded} over · ${unassigned} idle`}
+                        tip={<TipBody
+                            title="Load distribution (FR-FAC-04)"
+                            rows={[
+                                ['Faculty', facultyLoad.members.length],
+                                ['Over ceiling', overloaded],
+                                ['Unassigned', unassigned],
+                                ['Mean load', `${facultyLoad.meanUnits} u`]
+                            ]}
+                            note="Overloaded members exceed their own MaxLoadUnits ceiling."
+                        />}
+                    />
+                </ul>
+            </section>
 
             <div className="dash-charts">
                 <section className="card chart-card chart-wide">
@@ -166,6 +475,7 @@ function StaffDashboard() {
                                 { label: 'Submitted', value: registration.submitted, tone: 'tone-yellow' },
                                 { label: 'Rejected', value: registration.rejected, tone: 'tone-down' }
                             ]}
+                            tipNote="Registrar decisions on this term's SIS records."
                         />
                     )}
                 </section>
@@ -183,6 +493,7 @@ function StaffDashboard() {
                                 { label: 'Pending', value: enlistment.pending, tone: 'tone-yellow' },
                                 { label: 'Rejected', value: enlistment.rejected, tone: 'tone-down' }
                             ]}
+                            tipNote="Seat requests students filed against scheduled sections."
                         />
                     )}
                 </section>
@@ -197,6 +508,83 @@ function StaffDashboard() {
                 </section>
             </div>
 
+            {/* Second analytics row: a funnel, a heatmap, and two composition charts —
+                different shapes for different questions. */}
+            <div className="dash-charts">
+                <section className="card chart-card">
+                    <h3>Enrollment funnel <small>(intake → seats held)</small></h3>
+                    {registration.total === 0 ? (
+                        <p className="dash-panel-empty">No students in the funnel yet.</p>
+                    ) : (
+                        <Funnel stages={[
+                            { label: 'Registered', value: registration.total, note: 'SIS records filed for this term.' },
+                            { label: 'Confirmed', value: registration.confirmed, note: 'Registrar accepted the record.' },
+                            { label: 'Documents complete', value: documents.complete, note: 'Every required paper received.' },
+                            { label: 'Cleared to enlist', value: registration.preAuthorized, note: 'Admission Office pre-authorized.' },
+                            { label: 'Holding a seat', value: enlistment.studentsEnlisted ?? 0, note: 'At least one approved slot request.' }
+                        ]} />
+                    )}
+                </section>
+
+                <section className="card chart-card">
+                    <h3>Weekly class density <small>(Mon–Sat, 07:00–18:00)</small></h3>
+                    {scheduleHeat.length === 0 ? (
+                        <p className="dash-panel-empty">Nothing scheduled this semester yet.</p>
+                    ) : (
+                        <Heatmap cells={scheduleHeat} />
+                    )}
+                </section>
+
+                <section className="card chart-card">
+                    <h3>Intake by program <small>(chosen track)</small></h3>
+                    {programMix.length === 0 ? (
+                        <p className="dash-panel-empty">No registrations to break down yet.</p>
+                    ) : (
+                        <RankedBars items={programMix.map(p => ({
+                            label: p.program,
+                            value: p.total,
+                            tip: <TipBody
+                                title={PROGRAM_LABEL[p.program] || p.program}
+                                rows={[
+                                    ['Registered', p.total],
+                                    ['Confirmed', p.confirmed],
+                                    ['Cleared to enlist', p.cleared],
+                                    ['Share of intake', `${registration.total === 0 ? 0 : Math.round((100 * p.total) / registration.total)}%`]
+                                ]}
+                            />
+                        }))} />
+                    )}
+                </section>
+
+                <section className="card chart-card">
+                    <h3>Requirements by document <small>(share received)</small></h3>
+                    {documentMix.length === 0 ? (
+                        <p className="dash-panel-empty">No checklists seeded yet.</p>
+                    ) : (
+                        <StackedBars rows={documentMix.map(d => ({
+                            label: DOCUMENT_LABEL[d.document] || d.document,
+                            segments: [
+                                { label: 'Original', value: d.submitted, tone: 'seg-up' },
+                                { label: 'Photocopy', value: d.xerox, tone: 'seg-yellow' },
+                                { label: 'Missing', value: d.missing, tone: 'seg-muted' }
+                            ],
+                            tip: <TipBody
+                                title={DOCUMENT_LABEL[d.document] || d.document}
+                                rows={[
+                                    ['Original received', d.submitted],
+                                    ['Photocopy only', d.xerox],
+                                    ['Not submitted', d.missing],
+                                    ['Students tracked', d.total]
+                                ]}
+                                note={d.missing > 0
+                                    ? `${d.missing} student(s) still owe this paper.`
+                                    : 'Fully collected across the cohort.'}
+                            />
+                        }))} />
+                    )}
+                </section>
+            </div>
+
             <div className="dash-panels">
                 <section className="card dash-panel">
                     <h3>Enlistment by section</h3>
@@ -205,29 +593,64 @@ function StaffDashboard() {
                     ) : (
                         <ul className="dash-list">
                             {enlistment.sections.map(s => (
-                                <li key={s.sectionCode}>
+                                <Tip
+                                    as="li"
+                                    key={s.sectionCode}
+                                    content={<TipBody
+                                        title={`${s.subjectCode} — ${s.subjectTitle || s.sectionCode}`}
+                                        rows={[
+                                            ['Section', s.sectionCode],
+                                            ['Cohort', s.cohort],
+                                            ['Enrolled', `${s.enrolled} of ${s.capacity}`],
+                                            ['Free seats', s.free ?? Math.max(0, s.capacity - s.enrolled)],
+                                            ['Fill rate', `${s.fillPct}%`],
+                                            ...(s.units ? [['Units', s.units]] : [])
+                                        ]}
+                                        note={s.enrolled >= s.capacity
+                                            ? 'At capacity — further requests will be refused.'
+                                            : undefined}
+                                    />}
+                                >
                                     <span className="dash-list-label">
                                         <strong>{s.subjectCode}</strong> {s.sectionCode}
                                     </span>
                                     <Bar pct={s.fillPct} />
                                     <span className="dash-list-value">{s.enrolled}/{s.capacity}</span>
-                                </li>
+                                </Tip>
                             ))}
                         </ul>
                     )}
                 </section>
 
                 <section className="card dash-panel">
-                    <h3>Room utilization <small>(Mon–Fri, 07:00–18:00)</small></h3>
+                    <h3>Room utilization <small>(Mon–Fri, 08:00–17:00)</small></h3>
                     <ul className="dash-list">
                         {roomUtilization.map(r => (
-                            <li key={r.room}>
+                            <Tip
+                                as="li"
+                                key={r.room}
+                                content={<TipBody
+                                    title={r.room}
+                                    rows={[
+                                        ['Building', r.building || '—'],
+                                        ['Type', r.isLaboratory ? 'Laboratory' : 'Lecture room'],
+                                        ['Seats', r.capacity],
+                                        ['Classes/week', r.classes],
+                                        ['In window', `${r.windowHoursPerWeek} of 45 h`],
+                                        ['Booked total', `${r.hoursPerWeek} h`],
+                                        ['Utilization', `${r.utilizationPct}%`]
+                                    ]}
+                                    note={r.utilizationPct === 0
+                                        ? 'Unused this term — spare capacity for the scheduler.'
+                                        : undefined}
+                                />}
+                            >
                                 <span className="dash-list-label">
                                     <strong>{r.room}</strong>{r.isLaboratory ? ' · lab' : ''}
                                 </span>
                                 <Bar pct={r.utilizationPct} />
-                                <span className="dash-list-value">{r.hoursPerWeek} h · {r.utilizationPct}%</span>
-                            </li>
+                                <span className="dash-list-value">{r.windowHoursPerWeek} h · {r.utilizationPct}%</span>
+                            </Tip>
                         ))}
                     </ul>
                 </section>
@@ -236,17 +659,119 @@ function StaffDashboard() {
                     <h3>Faculty load <small>(mean {facultyLoad.meanUnits} units)</small></h3>
                     <ul className="dash-list">
                         {facultyLoad.members.map(f => (
-                            <li key={f.name}>
+                            <Tip
+                                as="li"
+                                key={f.name}
+                                content={<TipBody
+                                    title={f.name}
+                                    rows={[
+                                        ['Assigned', `${f.assignedUnits} u`],
+                                        ['Ceiling', `${f.maxLoadUnits} u`],
+                                        [f.assignedUnits > f.maxLoadUnits ? 'Over by' : 'Headroom',
+                                            `${Math.abs(f.maxLoadUnits - f.assignedUnits)} u`],
+                                        ['Scheduled', `${f.scheduledHours ?? 0} h/wk`],
+                                        ['Program', f.programCode || '—']
+                                    ]}
+                                    note={`${f.flag} against a department mean of ${facultyLoad.meanUnits} units.`}
+                                />}
+                            >
                                 <span className="dash-list-label"><strong>{f.name}</strong></span>
                                 <Bar pct={f.maxLoadUnits === 0 ? 0 : (100 * f.assignedUnits) / f.maxLoadUnits} />
                                 <span className="dash-list-value">{f.assignedUnits}/{f.maxLoadUnits} u</span>
                                 <span className={flagChip[f.flag] || 'chip chip-muted'}>{f.flag}</span>
-                            </li>
+                            </Tip>
                         ))}
                     </ul>
                 </section>
             </div>
+
+            {/* System census + audit tail: the "what is configured" and "what just happened"
+                context that turns a metrics page into an administrative console. */}
+            <div className="dash-footer-grid">
+                <section className="card dash-panel">
+                    <h3>System inventory <small>(master data behind the scheduler)</small></h3>
+                    <ul className="dash-census">
+                        <CensusCell label="Curricula" value={inventory.curricula}
+                            tip={<TipBody title="Program curricula"
+                                rows={[['Active', inventory.curricula ?? 0], ['Archived', inventory.curriculaArchived ?? 0]]}
+                                note="Archived curricula keep their subjects and history but leave the catalog." />} />
+                        <CensusCell label="Subjects" value={inventory.subjects}
+                            tip={<TipBody title="Subjects"
+                                rows={[['Active', inventory.subjects ?? 0], ['Archived', inventory.subjectsArchived ?? 0]]} />} />
+                        <CensusCell label="Rooms" value={inventory.rooms}
+                            tip={<TipBody title="Teaching spaces"
+                                rows={[
+                                    ['Rooms', inventory.rooms ?? 0],
+                                    ['Laboratories', inventory.laboratories ?? 0],
+                                    ['Buildings', inventory.buildings ?? 0],
+                                    ['In use this term', schedule.roomsUsed ?? 0]
+                                ]} />} />
+                        <CensusCell label="Time slots" value={inventory.timeSlots}
+                            tip={<TipBody title="Schedulable slots"
+                                rows={[['Defined', inventory.timeSlots ?? 0]]}
+                                note="The engine can only place classes into slots defined under System parameters." />} />
+                        <CensusCell label="Faculty" value={inventory.faculty}
+                            tip={<TipBody title="Faculty profiles"
+                                rows={[
+                                    ['Profiles', inventory.faculty ?? 0],
+                                    ['Carrying load', facultyLoad.members.filter(f => f.assignedUnits > 0).length],
+                                    ['Unassigned', unassigned]
+                                ]} />} />
+                        <CensusCell label="Class blocks" value={inventory.classSections}
+                            tip={<TipBody title="Student blocks this term"
+                                rows={[['Blocks', inventory.classSections ?? 0], ['Sections', schedule.sectionsTotal ?? 0]]} />} />
+                        <CensusCell label="Active users" value={inventory.users}
+                            tip={<TipBody title="Accounts"
+                                rows={[['Active', inventory.users ?? 0], ['Deactivated', inventory.usersInactive ?? 0]]} />} />
+                        <CensusCell label="Semesters" value={inventory.semesters}
+                            tip={<TipBody title="Terms on record"
+                                rows={[['Semesters', inventory.semesters ?? 0], ['Selected', data.semesterName]]} />} />
+                    </ul>
+                </section>
+
+                <section className="card dash-panel">
+                    <h3>Recent activity <small>(audit trail)</small></h3>
+                    {activity.length === 0 ? (
+                        <p className="dash-panel-empty">Nothing recorded yet.</p>
+                    ) : (
+                        <ul className="dash-feed">
+                            {activity.map((e, i) => (
+                                <Tip
+                                    as="li"
+                                    key={`${e.occurredAtUtc}-${i}`}
+                                    content={<TipBody
+                                        title={humanize(e.action)}
+                                        rows={[
+                                            ['Actor', e.actor || 'System'],
+                                            ['Role', e.role || '—'],
+                                            ['When', new Date(e.occurredAtUtc).toLocaleString()]
+                                        ]}
+                                        note={e.summary}
+                                    />}
+                                >
+                                    <span className="feed-dot" aria-hidden="true" />
+                                    <span className="feed-body">
+                                        <span className="feed-summary">{e.summary}</span>
+                                        <span className="feed-meta">{e.actor || 'System'} · {relTime(e.occurredAtUtc)}</span>
+                                    </span>
+                                </Tip>
+                            ))}
+                        </ul>
+                    )}
+                    <Link className="dash-panel-link" to="/audit">Open the full audit trail →</Link>
+                </section>
+            </div>
         </>
+    );
+}
+
+/* One cell of the system-inventory census. */
+function CensusCell({ label, value, tip }) {
+    return (
+        <Tip as="li" className="census-cell" content={tip}>
+            <span className="census-num">{value ?? '—'}</span>
+            <span className="census-label">{label}</span>
+        </Tip>
     );
 }
 
