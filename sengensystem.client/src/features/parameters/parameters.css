@@ -1,0 +1,155 @@
+/* System parameters (School Admin). Layout only — every colour comes from the design
+   tokens in index.css so the page follows the light/dark theme like the rest of the app. */
+
+.param-card {
+  padding: 1.1rem 1.25rem 1.25rem;
+  margin-bottom: 1.1rem;
+}
+
+.param-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.param-card-head h3 {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+/* ---------- Seat cap ---------- */
+
+.param-cap-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.param-cap-form .field {
+  margin: 0;
+  max-width: 11rem;
+}
+
+.param-hint {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  margin-bottom: 0.55rem;
+}
+
+.param-warn {
+  margin-top: 0.9rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sti-yellow);
+  background: var(--sti-yellow-dim);
+  color: var(--text-1);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+/* ---------- Time slots ---------- */
+
+.param-time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.param-days {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 1rem;
+}
+
+.param-day h4 {
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 0.5rem;
+}
+
+.param-slots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.param-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--bg-wash);
+  color: var(--text-1);
+  font: 500 0.78rem/1 var(--mono);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.param-slot:hover {
+  border-color: var(--sti-blue);
+  background: var(--sti-blue-dim);
+}
+
+/* A slot the schedule already depends on: still openable, but the modal explains it's locked. */
+.param-slot-locked {
+  border-style: dashed;
+  color: var(--text-2);
+}
+
+.param-lock {
+  color: var(--sti-blue);
+  font-size: 1rem;
+  line-height: 0;
+}
+
+/* ---------- Faculty ceilings ---------- */
+
+.param-limit-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.param-limit-edit input {
+  width: 5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+}
+
+.param-limit-edit input:focus-visible {
+  border-color: var(--sti-blue);
+}
+
+/* Assigned units past the ceiling — the same alert red the reports use. */
+.param-over {
+  color: var(--down);
+  font-weight: 600;
+}
+
+.param-chip {
+  margin-left: 0.45rem;
+}
+
+@media (max-width: 560px) {
+  .param-card-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .param-time-row {
+    grid-template-columns: 1fr;
+  }
+}
