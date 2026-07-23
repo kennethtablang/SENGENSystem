@@ -378,13 +378,90 @@
   color: var(--text-2);
 }
 
-/* Archived subjects read as history: dimmed, struck code. */
-.curr-subj-row.is-archived td {
-  opacity: 0.55;
+/* ---------- Archive drawer (the "Show archived (n)" modal) ---------- */
+
+.arch-section + .arch-section {
+  margin-top: 1.4rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
 }
 
-.curr-subj-row.is-archived .curr-subj-code {
+.arch-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 0.7rem;
+}
+
+.arch-empty {
+  color: var(--text-3);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.arch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.arch-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.2rem 0.9rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-wash);
+}
+
+.arch-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+/* Retired items read as history: struck code, muted title. */
+.arch-code {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text-2);
   text-decoration: line-through;
+}
+
+.arch-title {
+  font-size: 0.85rem;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arch-meta {
+  grid-column: 1;
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+.arch-list li > .btn {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+/* Archived curricula sit at the bottom of the rail, dimmed but still reachable. */
+.curr-item.is-archived .curr-item-label,
+.curr-item.is-archived .curr-item-name,
+.curr-item.is-archived .curr-item-years,
+.curr-item.is-archived .curr-item-count {
+  opacity: 0.6;
 }
 
 .setup-checkbox {
@@ -415,4 +492,40 @@
 .chip-lab {
   background: var(--sti-blue-dim);
   color: var(--sti-blue);
+}
+
+/* ---------- Delivery (lecture / laboratory split) ---------- */
+
+.curr-subj-split {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-3);
+  margin-top: 0.15rem;
+}
+
+.curr-delivery {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.85rem 0.85rem;
+  margin: 0.2rem 0 0.9rem;
+}
+
+.curr-delivery legend {
+  font: 700 0.68rem/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 0 0.35rem;
+}
+
+.curr-delivery-hint {
+  font-size: 0.76rem;
+  color: var(--text-3);
+  margin: 0 0 0.7rem;
+}
+
+.curr-delivery-total {
+  font-size: 0.78rem;
+  color: var(--text-2);
+  margin: 0.6rem 0 0;
 }

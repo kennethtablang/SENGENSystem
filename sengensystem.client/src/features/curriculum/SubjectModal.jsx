@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import SetupModal from '../academic/SetupModal';
-import { createSubject, updateSubject, deleteSubject, archiveSubject, restoreSubject } from './api';
+import { createSubject, updateSubject, archiveSubject, restoreSubject } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
-import { confirmAction, confirmDelete } from '../shell/confirm';
+import { confirmAction } from '../shell/confirm';
 
 const yearLevels = [1, 2, 3];
 const terms = [
@@ -10,13 +10,38 @@ const terms = [
     { value: 'SecondSemester', label: 'Second Semester' }
 ];
 
-export default function SubjectModal({ record, curriculumId, candidates, onClose, onChanged, onDeleted }) {
+// How the subject meets. A lecture-laboratory subject is scheduled as two separate meetings —
+// its lecture hours in a lecture room, its laboratory hours in the laboratory it requires — so
+// the two hour figures are collected separately rather than as one total.
+const deliveries = [
+    { value: 'LectureOnly', label: 'Lecture only' },
+    { value: 'LaboratoryOnly', label: 'Laboratory only' },
+    { value: 'LectureLaboratory', label: 'Lecture–Laboratory' }
+];
+
+const labKinds = [
+    { value: 'ComputerLaboratory', label: 'Computer laboratory' },
+    { value: 'KitchenLaboratory', label: 'Kitchen laboratory' }
+];
+
+const hasLecture = (d) => d === 'LectureOnly' || d === 'LectureLaboratory';
+const hasLab = (d) => d === 'LaboratoryOnly' || d === 'LectureLaboratory';
+
+export default function SubjectModal({ record, curriculumId, candidates, onClose, onChanged }) {
     const isCreate = !record;
     const [form, setForm] = useState(isCreate
-        ? { code: '', title: '', units: '3', hours: '3', yearLevel: '1', term: 'FirstSemester', requiresLaboratory: false }
+        ? {
+            code: '', title: '', units: '3', yearLevel: '1', term: 'FirstSemester',
+            delivery: 'LectureOnly', lectureHours: '3', laboratoryHours: '3', labRoomKind: 'ComputerLaboratory'
+        }
         : {
-            code: record.code, title: record.title, units: String(record.units), hours: String(record.hours),
-            yearLevel: String(record.yearLevel), term: record.term, requiresLaboratory: record.requiresLaboratory
+            code: record.code, title: record.title, units: String(record.units),
+            yearLevel: String(record.yearLevel), term: record.term,
+            delivery: record.delivery,
+            // Keep a sensible value in the hidden field so switching delivery doesn't start blank.
+            lectureHours: String(record.lectureHours || 3),
+            laboratoryHours: String(record.laboratoryHours || 3),
+            labRoomKind: record.labRoomKind || 'ComputerLaboratory'
         });
     const [prereqIds, setPrereqIds] = useState(
         isCreate ? [] : record.prerequisites.map(p => p.id)
@@ -36,19 +61,28 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
         setPrereqIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     }
 
+    const num = (v) => (v === '' ? null : Number(v));
+
     function payload() {
         return {
             curriculumId,
             code: form.code,
             title: form.title,
-            units: form.units === '' ? null : Number(form.units),
-            hours: form.hours === '' ? null : Number(form.hours),
-            yearLevel: form.yearLevel === '' ? null : Number(form.yearLevel),
+            units: num(form.units),
+            yearLevel: num(form.yearLevel),
             term: form.term,
-            requiresLaboratory: form.requiresLaboratory,
+            delivery: form.delivery,
+            // Only the halves this delivery actually has are sent; the server zeroes the rest.
+            lectureHours: hasLecture(form.delivery) ? num(form.lectureHours) : 0,
+            laboratoryHours: hasLab(form.delivery) ? num(form.laboratoryHours) : 0,
+            labRoomKind: hasLab(form.delivery) ? form.labRoomKind : null,
             prerequisiteSubjectIds: prereqIds
         };
     }
+
+    const totalHours =
+        (hasLecture(form.delivery) ? Number(form.lectureHours) || 0 : 0) +
+        (hasLab(form.delivery) ? Number(form.laboratoryHours) || 0 : 0);
 
     async function save(e) {
         e.preventDefault();
@@ -65,14 +99,7 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
         } finally { setSaving(false); }
     }
 
-    async function remove() {
-        if (!(await confirmDelete(`subject ${record.code}`))) return;
-        setError(''); setBusy(true);
-        try { await deleteSubject(record.id); notifySuccess(`Subject ${record.code} deleted.`); onDeleted(); onClose(); }
-        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
-    }
-
-    // Curriculum-change path: retire the subject instead of deleting it, keeping its history.
+    // Subjects are archived, never deleted — retiring one keeps its sections, loads, and history.
     async function archive() {
         const ok = await confirmAction({
             title: `Archive ${record.code}?`,
@@ -95,9 +122,6 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
         <>
             {!isCreate && (
                 <span className="setup-foot-spacer" style={{ display: 'inline-flex', gap: '0.5rem' }}>
-                    <button type="button" className="btn btn-danger" disabled={busy} onClick={remove}>
-                        Delete
-                    </button>
                     {record.isArchived ? (
                         <button type="button" className="btn btn-ghost" disabled={busy} onClick={restore}>
                             Restore
@@ -148,11 +172,6 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
                         {err('units') && <p className="field-error">{err('units')}</p>}
                     </div>
                     <div className="field">
-                        <label htmlFor="subj-hours">Weekly hours</label>
-                        <input id="subj-hours" type="number" min="1" max="40" value={form.hours} onChange={set('hours')} />
-                        {err('hours') && <p className="field-error">{err('hours')}</p>}
-                    </div>
-                    <div className="field">
                         <label htmlFor="subj-year">Year level</label>
                         <select id="subj-year" value={form.yearLevel} onChange={set('yearLevel')}>
                             {yearLevels.map(y => <option key={y} value={y}>Year {y}</option>)}
@@ -167,11 +186,51 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
                         {err('term') && <p className="field-error">{err('term')}</p>}
                     </div>
                 </div>
-                <label className="setup-checkbox">
-                    <input type="checkbox" checked={form.requiresLaboratory}
-                        onChange={e => setForm(prev => ({ ...prev, requiresLaboratory: e.target.checked }))} />
-                    Requires a laboratory room
-                </label>
+
+                <fieldset className="curr-delivery">
+                    <legend>Delivery</legend>
+                    <p className="curr-delivery-hint">
+                        A lecture–laboratory subject is plotted as two separate meetings: its lecture hours in a
+                        lecture room and its laboratory hours in the laboratory it needs.
+                    </p>
+                    <div className="field-row">
+                        <div className="field">
+                            <label htmlFor="subj-delivery">Type</label>
+                            <select id="subj-delivery" value={form.delivery} onChange={set('delivery')}>
+                                {deliveries.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                            </select>
+                            {err('delivery') && <p className="field-error">{err('delivery')}</p>}
+                        </div>
+                        {hasLecture(form.delivery) && (
+                            <div className="field">
+                                <label htmlFor="subj-lec-hours">Lecture hours / week</label>
+                                <input id="subj-lec-hours" type="number" min="1" max="40"
+                                    value={form.lectureHours} onChange={set('lectureHours')} />
+                                {err('lectureHours') && <p className="field-error">{err('lectureHours')}</p>}
+                            </div>
+                        )}
+                        {hasLab(form.delivery) && (
+                            <div className="field">
+                                <label htmlFor="subj-lab-hours">Laboratory hours / week</label>
+                                <input id="subj-lab-hours" type="number" min="1" max="40"
+                                    value={form.laboratoryHours} onChange={set('laboratoryHours')} />
+                                {err('laboratoryHours') && <p className="field-error">{err('laboratoryHours')}</p>}
+                            </div>
+                        )}
+                    </div>
+                    {hasLab(form.delivery) && (
+                        <div className="field">
+                            <label htmlFor="subj-lab-kind">Laboratory required</label>
+                            <select id="subj-lab-kind" value={form.labRoomKind} onChange={set('labRoomKind')}>
+                                {labKinds.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                            </select>
+                            {err('labRoomKind') && <p className="field-error">{err('labRoomKind')}</p>}
+                        </div>
+                    )}
+                    <p className="curr-delivery-total">
+                        Total weekly contact hours: <strong>{totalHours}h</strong>
+                    </p>
+                </fieldset>
 
                 <div className="curr-prereq">
                     <span className="curr-prereq-label">Prerequisites</span>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { listCurricula, listSubjects } from './api';
 import CurriculumModal from './CurriculumModal';
 import SubjectModal from './SubjectModal';
+import ArchivedModal from './ArchivedModal';
 import './curriculum.css';
 
 const TERM_LABEL = { FirstSemester: 'First Semester', SecondSemester: 'Second Semester' };
@@ -19,7 +20,8 @@ export default function SubjectsCurriculumPage() {
     const [subjModal, setSubjModal] = useState(null);
     const [reloadC, setReloadC] = useState(0);
     const [reloadS, setReloadS] = useState(0);
-    const [showArchived, setShowArchived] = useState(false);
+    const [archiveOpen, setArchiveOpen] = useState(false);
+    const [allSubjects, setAllSubjects] = useState([]);
 
     // Load curricula; keep a valid selection.
     useEffect(() => {
@@ -55,15 +57,26 @@ export default function SubjectsCurriculumPage() {
         return () => { active = false; };
     }, [selectedId, reloadS]);
 
+    // Every subject in the system, so the archive drawer can list retired subjects across
+    // curricula (not just the selected one) and the button can show a true count.
+    useEffect(() => {
+        let active = true;
+        listSubjects()
+            .then(data => { if (active) setAllSubjects(data.subjects); })
+            .catch(() => { /* the archive drawer degrades to the selected curriculum */ });
+        return () => { active = false; };
+    }, [reloadC, reloadS]);
+
     const refreshCurricula = () => setReloadC(n => n + 1);
     const refreshSubjects = () => setReloadS(n => n + 1);
     const selected = curricula.find(c => c.id === selectedId) || null;
 
-    const archivedCount = useMemo(() => subjects.filter(s => s.isArchived).length, [subjects]);
-    const visibleSubjects = useMemo(
-        () => (showArchived ? subjects : subjects.filter(s => !s.isArchived)),
-        [subjects, showArchived]
+    const archivedCount = useMemo(
+        () => allSubjects.filter(s => s.isArchived).length + curricula.filter(c => c.isArchived).length,
+        [allSubjects, curricula]
     );
+    // The sheet always shows the live curriculum; archived rows live in the drawer.
+    const visibleSubjects = useMemo(() => subjects.filter(s => !s.isArchived), [subjects]);
 
     // Group subjects by year level, then by term (First/Second Semester), for the curriculum sheet.
     const groups = useMemo(() => {
@@ -102,12 +115,14 @@ export default function SubjectsCurriculumPage() {
                             <li key={c.id}>
                                 <button
                                     type="button"
-                                    className={`curr-item${c.id === selectedId ? ' is-selected' : ''}`}
+                                    className={`curr-item${c.id === selectedId ? ' is-selected' : ''}${c.isArchived ? ' is-archived' : ''}`}
                                     onClick={() => setSelectedId(c.id)}
                                 >
                                     <span className="curr-item-top">
                                         <span className="curr-item-label">{c.label}</span>
-                                        {c.isActive && <span className="curr-dot" title="Active" />}
+                                        {c.isArchived
+                                            ? <span className="chip chip-muted">Archived</span>
+                                            : c.isActive && <span className="curr-dot" title="Active" />}
                                     </span>
                                     <span className="curr-item-name">{c.programName}</span>
                                     <span className="curr-item-years">
@@ -135,9 +150,11 @@ export default function SubjectsCurriculumPage() {
                             <div>
                                 <div className="curr-main-title">
                                     <h2>{selected.label}</h2>
-                                    {selected.isActive
-                                        ? <span className="chip chip-active">Active</span>
-                                        : <span className="chip chip-muted">Inactive</span>}
+                                    {selected.isArchived
+                                        ? <span className="chip chip-muted">Archived</span>
+                                        : selected.isActive
+                                            ? <span className="chip chip-active">Active</span>
+                                            : <span className="chip chip-muted">Inactive</span>}
                                 </div>
                                 <p className="curr-main-sub">{selected.programName}</p>
                                 <div className="curr-main-years">
@@ -151,9 +168,9 @@ export default function SubjectsCurriculumPage() {
                                     <button
                                         type="button"
                                         className="btn btn-ghost btn-sm"
-                                        onClick={() => setShowArchived(v => !v)}
+                                        onClick={() => setArchiveOpen(true)}
                                     >
-                                        {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
+                                        Show archived ({archivedCount})
                                     </button>
                                 )}
                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCurrModal(selected)}>
@@ -186,11 +203,10 @@ export default function SubjectsCurriculumPage() {
                                                     <table className="curr-table">
                                                         <tbody>
                                                             {t.list.map(s => (
-                                                                <tr key={s.id} className={`curr-subj-row${s.isArchived ? ' is-archived' : ''}`} onClick={() => setSubjModal(s)}>
+                                                                <tr key={s.id} className="curr-subj-row" onClick={() => setSubjModal(s)}>
                                                                     <td className="curr-subj-code">{s.code}</td>
                                                                     <td className="curr-subj-title">
                                                                         {s.title}
-                                                                        {s.isArchived && <span className="chip chip-muted" style={{ marginLeft: '0.45rem' }}>Archived</span>}
                                                                         {s.prerequisites.length > 0 && (
                                                                             <span className="curr-prereq-chips">
                                                                                 {s.prerequisites.map(p => (
@@ -199,9 +215,23 @@ export default function SubjectsCurriculumPage() {
                                                                             </span>
                                                                         )}
                                                                     </td>
-                                                                    <td className="curr-subj-units">{s.units}u · {s.hours}h</td>
+                                                                    <td className="curr-subj-units">
+                                                                        {s.units}u · {s.hours}h
+                                                                        {s.delivery === 'LectureLaboratory' && (
+                                                                            <span className="curr-subj-split">
+                                                                                {s.lectureHours}h lec + {s.laboratoryHours}h lab
+                                                                            </span>
+                                                                        )}
+                                                                    </td>
                                                                     <td className="curr-subj-type">
-                                                                        {s.requiresLaboratory && <span className="chip chip-lab">Lab</span>}
+                                                                        <span
+                                                                            className={`chip ${s.requiresLaboratory ? 'chip-lab' : 'chip-muted'}`}
+                                                                            title={s.labRoomKindLabel
+                                                                                ? `${s.deliveryLabel} · ${s.labRoomKindLabel}`
+                                                                                : s.deliveryLabel}
+                                                                        >
+                                                                            {s.deliveryShort}
+                                                                        </span>
                                                                     </td>
                                                                 </tr>
                                                             ))}
@@ -224,7 +254,15 @@ export default function SubjectsCurriculumPage() {
                     schoolYears={allSchoolYears}
                     onClose={() => setCurrModal(null)}
                     onChanged={(saved) => { refreshCurricula(); if (saved?.id) setSelectedId(saved.id); }}
-                    onDeleted={() => { setSelectedId(null); refreshCurricula(); }}
+                />
+            )}
+
+            {archiveOpen && (
+                <ArchivedModal
+                    curricula={curricula}
+                    subjects={allSubjects}
+                    onClose={() => setArchiveOpen(false)}
+                    onRestored={() => { refreshCurricula(); refreshSubjects(); }}
                 />
             )}
 
@@ -235,7 +273,6 @@ export default function SubjectsCurriculumPage() {
                     candidates={subjects}
                     onClose={() => setSubjModal(null)}
                     onChanged={() => { refreshSubjects(); refreshCurricula(); }}
-                    onDeleted={() => { refreshSubjects(); refreshCurricula(); }}
                 />
             )}
         </div>

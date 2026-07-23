@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import SetupModal from '../academic/SetupModal';
-import { createCurriculum, updateCurriculum, deleteCurriculum, activateCurriculum } from './api';
+import { createCurriculum, updateCurriculum, activateCurriculum, archiveCurriculum, restoreCurriculum } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
-import { confirmDelete } from '../shell/confirm';
+import { confirmAction } from '../shell/confirm';
 
-export default function CurriculumModal({ record, schoolYears, onClose, onChanged, onDeleted }) {
+export default function CurriculumModal({ record, schoolYears, onClose, onChanged }) {
     const isCreate = !record;
     const [form, setForm] = useState(isCreate
         ? { programCode: '', programName: '' }
@@ -52,21 +52,41 @@ export default function CurriculumModal({ record, schoolYears, onClose, onChange
         catch (ex) { setError(ex.message); notifyError(ex.message); } finally { setBusy(false); }
     }
 
-    async function remove() {
-        if (!(await confirmDelete(`the ${record.programCode} curriculum`, 'Its subjects and their prerequisites go with it. This can’t be undone.'))) return;
+    // Program-change path: retire the catalog instead of deleting it, keeping its subjects and history.
+    async function archive() {
+        const ok = await confirmAction({
+            title: `Archive the ${record.programCode} curriculum?`,
+            message: 'It leaves the active catalog and can no longer be offered, but its subjects, prerequisites, and history stay intact. You can restore it any time.',
+            confirmLabel: 'Archive'
+        });
+        if (!ok) return;
         setError(''); setBusy(true);
-        try { await deleteCurriculum(record.id); notifySuccess(`${record.programCode} curriculum deleted.`); onDeleted(record.id); onClose(); }
+        try { const saved = await archiveCurriculum(record.id); notifySuccess(`${record.programCode} curriculum archived.`); onChanged(saved); onClose(); }
+        catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
+    }
+
+    async function restore() {
+        setError(''); setBusy(true);
+        try { const saved = await restoreCurriculum(record.id); notifySuccess(`${record.programCode} curriculum restored.`); onChanged(saved); onClose(); }
         catch (ex) { setError(ex.message); notifyError(ex.message); setBusy(false); }
     }
 
     const footer = (
         <>
             {!isCreate && (
-                <button type="button" className="btn btn-danger setup-foot-spacer" disabled={busy} onClick={remove}>
-                    Delete
-                </button>
+                <span className="setup-foot-spacer" style={{ display: 'inline-flex', gap: '0.5rem' }}>
+                    {record.isArchived ? (
+                        <button type="button" className="btn btn-ghost" disabled={busy} onClick={restore}>
+                            Restore
+                        </button>
+                    ) : (
+                        <button type="button" className="btn btn-ghost" disabled={busy} onClick={archive}>
+                            Archive
+                        </button>
+                    )}
+                </span>
             )}
-            {!isCreate && !record.isActive && (
+            {!isCreate && !record.isArchived && !record.isActive && (
                 <button type="button" className="btn btn-ghost" disabled={busy} onClick={setActive}>
                     Set active
                 </button>
@@ -82,6 +102,12 @@ export default function CurriculumModal({ record, schoolYears, onClose, onChange
     return (
         <SetupModal title={isCreate ? 'New curriculum' : 'Edit curriculum'} onClose={onClose} footer={footer}>
             {error && <div className="alert">{error}</div>}
+            {!isCreate && record.isArchived && (
+                <div className="alert alert-success" style={{ background: 'var(--sti-yellow-dim)', borderColor: 'var(--sti-yellow)', color: 'var(--text-1)' }}>
+                    This curriculum is archived{record.archiveReason ? ` — ${record.archiveReason}` : ''}. It stays out of the
+                    active catalog until restored.
+                </div>
+            )}
             <form id="curr-form" onSubmit={save} noValidate>
                 <div className="field">
                     <label htmlFor="curr-code">Program code</label>
