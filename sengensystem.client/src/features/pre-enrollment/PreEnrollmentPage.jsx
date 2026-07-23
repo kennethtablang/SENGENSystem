@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { getToken } from '../auth/api';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { saveBlob } from '../shell/download';
 import '../registration/registration.css';
 
 /* FR-PRE-01/03: the Registrar imports prospective student lists from .xlsx. The server runs
@@ -59,12 +60,7 @@ function PreEnrollmentPage() {
             });
             if (!response.ok) throw new Error('Could not download the template.');
             const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'sengen-preenrollment-template.xlsx';
-            a.click();
-            URL.revokeObjectURL(url);
+            saveBlob(blob, 'sengen-preenrollment-template.xlsx');
         } catch (err) {
             setAlert({ kind: 'error', text: err.message });
             notifyError(err.message);
