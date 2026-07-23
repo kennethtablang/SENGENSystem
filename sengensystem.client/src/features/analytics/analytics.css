@@ -1,0 +1,295 @@
+/* Room utilization analysis: summary tiles, filter bar, and per-room cards.
+   Tone classes (critical / low / moderate / optimal) carry the band colour so the
+   card, its meter, and its status line all read as one signal. */
+
+/* Methodology note: what the percentages are a percentage of. */
+.rua-basis {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  background: var(--sti-blue-dim);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.rua-basis svg {
+  color: var(--sti-blue);
+  flex-shrink: 0;
+  margin-top: 0.12rem;
+}
+
+.rua-basis p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.rua-basis strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.rua-outside {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.rua-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1.1rem;
+}
+
+.rua-tile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.rua-tile-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.rua-tile-value {
+  font: 600 1.75rem/1 var(--sans);
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.rua-tile-value small {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-3);
+  margin-left: 0.1rem;
+}
+
+.rua-tile.tone-critical { border-left: 3px solid var(--down); }
+.rua-tile.tone-critical .rua-tile-value { color: var(--down); }
+.rua-tile.tone-low { border-left: 3px solid var(--sti-yellow-hover); }
+.rua-tile.tone-low .rua-tile-value { color: var(--amber-text); }
+.rua-tile.tone-moderate { border-left: 3px solid var(--sti-blue); }
+.rua-tile.tone-moderate .rua-tile-value { color: var(--sti-blue); }
+
+/* ---------- Filter bar ---------- */
+
+.rua-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.rua-search {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 360px;
+}
+
+.rua-search input {
+  width: 100%;
+  font: 400 0.9rem/1.4 var(--sans);
+  color: var(--text-1);
+  background: var(--bg-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0.55rem 1rem 0.55rem 2.2rem;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.rua-search input:focus {
+  background: var(--surface);
+  border-color: var(--sti-blue);
+  box-shadow: 0 0 0 4px var(--sti-blue-dim);
+}
+
+.rua-search svg {
+  position: absolute;
+  left: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.rua-count {
+  font-size: 0.82rem;
+  color: var(--text-3);
+  margin: 0 0 0.6rem;
+}
+
+.rua-empty {
+  color: var(--text-3);
+  background: var(--bg-wash);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 1.6rem;
+  text-align: center;
+}
+
+/* ---------- Room cards ---------- */
+
+.rua-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+  gap: 0.8rem;
+}
+
+.rua-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 0.95rem 1rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.rua-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.rua-card.tone-critical { border-top-color: var(--down); }
+.rua-card.tone-low { border-top-color: var(--sti-yellow-hover); }
+.rua-card.tone-moderate { border-top-color: var(--sti-blue); }
+.rua-card.tone-optimal { border-top-color: var(--up); }
+
+.rua-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.rua-card-head h3 {
+  font: 600 1.02rem/1.2 var(--sans);
+  color: var(--text-1);
+  margin: 0;
+}
+
+.rua-card-where {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  margin: 0.2rem 0 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.rua-code {
+  font: 500 0.68rem/1 var(--mono);
+  color: var(--text-2);
+  background: var(--bg-wash);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.35rem;
+}
+
+.chip.rua-type {
+  background: var(--sti-blue-dim);
+  color: var(--sti-blue);
+  flex-shrink: 0;
+}
+
+.chip.rua-type.lab {
+  background: var(--sti-yellow-dim);
+  color: var(--amber-text);
+}
+
+.rua-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.rua-facts dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.rua-facts dd {
+  font-size: 0.82rem;
+  color: var(--text-1);
+  margin: 0.15rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.rua-meter-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+}
+
+.rua-pct {
+  font: 600 1.25rem/1 var(--sans);
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.rua-meter-cap {
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+.rua-bar {
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-wash);
+  overflow: hidden;
+}
+
+.rua-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--line-strong);
+  transition: width 0.35s ease;
+}
+
+.rua-card.tone-critical .rua-bar > span { background: var(--down); }
+.rua-card.tone-low .rua-bar > span { background: var(--sti-yellow-hover); }
+.rua-card.tone-moderate .rua-bar > span { background: var(--sti-blue); }
+.rua-card.tone-optimal .rua-bar > span { background: var(--up); }
+
+.rua-card.tone-critical .rua-pct { color: var(--down); }
+
+.rua-status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-2);
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+
+.rua-card.tone-critical .rua-status { color: var(--down); }
+.rua-card.tone-low .rua-status { color: var(--amber-text); }
+.rua-card.tone-optimal .rua-status { color: var(--up); }
