@@ -4,6 +4,7 @@ import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import { hhmm } from './calendarUtils';
 import ScheduleTable from './ScheduleTable';
+import ThinkingOverlay from './ThinkingOverlay';
 import './scheduling.css';
 
 const DAY_ABBR = {
@@ -338,6 +339,7 @@ function GenerateSchedulePage() {
 
     return (
         <div className="sched-page">
+            {generating && <ThinkingOverlay />}
             <header className="sched-head">
                 <div>
                     <h2>Generate schedule</h2>
