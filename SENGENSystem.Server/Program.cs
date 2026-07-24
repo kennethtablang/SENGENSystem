@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Auth;
 using SENGENSystem.Server.Common.Notifications;
@@ -78,6 +79,36 @@ namespace SENGENSystem.Server
 
             builder.Services.AddControllers();
             builder.Services.AddOpenApi();
+
+            // Swagger / Swashbuckle — interactive API surface for monitoring and testing.
+            // Served dev-only below (mirrors the MapOpenApi guard). The Bearer security
+            // definition adds an "Authorize" button so JWT-protected endpoints are testable.
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen(options =>
+            {
+                options.SwaggerDoc("v1", new OpenApiInfo
+                {
+                    Title = "SEN-GEN API",
+                    Version = "v1",
+                    Description = "SEN-GEN scheduling & enrollment system API."
+                });
+
+                // JwtBearerDefaults.AuthenticationScheme == "Bearer"
+                options.AddSecurityDefinition(JwtBearerDefaults.AuthenticationScheme, new OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT",
+                    In = ParameterLocation.Header,
+                    Description = "Paste a JWT access token (the raw token — the 'Bearer ' prefix is added automatically)."
+                });
+
+                options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+                {
+                    [new OpenApiSecuritySchemeReference(JwtBearerDefaults.AuthenticationScheme, document, null)] = new List<string>()
+                });
+            });
 
             // Without this, an unhandled exception returns a bare 500 with an *empty* body, so the
             // client has nothing to show but a generic "Something went wrong". ProblemDetails +
@@ -177,6 +208,13 @@ namespace SENGENSystem.Server
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
+
+                app.UseSwagger();
+                app.UseSwaggerUI(options =>
+                {
+                    options.SwaggerEndpoint("/swagger/v1/swagger.json", "SEN-GEN API v1");
+                    options.DocumentTitle = "SEN-GEN API";
+                });
             }
 
             app.UseHttpsRedirection();
