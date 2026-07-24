@@ -67,10 +67,13 @@ export default function ScheduleBoardPage() {
                 const data = await load(semesterId);
                 if (!active) return;
                 if (!semesterId && data.semesterId) setSemesterId(data.semesterId);
+                // Keep a still-valid selection across a semester switch; otherwise
+                // (first load, or the previously chosen room is gone) default to the
+                // read-across "All rooms" view so the whole schedule is visible up front.
                 setRoomId(prev => (
                     prev === 'all' || (prev && data.rooms.some(r => r.id === prev))
                         ? prev
-                        : data.rooms[0]?.id || ''
+                        : data.rooms.length > 0 ? 'all' : ''
                 ));
             } catch (err) {
                 if (active) setAlert(err.message);
