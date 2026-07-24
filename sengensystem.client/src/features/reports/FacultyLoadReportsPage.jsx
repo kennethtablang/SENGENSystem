@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { getToken } from '../auth/api';
 import { getDashboardMetrics } from '../dashboard/api';
 import { subscribeToReports } from './live';
 import { LiveChip } from './ReportsPage';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { saveBlob, filenameFromDisposition } from '../shell/download';
 import '../registration/registration.css';
 import './reports.css';
 
 /* Faculty Academic Load Reports: monitor teaching assignments per semester, search by
-   name or employee ID, and download individual, consolidated, room-utilization, grid,
+   name or employee ID, and download individual, consolidated, grid,
    or bulk (.zip) workbooks for workload balance and institutional compliance. */
 
 async function downloadFile(url, fallbackName) {
@@ -23,13 +25,8 @@ async function downloadFile(url, fallbackName) {
         throw new Error(message);
     }
     const blob = await response.blob();
-    const disposition = response.headers.get('Content-Disposition') ?? '';
-    const match = /filename="?([^";]+)"?/.exec(disposition);
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = match?.[1] ?? fallbackName;
-    link.click();
-    URL.revokeObjectURL(link.href);
+    const name = filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackName);
+    saveBlob(blob, name);
 }
 
 function FacultyLoadReportsPage() {
@@ -115,7 +112,8 @@ function FacultyLoadReportsPage() {
                     <h2>Faculty load reports <LiveChip state={liveState} updatedAt={updatedAt} /></h2>
                     <p className="reg-sub">
                         Teaching assignments by semester — monitor workload balance and download
-                        compliance reports per member, consolidated, or in bulk.
+                        compliance reports per member, consolidated, or in bulk. Looking for room
+                        usage? <Link to="/analytics/room-utilization">Room utilization</Link>.
                     </p>
                 </div>
                 <div className="reg-controls">
@@ -155,20 +153,23 @@ function FacultyLoadReportsPage() {
                     Download all (.zip)
                 </button>
                 <button
-                    type="button" className="btn btn-ghost" disabled={!semesterId || busy !== null}
-                    onClick={() => download('consolidated', `/api/reports/faculty-loading/consolidated?${qsSem}`,
-                        'sengen-consolidated-faculty-loading.xlsx', 'Downloaded the consolidated loading report.')}
+                    type="button" className="btn btn-primary" disabled={!semesterId || busy !== null}
+                    title="Confirmation of Faculty Loading — one memo per faculty member (PDF)"
+                    onClick={() => download('bulkPdf', `/api/reports/faculty-loading/consolidated.pdf?${qsSem}`,
+                        'sengen-confirmation-faculty-loading.pdf',
+                        'Downloaded the Confirmation of Faculty Loading (PDF).')}
                 >
-                    {busy === 'consolidated' && <span className="spinner" aria-hidden="true" />}
-                    Consolidated report
+                    {busy === 'bulkPdf' && <span className="spinner" aria-hidden="true" />}
+                    Confirmation of Loading (PDF)
                 </button>
                 <button
                     type="button" className="btn btn-ghost" disabled={!semesterId || busy !== null}
-                    onClick={() => download('rooms', `/api/reports/room-utilization?${qsSem}&format=xlsx`,
-                        'sengen-room-utilization.xlsx', 'Downloaded room utilization (08:00–17:00).')}
+                    title="Confirmation of Faculty Loading — one worksheet per faculty member (Excel)"
+                    onClick={() => download('consolidated', `/api/reports/faculty-loading/consolidated?${qsSem}`,
+                        'sengen-confirmation-faculty-loading.xlsx', 'Downloaded the Confirmation of Faculty Loading (Excel).')}
                 >
-                    {busy === 'rooms' && <span className="spinner" aria-hidden="true" />}
-                    Room utilization
+                    {busy === 'consolidated' && <span className="spinner" aria-hidden="true" />}
+                    Confirmation of Loading (Excel)
                 </button>
                 <button
                     type="button" className="btn btn-ghost" disabled={!semesterId || busy !== null}
@@ -225,18 +226,42 @@ function FacultyLoadReportsPage() {
                                             </span>
                                         </td>
                                         <td>
-                                            <button
-                                                type="button" className="btn btn-ghost"
-                                                style={{ padding: '0.45rem 1rem', fontSize: '0.8rem' }}
-                                                disabled={busy !== null}
-                                                onClick={() => download(f.facultyProfileId,
-                                                    `/api/reports/faculty-loading/${f.facultyProfileId}?${qsSem}`,
-                                                    'sengen-load-report.xlsx',
-                                                    `Downloaded ${f.name}'s load report.`)}
-                                            >
-                                                {busy === f.facultyProfileId && <span className="spinner" aria-hidden="true" />}
-                                                Download
-                                            </button>
+                                            <div className="flr-row-actions">
+                                                <button
+                                                    type="button" className="btn btn-ghost"
+                                                    disabled={busy !== null}
+                                                    onClick={() => download(f.facultyProfileId,
+                                                        `/api/reports/faculty-loading/${f.facultyProfileId}?${qsSem}`,
+                                                        'sengen-load-report.xlsx',
+                                                        `Downloaded ${f.name}'s load report.`)}
+                                                >
+                                                    {busy === f.facultyProfileId && <span className="spinner" aria-hidden="true" />}
+                                                    Excel
+                                                </button>
+                                                <button
+                                                    type="button" className="btn btn-ghost"
+                                                    disabled={busy !== null}
+                                                    onClick={() => download(`${f.facultyProfileId}-pdf`,
+                                                        `/api/reports/faculty-loading/${f.facultyProfileId}/pdf?${qsSem}`,
+                                                        'sengen-load-report.pdf',
+                                                        `Downloaded ${f.name}'s load report (PDF).`)}
+                                                >
+                                                    {busy === `${f.facultyProfileId}-pdf` && <span className="spinner" aria-hidden="true" />}
+                                                    PDF
+                                                </button>
+                                                <button
+                                                    type="button" className="btn btn-ghost"
+                                                    disabled={busy !== null}
+                                                    title="Weekly timetable (Mon–Sat) plus a daily class breakdown"
+                                                    onClick={() => download(`${f.facultyProfileId}-grid`,
+                                                        `/api/reports/faculty-loading/${f.facultyProfileId}/schedule-grid?${qsSem}`,
+                                                        'sengen-schedule-grid.xlsx',
+                                                        `Downloaded ${f.name}'s schedule grid.`)}
+                                                >
+                                                    {busy === `${f.facultyProfileId}-grid` && <span className="spinner" aria-hidden="true" />}
+                                                    Schedule Grid
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 );

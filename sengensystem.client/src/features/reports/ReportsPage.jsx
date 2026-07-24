@@ -6,6 +6,7 @@ import { getDashboardMetrics } from '../dashboard/api';
 import { subscribeToReports } from './live';
 import { downloadSemesterExport, downloadSystemParametersExport } from './exportApi';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { saveBlob } from '../shell/download';
 import '../registration/registration.css';
 import './reports.css';
 
@@ -106,12 +107,7 @@ function ReportsPage() {
                 { headers: { Authorization: `Bearer ${getToken()}` } });
             if (!response.ok) throw new Error('Export failed.');
             const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `sengen-${active}.xlsx`;
-            a.click();
-            URL.revokeObjectURL(url);
+            saveBlob(blob, `sengen-${active}.xlsx`);
             notifySuccess(`Exported ${reports.find(r => r.key === active)?.title ?? active} to Excel.`);
         } catch (err) {
             setError(err.message);

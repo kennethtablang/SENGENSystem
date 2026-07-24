@@ -106,3 +106,14 @@
   background: var(--down-dim);
   color: var(--down);
 }
+
+/* Per-row report actions: the same load report in either format. */
+.flr-row-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.flr-row-actions .btn {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8rem;
+}

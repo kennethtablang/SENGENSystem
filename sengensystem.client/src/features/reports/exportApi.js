@@ -1,4 +1,5 @@
 import { getToken } from '../auth/api';
+import { saveBlob, filenameFromDisposition } from '../shell/download';
 
 async function downloadWorkbook(url, fallbackName) {
     const response = await fetch(url, {
@@ -10,13 +11,8 @@ async function downloadWorkbook(url, fallbackName) {
         throw new Error(message);
     }
     const blob = await response.blob();
-    const match = /filename=([^;]+)/.exec(response.headers.get('content-disposition') || '');
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objectUrl;
-    a.download = match ? match[1].trim().replace(/"/g, '') : fallbackName;
-    a.click();
-    URL.revokeObjectURL(objectUrl);
+    const name = filenameFromDisposition(response.headers.get('content-disposition'), fallbackName);
+    saveBlob(blob, name);
 }
 
 /* Downloads the one-workbook "everything" bundle for a semester (FR-RPT-02):
