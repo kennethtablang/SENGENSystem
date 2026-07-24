@@ -36,7 +36,9 @@ async function send(method, url, body) {
 export const getBoard = (semesterId) =>
     send('GET', `/api/scheduling/board${semesterId ? `?semesterId=${semesterId}` : ''}`);
 
-// body: { facultyLoadAssignmentId, roomId, day, startMinutes, endMinutes }
+// body: { facultyLoadAssignmentId, component, roomId, day, startMinutes, endMinutes }
+// `component` is "Lecture" or "Laboratory" — a lecture-laboratory subject is placed as two
+// separate meetings, and the server refuses a room that doesn't suit the one being placed.
 export const placeEntry = (body) => send('POST', '/api/scheduling/board', body);
 
 // body: { roomId, day, startMinutes, endMinutes }

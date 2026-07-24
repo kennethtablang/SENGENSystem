@@ -9,6 +9,7 @@ import './scheduling.css';
 function ReviewSchedulePage() {
     const [rows, setRows] = useState([]);
     const [semesterName, setSemesterName] = useState('');
+    const [finalized, setFinalized] = useState(false);
     const [loading, setLoading] = useState(true);
     const [alert, setAlert] = useState(null);
 
@@ -20,6 +21,7 @@ function ReviewSchedulePage() {
                 if (!active) return;
                 setRows(data.schedule);
                 setSemesterName(data.semesterName);
+                setFinalized(data.isFinalized);
             } catch (err) {
                 if (active) setAlert({ kind: 'error', text: err.message });
             } finally {
@@ -43,9 +45,14 @@ function ReviewSchedulePage() {
                     </p>
                 </div>
                 {rows.length > 0 && (
-                    <span className="chip chip-blue">
-                        {publishedCount === rows.length ? 'All published' : `${publishedCount}/${rows.length} published`}
-                    </span>
+                    <div className="sched-head-actions">
+                        {finalized && publishedCount < rows.length && (
+                            <span className="chip chip-blue">Finalized · ready to publish</span>
+                        )}
+                        <span className="chip chip-blue">
+                            {publishedCount === rows.length ? 'All published' : `${publishedCount}/${rows.length} published`}
+                        </span>
+                    </div>
                 )}
             </header>
 

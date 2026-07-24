@@ -18,6 +18,18 @@
   color: var(--sti-blue);
 }
 
+/* Generate / Finalize / Reopen action cluster in the page header. */
+.sched-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.sched-final-chip {
+  white-space: nowrap;
+}
+
 .sched-sub {
   color: var(--text-3);
   font-size: 0.88rem;
@@ -36,6 +48,19 @@
   flex-wrap: wrap;
   gap: 0.9rem;
   margin-bottom: 1.4rem;
+}
+
+.sched-variety-note {
+  margin: -0.6rem 0 1.4rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--sti-blue-dim);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+.sched-variety-note strong {
+  color: var(--sti-blue);
 }
 
 .sched-stat {
@@ -154,4 +179,273 @@
   color: var(--text-3);
   font-size: 0.9rem;
   padding: 1.5rem 0;
+}
+
+/* ---------- CSP constraint documentation & optimization result ---------- */
+
+.sched-rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0.8rem;
+  margin: 1.2rem 0;
+}
+
+.sched-rule-col {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1rem 1.1rem;
+}
+
+.sched-rule-col h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font: 600 0.95rem/1.2 var(--sans);
+  color: var(--text-1);
+  margin: 0 0 0.7rem;
+}
+
+.sched-rule-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.45rem;
+  border-radius: var(--radius-pill);
+}
+
+.sched-rule-tag.hard {
+  background: var(--down-dim);
+  color: var(--down);
+}
+
+.sched-rule-tag.soft {
+  background: var(--sti-blue-dim);
+  color: var(--sti-blue);
+}
+
+.sched-rule-col dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.sched-rule-col dt {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.sched-rule-col dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.sched-rule-note {
+  margin: 0.8rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--text-3);
+}
+
+.sched-opt {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.1rem;
+}
+
+.sched-opt h3 {
+  font: 600 0.95rem/1.2 var(--sans);
+  color: var(--text-1);
+  margin: 0 0 0.8rem;
+}
+
+.sched-opt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.8rem;
+}
+
+.sched-opt-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-left: 0.7rem;
+  border-left: 3px solid var(--sti-blue);
+}
+
+.sched-opt-grid > div.warn {
+  border-left-color: var(--down);
+}
+
+.sched-opt-num {
+  font: 600 1.5rem/1 var(--sans);
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-opt-grid > div.warn .sched-opt-num {
+  color: var(--down);
+}
+
+.sched-opt-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.sched-opt-grid small {
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+/* ---------- Soft-constraint data (the basis panel) ---------- */
+
+.sched-basis {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.1rem;
+}
+
+.sched-basis > h3 {
+  font-size: 1rem;
+  color: var(--sti-blue);
+}
+
+.sched-basis-intro {
+  margin: 0.3rem 0 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text-3);
+  max-width: 52rem;
+}
+
+.sched-basis-block {
+  padding-top: 0.9rem;
+  margin-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.sched-basis-block h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-1);
+  margin-bottom: 0.6rem;
+}
+
+.sched-basis-count {
+  margin-left: auto;
+  font: 600 0.72rem/1 var(--sans);
+  color: var(--text-3);
+}
+
+.sched-basis-count.warn {
+  color: var(--down);
+}
+
+.sched-basis-empty,
+.sched-basis-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+
+.sched-basis-warn {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  color: var(--down);
+}
+
+/* S1 — preferred windows */
+.sched-pref-list,
+.sched-load-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sched-pref-list li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+.sched-pref-name {
+  font-weight: 600;
+  font-size: 0.84rem;
+  color: var(--text-1);
+}
+
+.sched-pref-none {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-3);
+}
+
+.sched-pref-windows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* S3 — load distribution bars */
+.sched-load-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.sched-load-name {
+  font-weight: 600;
+  font-size: 0.84rem;
+  color: var(--text-1);
+}
+
+.sched-load-val {
+  font: 600 0.76rem/1 var(--sans);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.sched-load-bar {
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-wash);
+  overflow: hidden;
+}
+
+.sched-load-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--sti-blue);
+}
+
+.sched-load-bar > span.is-heavy {
+  background: var(--down);
+}
+
+.sched-load-bar > span.is-light {
+  background: var(--sti-gold, #e0b400);
 }

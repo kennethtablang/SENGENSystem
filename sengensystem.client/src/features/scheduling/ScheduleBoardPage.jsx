@@ -5,10 +5,17 @@ import interactionPlugin, { Draggable } from '@fullcalendar/interaction';
 import { getBoard, placeEntry, moveEntry, removeEntry } from './boardApi';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
-import { REF_DATES, toIso, fromDate, fmtHours, subjectColor, slotLabelFormat } from './calendarUtils';
+import { REF_DATES, toIso, fromDate, fmtHours, hhmm, subjectColor, slotLabelFormat } from './calendarUtils';
 import './board.css';
 
 const DEFAULT_MINUTES = 90; // a dropped subject starts as a 90-minute block; resize to taste.
+
+const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Identifies one meeting — a subject's lecture or laboratory hours, for one faculty member and
+// one class section. Pool items, tracker rows, and placed calendar entries all carry these four
+// fields, so the same key links a tracker row to the blocks it is counting.
+const meetingKey = (x) => `${x.facultyProfileId}|${x.subjectId}|${x.cohortKey}|${x.component}`;
 
 export default function ScheduleBoardPage() {
     const [semesters, setSemesters] = useState([]);
@@ -22,6 +29,15 @@ export default function ScheduleBoardPage() {
     const [tracker, setTracker] = useState([]);
     const [loading, setLoading] = useState(true);
     const [alert, setAlert] = useState(null);
+    // Hover tooltip for a placed class: { x, y, e } where e is the entry's extendedProps.
+    const [tooltip, setTooltip] = useState(null);
+    const [fullscreen, setFullscreen] = useState(false);
+    // Tracker row the user clicked, as its pool key ("{loadId}:{Lecture|Laboratory}"). Its blocks
+    // on the calendar light up and everything else dims, so "where did these hours go?" is a
+    // single click instead of a visual hunt through a full week.
+    const [focusKey, setFocusKey] = useState(null);
+
+    const pageRef = useRef(null);
 
     // Left-panel filters over the "Assigned Subjects" pool (and, for faculty/section, the calendar).
     const [facultyFilter, setFacultyFilter] = useState('');
@@ -106,13 +122,16 @@ export default function ScheduleBoardPage() {
 
     // Weekly Hours Tracker rows: required hours come from the server; plotted hours are summed
     // live from the calendar entries so the reading updates on every drop / move / resize / remove.
+    // One row per *meeting* — a lecture–laboratory subject is tracked as two, because its lecture
+    // hours and laboratory hours can fall short independently.
     const trackerRows = useMemo(() => tracker
         .filter(t => (!facultyFilter || t.facultyProfileId === facultyFilter) && (!sectionFilter || t.cohortKey === sectionFilter))
         .map(t => {
+            const key = meetingKey(t);
             const minutes = entries
-                .filter(e => e.facultyProfileId === t.facultyProfileId && e.subjectId === t.subjectId && e.cohortKey === t.cohortKey)
+                .filter(e => meetingKey(e) === key)
                 .reduce((sum, e) => sum + (e.endMinutes - e.startMinutes), 0);
-            return { ...t, plotted: minutes / 60 };
+            return { ...t, meetingKey: key, plotted: minutes / 60 };
         }), [tracker, entries, facultyFilter, sectionFilter]);
 
     // "All rooms" is a read-across view: every placement in the semester at once,
@@ -125,6 +144,10 @@ export default function ScheduleBoardPage() {
         .filter(e => !sectionFilter || e.cohortKey === sectionFilter)
         .map(e => {
             const c = subjectColor(e.subjectId);
+            const classNames = [];
+            if (e.component === 'Laboratory') classNames.push('ev-lab');
+            // With a tracker row focused, its own blocks lift and the rest recede.
+            if (focusKey) classNames.push(meetingKey(e) === focusKey ? 'ev-focus' : 'ev-dim');
             return {
                 id: e.assignmentId,
                 start: toIso(e.day, e.startMinutes),
@@ -132,13 +155,33 @@ export default function ScheduleBoardPage() {
                 backgroundColor: c.bg,
                 borderColor: c.border,
                 textColor: c.text,
-                classNames: e.requiresLaboratory ? ['ev-lab'] : [],
+                classNames,
                 extendedProps: e
             };
-        }), [entries, roomId, allRooms, facultyFilter, sectionFilter]);
+        }), [entries, roomId, allRooms, facultyFilter, sectionFilter, focusKey]);
+
+    // Focusing a meeting that lives in another room is useless if that room isn't on screen, so
+    // clicking a tracker row also widens the calendar to "All rooms" when it needs to.
+    function focusMeeting(row) {
+        const key = row.meetingKey;
+        if (focusKey === key) { setFocusKey(null); return; }
+        setFocusKey(key);
+        const placed = entries.filter(e => meetingKey(e) === key);
+        if (!allRooms && placed.length > 0 && placed.some(e => e.roomId !== roomId)) {
+            setRoomId('all');
+        }
+    }
+
+    // Esc clears the focus, matching how the fullscreen and modal affordances behave.
+    useEffect(() => {
+        if (!focusKey) return undefined;
+        const onKey = (ev) => { if (ev.key === 'Escape') setFocusKey(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [focusKey]);
 
     async function handleExternalDrop(info) {
-        const loadId = info.draggedEl.dataset.loadId;
+        const { loadId, component } = info.draggedEl.dataset;
         if (!loadId || !roomId) return;
         if (allRooms) {
             notifyError('Pick a specific room to place a class — “All rooms” is a viewing mode.');
@@ -150,6 +193,7 @@ export default function ScheduleBoardPage() {
         try {
             await placeEntry({
                 facultyLoadAssignmentId: loadId,
+                component,
                 roomId,
                 day,
                 startMinutes: minutes,
@@ -200,10 +244,28 @@ export default function ScheduleBoardPage() {
         }
     }
 
+    // Fullscreen the whole board so the whole timetable is usable on a projector or big display.
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            pageRef.current?.requestFullscreen?.();
+        } else {
+            document.exitFullscreen?.();
+        }
+    }
+
+    // Keep local state in sync however fullscreen is left (button, Esc, or F11).
+    useEffect(() => {
+        const onChange = () => setFullscreen(document.fullscreenElement === pageRef.current);
+        document.addEventListener('fullscreenchange', onChange);
+        return () => document.removeEventListener('fullscreenchange', onChange);
+    }, []);
+
     const selectedRoom = rooms.find(r => r.id === roomId);
+    // Grow the calendar to fill the screen in fullscreen; keep the fixed height otherwise.
+    const calendarHeight = fullscreen ? Math.max(520, window.innerHeight - 210) : 640;
 
     return (
-        <div className="board-page">
+        <div className={`board-page${fullscreen ? ' is-fullscreen' : ''}`} ref={pageRef}>
             <header className="board-head">
                 <div>
                     <h2>Schedule board</h2>
@@ -231,10 +293,28 @@ export default function ScheduleBoardPage() {
                             {rooms.length === 0 && <option value="">No rooms</option>}
                             {rooms.length > 0 && <option value="all">All rooms · full schedule</option>}
                             {rooms.map(r => (
-                                <option key={r.id} value={r.id}>{r.name}{r.isLaboratory ? ' · Lab' : ''}</option>
+                                <option key={r.id} value={r.id}>{r.name}{r.isLaboratory ? ` · ${r.kindLabel}` : ''}</option>
                             ))}
                         </select>
                     </label>
+                    <button
+                        type="button"
+                        className="btn btn-ghost board-fs-btn"
+                        onClick={toggleFullscreen}
+                        aria-pressed={fullscreen}
+                        title={fullscreen ? 'Exit full screen (Esc)' : 'Full screen'}
+                    >
+                        {fullscreen ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M9 4v3a2 2 0 0 1-2 2H4M20 9h-3a2 2 0 0 1-2-2V4M15 20v-3a2 2 0 0 1 2-2h3M4 15h3a2 2 0 0 1 2 2v3" />
+                            </svg>
+                        ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M4 9V6a2 2 0 0 1 2-2h3M20 9V6a2 2 0 0 0-2-2h-3M4 15v3a2 2 0 0 0 2 2h3M20 15v3a2 2 0 0 1-2 2h-3" />
+                            </svg>
+                        )}
+                        <span>{fullscreen ? 'Exit full screen' : 'Full screen'}</span>
+                    </button>
                 </div>
             </header>
 
@@ -243,7 +323,7 @@ export default function ScheduleBoardPage() {
             {loading ? (
                 <p className="board-empty">Loading board…</p>
             ) : (
-                <div className="board-grid">
+                <div className="board-grid" style={{ '--board-cal-h': `${calendarHeight}px` }}>
                     <aside className="board-side">
                         <section className="board-panel">
                             <h3 className="board-panel-title">Filters</h3>
@@ -278,7 +358,9 @@ export default function ScheduleBoardPage() {
                             <p className="board-panel-hint">
                                 {allRooms
                                     ? 'Viewing every room’s schedule — pick a specific room to place new classes.'
-                                    : `Drag a subject onto the calendar for ${selectedRoom?.name || 'a room'}.`}
+                                    : `Drag a meeting onto the calendar for ${selectedRoom?.name || 'a room'}` +
+                                      `${selectedRoom ? ` (${selectedRoom.kindLabel.toLowerCase()})` : ''}. ` +
+                                      'Lecture and laboratory hours are dragged separately.'}
                             </p>
                             <div className="board-pool" ref={poolRef}>
                                 {filteredPool.length === 0 ? (
@@ -287,23 +369,34 @@ export default function ScheduleBoardPage() {
                                     </p>
                                 ) : filteredPool.map(p => (
                                     <div
-                                        key={p.facultyLoadAssignmentId}
-                                        className={`board-pool-item${p.requiresLaboratory ? ' is-lab' : ''}`}
+                                        key={p.key}
+                                        className={[
+                                            'board-pool-item',
+                                            p.requiresLaboratory ? 'is-lab' : '',
+                                            focusKey && meetingKey(p) === focusKey ? 'is-focus' : '',
+                                            focusKey && meetingKey(p) !== focusKey ? 'is-dim' : ''
+                                        ].filter(Boolean).join(' ')}
                                         data-load-id={p.facultyLoadAssignmentId}
+                                        data-component={p.component}
                                         data-code={p.subjectCode}
-                                        title={`${p.subjectCode} — ${p.subjectTitle}`}
+                                        title={`${p.subjectCode} — ${p.subjectTitle} · ${p.remainingHours}h of ${p.componentLabel.toLowerCase()} left, needs a ${p.requiredRoomKindLabel.toLowerCase()}`}
                                         style={{ borderLeftColor: subjectColor(p.subjectId).border }}
                                     >
                                         <div className="board-pool-main">
                                             <span className="board-pool-code">{p.subjectCode}</span>
                                             <span className="board-pool-units">{p.units}u</span>
-                                            {p.requiresLaboratory && <span className="chip chip-lab">Lab</span>}
+                                            <span className={`chip ${p.requiresLaboratory ? 'chip-lab' : 'chip-muted'}`}>
+                                                {p.component === 'Laboratory' ? 'Lab' : 'Lec'}
+                                            </span>
                                         </div>
                                         <div className="board-pool-title">{p.subjectTitle}</div>
                                         <div className="board-pool-meta">
                                             <span>{p.cohortLabel}</span>
                                             <span aria-hidden>·</span>
                                             <span>{p.facultyName}</span>
+                                        </div>
+                                        <div className="board-pool-need">
+                                            {fmtHours(p.remainingHours)}h left · {p.requiredRoomKindLabel}
                                         </div>
                                     </div>
                                 ))}
@@ -329,7 +422,7 @@ export default function ScheduleBoardPage() {
                                 snapDuration="00:30:00"
                                 slotLabelFormat={slotLabelFormat()}
                                 expandRows
-                                height={640}
+                                height={calendarHeight}
                                 nowIndicator={false}
                                 editable
                                 droppable
@@ -338,6 +431,12 @@ export default function ScheduleBoardPage() {
                                 eventDrop={handleEventChange}
                                 eventResize={handleEventChange}
                                 eventClick={handleEventClick}
+                                eventMouseEnter={(info) => setTooltip({
+                                    x: info.jsEvent.clientX,
+                                    y: info.jsEvent.clientY,
+                                    e: info.event.extendedProps
+                                })}
+                                eventMouseLeave={() => setTooltip(null)}
                                 events={events}
                                 eventContent={(arg) => {
                                     const e = arg.event.extendedProps;
@@ -355,9 +454,16 @@ export default function ScheduleBoardPage() {
                     </main>
 
                     <aside className="board-track-side">
-                        <section className="board-panel">
-                            <h3 className="board-panel-title">Weekly hours tracker</h3>
-                            <p className="board-panel-hint">Plotted hours vs. each subject’s weekly requirement.</p>
+                        <section className="board-panel board-track-panel">
+                            <h3 className="board-panel-title">
+                                Weekly hours tracker
+                                <span className="board-count">{trackerRows.length}</span>
+                            </h3>
+                            <p className="board-panel-hint">
+                                {focusKey
+                                    ? 'Highlighting this meeting’s blocks — click it again or press Esc to clear.'
+                                    : 'Plotted hours vs. each meeting’s weekly requirement. Click a row to highlight its blocks on the calendar.'}
+                            </p>
                             <div className="board-tracker">
                                 {trackerRows.length === 0 ? (
                                     <p className="board-pool-empty">No assigned subjects for these filters.</p>
@@ -366,12 +472,26 @@ export default function ScheduleBoardPage() {
                                     const over = t.plotted > t.requiredHours;
                                     const done = !over && t.requiredHours > 0 && t.plotted >= t.requiredHours;
                                     const status = over ? 'is-over' : done ? 'is-done' : 'is-todo';
+                                    const focused = focusKey === t.meetingKey;
                                     return (
-                                        <div key={t.facultyLoadAssignmentId} className="board-track-row">
+                                        <button
+                                            type="button"
+                                            key={t.key}
+                                            className={[
+                                                'board-track-row',
+                                                focused ? 'is-focus' : '',
+                                                focusKey && !focused ? 'is-dim' : ''
+                                            ].filter(Boolean).join(' ')}
+                                            aria-pressed={focused}
+                                            onClick={() => focusMeeting(t)}
+                                        >
                                             <div className="board-track-top">
                                                 <span className="board-track-name">
                                                     <span className="board-track-dot" style={{ background: subjectColor(t.subjectId).border }} />
                                                     {t.subjectCode}
+                                                    <span className={`chip ${t.component === 'Laboratory' ? 'chip-lab' : 'chip-muted'}`}>
+                                                        {t.component === 'Laboratory' ? 'Lab' : 'Lec'}
+                                                    </span>
                                                 </span>
                                                 <span className={`board-track-val ${status}`}>{fmtHours(t.plotted)}/{t.requiredHours}h</span>
                                             </div>
@@ -383,10 +503,12 @@ export default function ScheduleBoardPage() {
                                             {over && <span className="board-track-note is-over-note">{fmtHours(t.plotted - t.requiredHours)}h over the requirement</span>}
                                             {!done && !over && (
                                                 <span className="board-track-note">
-                                                    {t.plotted === 0 ? 'Needs plotting on the calendar' : `${fmtHours(t.requiredHours - t.plotted)}h left to plot`}
+                                                    {t.plotted === 0
+                                                        ? `Needs ${t.requiredHours}h in a ${t.requiredRoomKindLabel.toLowerCase()}`
+                                                        : `${fmtHours(t.requiredHours - t.plotted)}h left to plot`}
                                                 </span>
                                             )}
-                                        </div>
+                                        </button>
                                     );
                                 })}
                             </div>
@@ -394,6 +516,42 @@ export default function ScheduleBoardPage() {
                     </aside>
                 </div>
             )}
+
+            {tooltip && (() => {
+                const { x, y, e } = tooltip;
+                // Keep the tooltip on-screen: flip it left/up when near the right/bottom edge.
+                const flipX = x > window.innerWidth - 280;
+                const flipY = y > window.innerHeight - 220;
+                const style = {
+                    left: x + (flipX ? -14 : 14),
+                    top: y + (flipY ? -14 : 14),
+                    transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`
+                };
+                const durationH = (e.endMinutes - e.startMinutes) / 60;
+                return (
+                    <div className="board-tooltip" role="tooltip" style={style}>
+                        <div className="board-tooltip-head">
+                            <span className="board-tooltip-dot" style={{ background: subjectColor(e.subjectId).border }} />
+                            <span className="board-tooltip-code">{e.subjectCode}</span>
+                            <span className={`chip ${e.component === 'Laboratory' ? 'chip-lab' : 'chip-muted'}`}>
+                                {e.component === 'Laboratory' ? 'Lab' : 'Lec'}
+                            </span>
+                            <span className={`board-tooltip-tag ${e.isPublished ? 'is-published' : 'is-draft'}`}>
+                                {e.isPublished ? 'Published' : 'Draft'}
+                            </span>
+                        </div>
+                        <div className="board-tooltip-title">{e.subjectTitle}</div>
+                        <dl className="board-tooltip-grid">
+                            <div><dt>When</dt><dd>{DAY_NAMES[e.day]} · {hhmm(e.startMinutes)}–{hhmm(e.endMinutes)} ({fmtHours(durationH)}h)</dd></div>
+                            <div><dt>Room</dt><dd>{e.roomName}</dd></div>
+                            <div><dt>Meeting</dt><dd>{e.component} · {e.deliveryShort}</dd></div>
+                            <div><dt>Section</dt><dd>{e.cohortLabel}</dd></div>
+                            <div><dt>Faculty</dt><dd>{e.facultyName}</dd></div>
+                        </dl>
+                        {e.isManualOverride && <div className="board-tooltip-note">Manually overridden</div>}
+                    </div>
+                );
+            })()}
         </div>
     );
 }

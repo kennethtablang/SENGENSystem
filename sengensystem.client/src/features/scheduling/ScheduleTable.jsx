@@ -39,6 +39,7 @@ function ScheduleTable({ rows }) {
                             <thead>
                                 <tr>
                                     <th>Subject</th>
+                                    <th>Meeting</th>
                                     <th>Section</th>
                                     <th>Day</th>
                                     <th>Time</th>
@@ -58,6 +59,13 @@ function ScheduleTable({ rows }) {
                                             <td>
                                                 <strong>{row.subjectCode}</strong>
                                                 <span className="sched-subject-title">{row.subjectTitle}</span>
+                                            </td>
+                                            <td>
+                                                {/* A lecture–laboratory subject appears twice —
+                                                    once per meeting, in different rooms. */}
+                                                <span className={`chip ${row.component === 'Laboratory' ? 'chip-lab' : 'chip-muted'}`}>
+                                                    {row.component === 'Laboratory' ? 'Lab' : 'Lec'}
+                                                </span>
                                             </td>
                                             <td className="sched-mono">{row.sectionCode}</td>
                                             <td>{row.day}</td>

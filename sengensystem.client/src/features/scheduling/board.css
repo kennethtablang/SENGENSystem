@@ -45,6 +45,30 @@
   margin-bottom: 1rem;
 }
 
+/* ---------- Full screen ---------- */
+
+.board-fs-btn {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+/* When the board goes fullscreen the browser gives the element a bare default
+   background — restore the app wash, add breathing room, and let it scroll. */
+.board-page:fullscreen {
+  background: var(--bg-wash);
+  overflow-y: auto;
+  padding: 1.3rem 1.6rem;
+}
+
+/* Fallback for the animation-based flagged state (covers browsers/quirks where the
+   element scrolls oddly); no visual change beyond ensuring it fills the screen. */
+.board-page.is-fullscreen {
+  width: 100%;
+}
+
 .board-empty {
   color: var(--text-3);
   font-size: 0.9rem;
@@ -55,7 +79,7 @@
 
 .board-grid {
   display: grid;
-  grid-template-columns: 288px minmax(0, 1fr) 264px;
+  grid-template-columns: 288px minmax(0, 1fr) 300px;
   gap: 1.1rem;
   align-items: start;
 }
@@ -81,6 +105,22 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+/* The tracker runs the full height of the calendar beside it — --board-cal-h is set inline from
+   the same number handed to FullCalendar, so it tracks fullscreen too. Capping (rather than
+   stretching the grid row) is what keeps a long list of meetings from dragging the calendar
+   down to 2000px with it. */
+.board-track-side {
+  max-height: var(--board-cal-h, 40rem);
+  min-height: 0;
+}
+
+.board-track-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .board-panel {
@@ -227,24 +267,70 @@
   color: var(--text-3);
 }
 
-.chip-lab {
+/* Compact chips for the board's dense panels. Scoped to the page: an unscoped .chip-lab here
+   outranks the plain colour-only .chip-lab the other features share, and was uppercasing their
+   chips too (the Rooms table showed "COMPUTER LABORATORY" next to "Lecture room"). */
+.board-page .chip-lab,
+.board-page .chip-muted {
   font: 700 0.6rem/1 var(--sans);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--sti-blue);
-  background: var(--sti-blue-dim);
   border-radius: var(--radius-pill);
   padding: 0.15rem 0.4rem;
 }
 
-/* ---------- Weekly unit tracker ---------- */
+.board-page .chip-lab {
+  color: var(--sti-blue);
+  background: var(--sti-blue-dim);
+}
+
+/* ---------- Weekly hours tracker ---------- */
 
 .board-tracker {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-  max-height: 34rem;
+  gap: 0.5rem;
+  /* Fills whatever height the panel was given (the calendar's) and scrolls within it, rather
+     than being capped short while the calendar towers beside it. */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  margin: 0 -0.35rem;
+  padding: 0 0.35rem;
+}
+
+/* Each row is a button: clicking it highlights that meeting's blocks on the calendar. */
+.board-track-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.55rem;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
+}
+
+.board-track-row:hover {
+  background: var(--bg-wash);
+}
+
+.board-track-row:focus-visible {
+  outline: none;
+  border-color: var(--sti-blue);
+  box-shadow: 0 0 0 3px var(--sti-blue-dim);
+}
+
+.board-track-row.is-focus {
+  background: var(--sti-blue-dim);
+  border-color: var(--sti-blue);
+}
+
+.board-track-row.is-dim {
+  opacity: 0.42;
 }
 
 .board-track-top {
@@ -331,6 +417,35 @@
   color: var(--down);
 }
 
+/* ---------- Focus link: tracker row ⇄ its blocks on the calendar ---------- */
+
+.board-cal .fc .fc-timegrid-event.ev-focus {
+  outline: 2px solid var(--sti-blue);
+  outline-offset: 1px;
+  box-shadow: 0 6px 16px rgba(0, 51, 153, 0.28);
+  z-index: 5;
+}
+
+.board-cal .fc .fc-timegrid-event.ev-dim {
+  opacity: 0.28;
+}
+
+.board-pool-item.is-focus {
+  border-color: var(--sti-blue);
+  box-shadow: 0 0 0 3px var(--sti-blue-dim);
+}
+
+.board-pool-item.is-dim {
+  opacity: 0.45;
+}
+
+/* What is still missing from this meeting, and where it has to go. */
+.board-pool-need {
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--sti-blue);
+}
+
 /* ---------- Calendar ---------- */
 
 .board-cal {
@@ -412,4 +527,114 @@
 .fc-event-dragging,
 .board-pool-item.fc-event-mirror {
   opacity: 0.85;
+}
+
+/* Hover tooltip for a placed class — full details the compact block can't show. */
+.board-tooltip {
+  position: fixed;
+  z-index: 60;
+  width: 15rem;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.7rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  pointer-events: none; /* never sit between the cursor and the block underneath */
+  animation: board-tooltip-in 0.12s ease both;
+}
+
+/* Only opacity animates — the element's transform is set inline for edge-flipping. */
+@keyframes board-tooltip-in {
+  from { opacity: 0; }
+}
+
+.board-tooltip-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+}
+
+.board-tooltip-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex: none;
+}
+
+.board-tooltip-code {
+  font: 700 0.9rem/1 var(--sans);
+  color: var(--sti-blue);
+}
+
+.board-tooltip-tag {
+  margin-left: auto;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-pill);
+  font: 700 0.6rem/1.3 var(--sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.board-tooltip-tag.is-published {
+  color: #0e6b3d;
+  background: hsl(152 60% 92%);
+}
+
+.board-tooltip-tag.is-draft {
+  color: var(--text-3);
+  background: var(--bg-wash);
+}
+
+.board-tooltip-title {
+  font: 500 0.8rem/1.3 var(--sans);
+  color: var(--text-1);
+  margin-bottom: 0.5rem;
+}
+
+.board-tooltip-grid {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.board-tooltip-grid > div {
+  display: grid;
+  grid-template-columns: 3.6rem 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.board-tooltip-grid dt {
+  font: 600 0.66rem/1.3 var(--sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.board-tooltip-grid dd {
+  margin: 0;
+  font: 500 0.78rem/1.3 var(--sans);
+  color: var(--text-1);
+}
+
+.board-tooltip-note {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--line);
+  font: 600 0.7rem/1.3 var(--sans);
+  color: var(--sti-gold-ink, #8a6d00);
+}
+
+@media (prefers-color-scheme: dark) {
+  .board-tooltip-tag.is-published {
+    color: hsl(152 55% 75%);
+    background: hsl(152 40% 20%);
+  }
+}
+
+:root[data-theme='dark'] .board-tooltip-tag.is-published {
+  color: hsl(152 55% 75%);
+  background: hsl(152 40% 20%);
 }
