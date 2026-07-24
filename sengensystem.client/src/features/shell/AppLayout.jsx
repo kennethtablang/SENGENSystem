@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { Wordmark } from '../auth/AuthLayout';
 import NotificationsBell from '../notifications/NotificationsBell';
+import EnrollmentTicker from '../enrollment-stage/EnrollmentTicker';
 import { confirmAction } from './confirm';
 import { iconPaths, searchableItems, visibleGroups, visibleMinor } from './nav';
 import './shell.css';
@@ -260,14 +261,10 @@ function AppLayout() {
                         </svg>
                     </button>
 
-                    <FunctionSearch role={user.role} />
-
-                    <div className="shell-ticker">
-                        <span className="tick">Semester <b>AY 2026–2027 · 1st</b></span>
-                        <span className="tick">Enrollment stage <b>Pre-enlistment</b></span>
-                    </div>
+                    <EnrollmentTicker />
 
                     <div className="shell-user">
+                        <FunctionSearch role={user.role} />
                         <NotificationsBell />
                         <span className="chip chip-blue">{roleLabels[user.role] ?? user.role}</span>
                         <UserMenu user={user} logout={confirmLogout} />

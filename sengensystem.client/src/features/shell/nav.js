@@ -106,8 +106,10 @@ export const navGroups = [
                 to: '/scheduling/generate',
                 label: 'Generate schedule',
                 icon: 'bolt',
-                roles: ['AcademicHead'],
-                desc: 'Run the CSP engine to produce a conflict-free schedule for all sections.'
+                roles: ['AcademicHead', 'SchoolAdmin'],
+                desc: 'Run the CSP engine to place your faculty load allocation into rooms and time slots — '
+                    + 'no room or faculty double-booking, capacity and unit ceilings respected, '
+                    + 'time preferences and idle gaps optimised.'
             },
             {
                 to: '/scheduling/review',
@@ -128,7 +130,8 @@ export const navGroups = [
                 label: 'Faculty load',
                 icon: 'users',
                 roles: ['AcademicHead'],
-                desc: 'Allocate subjects to faculty per semester, against each member’s load ceiling.'
+                desc: 'Allocate subjects to faculty per semester, against each member’s load ceiling. '
+                    + 'Do this before generating a schedule — the engine places these allocations.'
             }
         ]
     },
@@ -188,6 +191,13 @@ export const navGroups = [
                 icon: 'chart',
                 roles: ['Registrar', 'AcademicHead'],
                 desc: 'Live semester-aware enrollment, enlistment, room, and load statistics.'
+            },
+            {
+                to: '/analytics/room-utilization',
+                label: 'Room utilization',
+                icon: 'door',
+                roles: ['Registrar', 'AcademicHead'],
+                desc: 'Classroom usage across the institution — spot critically underutilized rooms.'
             },
             {
                 to: '/reports/faculty-load',

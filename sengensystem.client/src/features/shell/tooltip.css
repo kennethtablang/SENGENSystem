@@ -1,0 +1,89 @@
+/* Data tooltips (see Tooltip.jsx). Rendered in a portal on document.body, so these
+   rules are global rather than scoped to a feature. */
+
+.tip-anchor {
+  cursor: help;
+  outline: none;
+}
+
+.tip-anchor:focus-visible {
+  outline: 2px solid var(--sti-blue);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.tip-bubble {
+  position: fixed;
+  z-index: 1200;
+  max-width: 20rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-2);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  pointer-events: none;
+  animation: tip-in 0.12s ease both;
+}
+
+@keyframes tip-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.tip-bubble.is-below {
+  animation-name: tip-in-below;
+}
+
+@keyframes tip-in-below {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip-bubble { animation: none; }
+}
+
+.tip-title {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-1);
+  margin-bottom: 0.35rem;
+}
+
+.tip-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  margin: 0;
+}
+
+.tip-rows > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.1rem;
+}
+
+.tip-rows dt {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.tip-rows dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+
+.tip-note {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 0.73rem;
+}
