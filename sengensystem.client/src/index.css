@@ -414,6 +414,13 @@ select option {
   animation: rise 0.25s ease both;
 }
 
+/* Explains what a choice means, under the control it belongs to. */
+.field-hint {
+  color: var(--text-3);
+  font-size: 0.76rem;
+  margin-top: 0.3rem;
+}
+
 .field-row {
   display: flex;
   gap: 0.75rem;

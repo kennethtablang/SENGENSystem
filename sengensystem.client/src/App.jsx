@@ -19,6 +19,7 @@ import TermActivationPage from './features/registration/TermActivationPage';
 import RegistrationsPage from './features/registration/RegistrationsPage';
 import TermActivationsPage from './features/registration/TermActivationsPage';
 import UserManagementPage from './features/users/UserManagementPage';
+import ParametersPage from './features/parameters/ParametersPage';
 import SchoolYearsPage from './features/academic/SchoolYearsPage';
 import SemestersPage from './features/academic/SemestersPage';
 import BuildingsPage from './features/academic/BuildingsPage';
@@ -34,6 +35,7 @@ import EnlistmentPage from './features/enlistment/EnlistmentPage';
 import ApprovalsPage from './features/enlistment/ApprovalsPage';
 import ReportsPage from './features/reports/ReportsPage';
 import FacultyLoadReportsPage from './features/reports/FacultyLoadReportsPage';
+import RoomUtilizationPage from './features/analytics/RoomUtilizationPage';
 import NotificationsPage from './features/notifications/NotificationsPage';
 import SettingsPage from './features/settings/SettingsPage';
 import HelpPage from './features/help/HelpPage';
@@ -46,10 +48,10 @@ import './App.css';
 // Routes with a real page; everything else in the nav falls back to ComingSoon.
 const builtRoutes = new Set([
     '/', '/profile', '/schedule', '/scheduling/generate', '/scheduling/review', '/scheduling/board', '/audit',
-    '/registrations', '/term-activations', '/users',
+    '/registrations', '/term-activations', '/users', '/parameters',
     '/school-years', '/semesters', '/buildings', '/rooms', '/class-sections', '/subjects', '/faculty-load',
     '/publishing', '/documents', '/pre-authorization', '/enlistment', '/approvals', '/pre-enrollment', '/reports',
-    '/settings', '/help', '/notifications', '/reports/faculty-load'
+    '/settings', '/help', '/notifications', '/reports/faculty-load', '/analytics/room-utilization'
 ]);
 
 function RequireAuth({ children }) {
@@ -93,6 +95,7 @@ function App() {
                 <Route path="/registrations" element={<RegistrationsPage />} />
                 <Route path="/term-activations" element={<TermActivationsPage />} />
                 <Route path="/users" element={<UserManagementPage />} />
+                <Route path="/parameters" element={<ParametersPage />} />
                 <Route path="/school-years" element={<SchoolYearsPage />} />
                 <Route path="/semesters" element={<SemestersPage />} />
                 <Route path="/buildings" element={<BuildingsPage />} />
@@ -108,6 +111,7 @@ function App() {
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
                 <Route path="/reports/faculty-load" element={<FacultyLoadReportsPage />} />
+                <Route path="/analytics/room-utilization" element={<RoomUtilizationPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/help" element={<HelpPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
