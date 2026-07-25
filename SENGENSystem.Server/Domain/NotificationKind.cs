@@ -11,6 +11,9 @@ namespace SENGENSystem.Server.Domain
         SlotRequested = 4,
         FacultyLoadUpdated = 5,
         Documents = 6,
-        Account = 7
+        Account = 7,
+        Registration = 8,
+        TermActivation = 9,
+        SectionFull = 10
     }
 }

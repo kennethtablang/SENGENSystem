@@ -10,8 +10,25 @@ namespace SENGENSystem.Server.Domain
     {
         public Guid Id { get; set; } = Guid.NewGuid();
 
-        /// <summary>Institution-issued identifier, e.g. "2026-000001". Used for term-activation lookup.</summary>
+        /// <summary>
+        /// SEN-GEN's own registration number, auto-issued on SIS submission, e.g. "2026-000001".
+        /// This is <b>not</b> the official student number — that is issued by a separate student
+        /// system and recorded later in <see cref="OfficialStudentNumber"/> by the Admission
+        /// Officer. Used for term-activation lookup and as the enrollee's identifier throughout.
+        /// </summary>
         public string StudentNumber { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The official student number issued by the separate student-records system. SEN-GEN does
+        /// not generate it: after a registrant is enrolled there, the Admission Officer records the
+        /// number here. Null until that step is done.
+        /// </summary>
+        public string? OfficialStudentNumber { get; set; }
+
+        /// <summary>When and by whom <see cref="OfficialStudentNumber"/> was recorded.</summary>
+        public DateTime? OfficialStudentNumberSetAtUtc { get; set; }
+
+        public Guid? OfficialStudentNumberSetByUserId { get; set; }
 
         public RegistrationStatus Status { get; set; } = RegistrationStatus.Submitted;
 

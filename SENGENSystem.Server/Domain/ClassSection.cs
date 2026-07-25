@@ -24,6 +24,19 @@ namespace SENGENSystem.Server.Domain
         /// <summary>The section label within the (program, year) cohort.</summary>
         public string SectionName { get; set; } = string.Empty; // e.g. "A"
 
+        /// <summary>
+        /// The curriculum this cohort follows. Distinct cohorts of the same program can sit on
+        /// different curriculum versions at once — a 2nd-year block on the retired catalog while a
+        /// 1st-year block starts the new one — so the curriculum is chosen per class section, not
+        /// inferred from the program's single active catalog. Drives which subjects the cohort is
+        /// offered (faculty load) and lets schedule generation accept those subjects even after the
+        /// old catalog is archived. Nullable for rows created before this field existed
+        /// (backfilled to the program's active curriculum on startup).
+        /// </summary>
+        public Guid? CurriculumId { get; set; }
+
+        public Curriculum? Curriculum { get; set; }
+
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
         /// <summary>Human-readable cohort label, e.g. "BSCS 3-A".</summary>

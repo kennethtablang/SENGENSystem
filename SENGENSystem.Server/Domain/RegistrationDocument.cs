@@ -2,8 +2,10 @@ namespace SENGENSystem.Server.Domain
 {
     /// <summary>
     /// One admission-requirement paper and its submission state for a given enrollee
-    /// (FR-DOC-01/02). One row is created per <see cref="DocumentType"/> when a
+    /// (FR-DOC-01/02). One row is created per applicable <see cref="AdmissionRequirement"/> when a
     /// <see cref="StudentRegistration"/> is submitted; school personnel update the status later.
+    /// The requirement is referenced loosely by <see cref="RequirementCode"/> so archiving a
+    /// requirement never orphans historical checklists.
     /// </summary>
     public class RegistrationDocument
     {
@@ -13,7 +15,8 @@ namespace SENGENSystem.Server.Domain
 
         public StudentRegistration? StudentRegistration { get; set; }
 
-        public DocumentType DocumentType { get; set; }
+        /// <summary>The <see cref="AdmissionRequirement.Code"/> of the paper this row tracks.</summary>
+        public string RequirementCode { get; set; } = string.Empty;
 
         public DocumentStatus Status { get; set; } = DocumentStatus.NotSubmitted;
     }

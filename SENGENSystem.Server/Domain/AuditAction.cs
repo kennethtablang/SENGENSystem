@@ -96,6 +96,41 @@ namespace SENGENSystem.Server.Domain
         // Schedule finalization — the Academic Head signing off a draft as ready to publish,
         // and reopening it for further edits (FR-SCHED-06)
         ScheduleFinalized = 49,
-        ScheduleReopened = 50
+        ScheduleReopened = 50,
+
+        // Admission Officer records the official student number issued by the separate
+        // student-records system against a SIS registration (FR-SIS)
+        StudentNumberAssigned = 51,
+
+        // Configurable admission-requirement catalog (FR-DOC-01) — add/edit/archive the papers
+        // and choose which programs each applies to
+        RequirementCreated = 52,
+        RequirementUpdated = 53,
+        RequirementArchived = 54,
+
+        // A student login account provisioned from a SIS submission / term activation, with a
+        // system-generated temporary password the student must change on first sign-in
+        StudentAccountProvisioned = 55,
+
+        // Academic Head tunes the scheduling engine's soft-constraint weights (FR-SCHED-03/-05)
+        SoftConstraintWeightsChanged = 56,
+
+        // Manual override of a section's seat cap to complete a section (FR-ENL-03) — Registrar,
+        // Academic Head, or School Admin raises Section.Capacity above the institutional default
+        SectionCapacityOverridden = 57,
+
+        // School Admin tunes the institutional enrollment/enlistment and scheduling-engine
+        // parameters (FR-SCHED-05, FR-ENL) — enlistment open/close, unit ceilings, engine budgets
+        SystemParametersUpdated = 58,
+
+        // Two-factor authentication (opt-in email one-time code, FR-AUTH)
+        TwoFactorEnabled = 59,
+        TwoFactorDisabled = 60,
+        TwoFactorChallengeIssued = 61,
+        TwoFactorFailed = 62,
+
+        // ISO/IEC 25010 rating survey — Super Admin dispatch and respondent submissions
+        SurveyInvitationsSent = 63,
+        SurveyResponseSubmitted = 64
     }
 }

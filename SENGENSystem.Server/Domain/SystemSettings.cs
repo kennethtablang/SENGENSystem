@@ -25,6 +25,53 @@ namespace SENGENSystem.Server.Domain
         /// </summary>
         public int SectionCapacityCap { get; set; } = Section.DefaultCapacityCap;
 
+        // ---- Soft-constraint weights the CSP engine optimises against (FR-SCHED-03/-05) ----
+        // Relative importance of each soft constraint; the engine normalises every term to 0..1
+        // before weighting, so these numbers mean what they appear to mean. The defaults mirror
+        // the engine's built-in SoftWeights so a fresh database behaves exactly as before this
+        // became tunable. The Academic Head adjusts them before regenerating a timetable.
+
+        /// <summary>How much honouring a faculty member's preferred teaching window matters (S1).</summary>
+        public double WeightPreference { get; set; } = 0.40;
+
+        /// <summary>How much minimising idle gaps between classes matters (S2).</summary>
+        public double WeightIdleGap { get; set; } = 0.35;
+
+        /// <summary>How much snugly fitting a section into a right-sized room matters.</summary>
+        public double WeightRoomFit { get; set; } = 0.25;
+
+        /// <summary>The longest idle gap the engine treats as "as bad as it gets", in hours.</summary>
+        public double GapSaturationHours { get; set; } = 8.0;
+
+        // ---- Enrollment / enlistment governance (FR-ENL) ----
+
+        /// <summary>
+        /// Institution-wide switch for online slot selection (FR-ENL). When false, students cannot
+        /// file new slot requests regardless of their individual eligibility — the Registrar closes
+        /// enlistment between periods without deactivating anyone.
+        /// </summary>
+        public bool EnlistmentOpen { get; set; } = true;
+
+        /// <summary>
+        /// The most subject units a single student may hold across their requested/approved sections
+        /// in a term (FR-ENL). 0 means no institutional ceiling — only per-section capacity applies.
+        /// </summary>
+        public int MaxEnlistmentUnitsPerStudent { get; set; }
+
+        /// <summary>
+        /// The smallest enrollment a section should reach to be viable to run. Advisory: sections
+        /// below it are surfaced to the admin (like sections above the seat cap) rather than blocked.
+        /// </summary>
+        public int MinSectionEnrollment { get; set; } = 15;
+
+        // ---- Scheduling engine budgets (FR-SCHED-07) ----
+
+        /// <summary>Wall-clock ceiling for one CSP generation run, in seconds (the engine's safety budget).</summary>
+        public int ScheduleTimeBudgetSeconds { get; set; } = 20;
+
+        /// <summary>Search-step ceiling for one CSP generation run, in thousands of steps.</summary>
+        public int ScheduleMaxStepsThousands { get; set; } = 2000;
+
         /// <summary>Audit breadcrumb: when the parameters were last touched, and by whom.</summary>
         public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 
