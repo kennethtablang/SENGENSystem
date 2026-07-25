@@ -54,6 +54,7 @@ namespace SENGENSystem.Server.Features.Dashboard
                 .Include(r => r.Documents)
                 .ToListAsync(cancellationToken);
 
+            var requirementCatalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
             var docsComplete = registrations.Count(r => DocumentChecklist.IsComplete(r.Documents));
             var registration = new
             {
@@ -250,7 +251,7 @@ namespace SENGENSystem.Server.Features.Dashboard
                 buildings = await db.Buildings.CountAsync(cancellationToken),
                 rooms = rooms.Count,
                 laboratories = rooms.Count(r => r.IsLaboratory),
-                timeSlots = await db.TimeSlots.CountAsync(cancellationToken),
+                timeSlots = await db.TimeSlots.CountAsync(t => t.IsAllowable, cancellationToken),
                 classSections = await db.ClassSections.CountAsync(c => c.SemesterId == semester.Id, cancellationToken),
                 faculty = facultyProfiles.Count,
                 semesters = semesters.Count,
@@ -291,16 +292,18 @@ namespace SENGENSystem.Server.Features.Dashboard
             // Shows *which* document is holding clearance up, not just that something is.
             var documentMix = registrations
                 .SelectMany(r => r.Documents)
-                .GroupBy(d => d.DocumentType)
+                .GroupBy(d => d.RequirementCode)
                 .Select(g => new
                 {
-                    document = g.Key.ToString(),
+                    document = requirementCatalog.Label(g.Key),
+                    order = requirementCatalog.Order(g.Key),
                     submitted = g.Count(d => d.Status == DocumentStatus.Submitted),
                     xerox = g.Count(d => d.Status == DocumentStatus.XeroxCopy),
                     missing = g.Count(d => d.Status == DocumentStatus.NotSubmitted),
                     total = g.Count()
                 })
-                .OrderBy(x => x.document)
+                .OrderBy(x => x.order)
+                .Select(x => new { x.document, x.submitted, x.xerox, x.missing, x.total })
                 .ToList();
 
             // ---- Weekly schedule density: classes per weekday per hour, for the heatmap.
