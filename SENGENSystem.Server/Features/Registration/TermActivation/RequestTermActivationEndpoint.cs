@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
+using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 
@@ -23,6 +24,8 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
             RequestTermActivationRequest request,
             AppDbContext db,
             AuditLog audit,
+            IEmailSender email,
+            Notifier notifier,
             CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(request.StudentNumber) || string.IsNullOrWhiteSpace(request.LastName))
@@ -73,7 +76,29 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
             audit.RecordAnonymous(AuditAction.TermActivationRequested,
                 $"Requested term activation for {semester.Name}.",
                 registration.FullName, "TermActivation", activation.Id.ToString());
+
+            // Put the request on every back-office bell (the Admission Office validates it), committed
+            // with the activation (FR-NOTIF).
+            var staffIds = await NotificationRecipients.StaffUserIdsAsync(db, cancellationToken);
+            notifier.NotifyMany(staffIds, NotificationKind.TermActivation,
+                "New term-activation request",
+                $"{registration.FullName} ({registration.StudentNumber}) requested activation for {semester.Name}.",
+                "/term-activations");
+
             await db.SaveChangesAsync(cancellationToken);
+
+            // Receipt/proof that the request was filed — sent on request, not only on approval
+            // (the approval confirmation is a separate email). Best-effort: the request is already
+            // committed, so a mail failure must not fail the response.
+            var (subject, body) = RegistrationEmails.TermActivationRequested(registration, semester.Name);
+            var result = await email.SendAsync(registration.Email, registration.FullName, subject, body, cancellationToken);
+            if (result.Sent)
+            {
+                audit.RecordAnonymous(AuditAction.NotificationDispatched,
+                    $"Sent term activation request receipt to {registration.Email}.",
+                    registration.FullName, "TermActivation", activation.Id.ToString());
+                await db.SaveChangesAsync(cancellationToken);
+            }
 
             return Results.Created($"/api/registration/term-activation/{activation.Id}",
                 new RequestTermActivationResponse(activation.Id, registration.StudentNumber, activation.Status.ToString(), semester.Name));

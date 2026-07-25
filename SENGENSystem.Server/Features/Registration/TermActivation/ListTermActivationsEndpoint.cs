@@ -26,6 +26,14 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
                 .Include(a => a.Semester)
                 .AsQueryable();
 
+            // Validations are always for the current term, so scope to the active semester — the
+            // queue stays correct and compact once the term rolls over instead of listing every
+            // past term's activations.
+            if (await db.GetActiveSemesterIdAsync(cancellationToken) is { } activeSemesterId)
+            {
+                query = query.Where(a => a.SemesterId == activeSemesterId);
+            }
+
             // Default view is the pending queue; an explicit status filter can widen it.
             if (string.IsNullOrWhiteSpace(status))
             {

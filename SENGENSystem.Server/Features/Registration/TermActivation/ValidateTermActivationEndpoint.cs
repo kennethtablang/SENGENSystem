@@ -27,6 +27,8 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
             AppDbContext db,
             AuditLog audit,
             IEmailSender email,
+            Notifier notifier,
+            Microsoft.AspNetCore.Identity.IPasswordHasher<Domain.User> passwordHasher,
             CancellationToken cancellationToken)
         {
             var activation = await db.TermActivations
@@ -59,11 +61,44 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
                 $"{verb} {registration.FullName}'s term activation for {semesterName}" +
                 (activation.Remarks is null ? "." : $" — {activation.Remarks}"),
                 "TermActivation", activation.Id.ToString());
+
+            // Announce the decision on the back-office bells, and to the student's account, in the
+            // same transaction (FR-NOTIF).
+            var staffIds = await NotificationRecipients.StaffUserIdsAsync(db, cancellationToken);
+            notifier.NotifyMany(staffIds, NotificationKind.TermActivation,
+                $"Term activation {verb.ToLowerInvariant()}",
+                $"{registration.FullName} ({registration.StudentNumber})'s activation for {semesterName} was {verb.ToLowerInvariant()}.",
+                "/term-activations");
+            if (registration.UserId is { } studentUserId)
+            {
+                notifier.Notify(studentUserId, NotificationKind.TermActivation,
+                    request.Approve ? "You're activated for the term" : "Term activation not approved",
+                    request.Approve
+                        ? $"Your activation for {semesterName} is confirmed. You may proceed with enrollment."
+                        : $"Your activation for {semesterName} was not approved" +
+                          (activation.Remarks is null ? "." : $": {activation.Remarks}"),
+                    "/schedule");
+            }
+
             await db.SaveChangesAsync(cancellationToken);
 
             var emailSent = false;
             if (request.Approve)
             {
+                // Make sure the returning student has a usable login. New SIS submissions are
+                // provisioned an account up front, but records that predate that (or were seeded)
+                // may have none — create one now from their SIS details, forcing a first-login
+                // password change, and mail the credentials alongside the confirmation.
+                var provision = await Common.Auth.StudentAccountProvisioner.EnsureAsync(
+                    registration, db, passwordHasher, cancellationToken);
+                if (provision.Created)
+                {
+                    audit.Record(AuditAction.StudentAccountProvisioned,
+                        $"Provisioned a student login ({provision.User.Email}) on term activation for {semesterName}.",
+                        "User", provision.User.Id.ToString());
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+
                 var (subject, body) = RegistrationEmails.TermActivationConfirmation(registration, semesterName);
                 var result = await email.SendAsync(registration.Email, registration.FullName, subject, body, cancellationToken);
                 emailSent = result.Sent;
@@ -73,6 +108,14 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
                         $"Sent term activation confirmation to {registration.Email}.",
                         "TermActivation", activation.Id.ToString());
                     await db.SaveChangesAsync(cancellationToken);
+                }
+
+                if (provision is { Created: true, TemporaryPassword: { } temporaryPassword })
+                {
+                    var (credSubject, credBody) =
+                        RegistrationEmails.AccountCredentials(registration, provision.User.Email, temporaryPassword);
+                    await email.SendAsync(
+                        registration.Email, registration.FullName, credSubject, credBody, cancellationToken);
                 }
             }
 
