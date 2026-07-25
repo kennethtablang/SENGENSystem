@@ -465,7 +465,9 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 t.Day == (DayOfWeek)day && t.StartMinutes == start && t.EndMinutes == end, ct);
             if (slot is not null) return slot;
 
-            slot = new TimeSlot { Day = (DayOfWeek)day, StartMinutes = start, EndMinutes = end };
+            // A period persisting one manual placement — reuse an allowable grid slot when the drop
+            // lands exactly on one (found above), otherwise this synthetic period isn't grid config.
+            slot = new TimeSlot { Day = (DayOfWeek)day, StartMinutes = start, EndMinutes = end, IsAllowable = false };
             db.TimeSlots.Add(slot);
             return slot;
         }
