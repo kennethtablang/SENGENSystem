@@ -138,6 +138,15 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         public SoftWeights Weights { get; init; } = SoftWeights.Default;
 
         /// <summary>
+        /// Wall-clock ceiling for the search (FR-SCHED-07). Tunable per institution via System
+        /// Parameters; defaults to the engine's original 20-second budget.
+        /// </summary>
+        public TimeSpan TimeBudget { get; init; } = TimeSpan.FromSeconds(20);
+
+        /// <summary>Step ceiling for the search — the other half of the safety budget.</summary>
+        public int MaxSteps { get; init; } = 2_000_000;
+
+        /// <summary>
         /// Randomisation seed. The engine is <i>deterministic given a seed</i>: it breaks ties
         /// between equally-good candidates (and equally-constrained sections) with a seeded shuffle,
         /// so a different seed explores the solution space differently and yields a different — but

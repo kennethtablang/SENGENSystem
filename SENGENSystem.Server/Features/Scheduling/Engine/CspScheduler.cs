@@ -53,10 +53,9 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
     /// </summary>
     public sealed class CspScheduler
     {
-        // Guards so a run always terminates in practical time (FR-SCHED-07): a step budget
-        // against pathological search trees and a wall-clock budget against slow candidate sets.
-        private const int MaxSteps = 2_000_000;
-        private static readonly TimeSpan TimeBudget = TimeSpan.FromSeconds(20);
+        // Guards so a run always terminates in practical time (FR-SCHED-07): a step budget against
+        // pathological search trees and a wall-clock budget against slow candidate sets. Both are
+        // now supplied per run from System Parameters (with the historical defaults on ScheduleProblem).
 
         public ScheduleGenerationResult Solve(ScheduleProblem problem)
         {
@@ -208,7 +207,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 .ToList();
 
             var state = new SearchState(facultyById, problem.Weights);
-            var ctx = new SearchContext(Stopwatch.StartNew());
+            var ctx = new SearchContext(Stopwatch.StartNew(), problem.MaxSteps, problem.TimeBudget);
 
             var solved = Backtrack(0, order, domains, timeDomains, problem.Seed, state, ctx);
 
@@ -234,7 +233,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
             return ScheduleGenerationResult.Fail(reasons, ctx.Steps);
         }
 
-        private sealed class SearchContext(Stopwatch clock)
+        private sealed class SearchContext(Stopwatch clock, int maxSteps, TimeSpan timeBudget)
         {
             public Stopwatch Clock { get; } = clock;
             public int Steps { get; set; }
@@ -242,7 +241,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
             /// <summary>How far the search ever got — the frontier where it kept failing.</summary>
             public int DeepestIndex { get; set; }
 
-            public bool OverBudget() => Steps >= MaxSteps || Clock.Elapsed > TimeBudget;
+            public bool OverBudget() => Steps >= maxSteps || Clock.Elapsed > timeBudget;
         }
 
         private bool Backtrack(
@@ -420,11 +419,14 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
 
         /// <summary>
         /// Every contiguous block the grid can offer that covers <paramref name="requiredMinutes"/>.
-        /// A block is a run of adjacent periods on one day (each period abuts the next, so a lunch
-        /// gap breaks the run); it grows only until it first covers the requirement, so a 3-hour
-        /// subject on a 90-minute grid yields one 3-hour block per valid start, not a 4.5-hour one.
-        /// Blocks are synthetic <see cref="TimeSlot"/>s (new ids) spanning the whole run; the
-        /// endpoint persists each as an on-demand period, the same way the manual board does.
+        /// Each block starts at a base period and runs for <i>exactly</i> the meeting's weekly
+        /// minutes, so a subject's real hours are honoured rather than rounded up to the period
+        /// boundary: on a 90-minute grid a 1-hour subject yields a 60-minute block, a 2-hour
+        /// subject a 120-minute block, and a 3-hour subject a 180-minute block. The block is only
+        /// offered when adjacent periods cover it with no gap (a lunch break breaks the run), so
+        /// the exact-length span always falls on real class time. Blocks are synthetic
+        /// <see cref="TimeSlot"/>s (new ids); the endpoint persists each as an on-demand period,
+        /// the same way the manual board does.
         /// </summary>
         private static List<TimeSlot> BuildContiguousBlocks(IReadOnlyList<TimeSlot> baseSlots, int requiredMinutes)
         {
@@ -438,8 +440,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 for (var i = 0; i < day.Count; i++)
                 {
                     var start = day[i].StartMinutes;
-                    var end = day[i].EndMinutes;
-                    var covered = end - start;
+                    var covered = day[i].EndMinutes - day[i].StartMinutes;
                     var j = i;
 
                     // Extend into the next period only while it abuts the current one (no gap).
@@ -448,13 +449,18 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                         && day[j + 1].StartMinutes == day[j].EndMinutes)
                     {
                         j++;
-                        end = day[j].EndMinutes;
                         covered += day[j].EndMinutes - day[j].StartMinutes;
                     }
 
-                    if (covered >= requiredMinutes && seen.Add((day[i].Day, start, end)))
+                    // The covering run [start, start+covered] is gap-free, so a block of exactly
+                    // requiredMinutes anchored at the period start sits entirely on class time.
+                    if (covered >= requiredMinutes)
                     {
-                        blocks.Add(new TimeSlot { Day = day[i].Day, StartMinutes = start, EndMinutes = end });
+                        var blockEnd = start + requiredMinutes;
+                        if (seen.Add((day[i].Day, start, blockEnd)))
+                        {
+                            blocks.Add(new TimeSlot { Day = day[i].Day, StartMinutes = start, EndMinutes = blockEnd });
+                        }
                     }
                 }
             }
