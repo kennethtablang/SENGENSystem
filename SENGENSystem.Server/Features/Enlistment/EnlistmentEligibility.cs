@@ -3,7 +3,6 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
-using SENGENSystem.Server.Features.Documents;
 
 namespace SENGENSystem.Server.Features.Enlistment
 {
@@ -49,10 +48,9 @@ namespace SENGENSystem.Server.Features.Enlistment
             {
                 blockers.Add("Your SIS registration has not been confirmed by the Registrar yet.");
             }
-            if (!DocumentChecklist.IsComplete(registration.Documents))
-            {
-                blockers.Add("Your admission document checklist is not complete yet.");
-            }
+            // Admission documents may still be arriving — a student can submit them even after
+            // enlistment opens — so an incomplete checklist deliberately does NOT block slot
+            // selection. The Admission Office still tracks and follows up on the pending papers.
             if (!registration.IsPreAuthorized)
             {
                 blockers.Add("The Admission Office has not yet cleared you for online slot selection.");
