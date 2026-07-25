@@ -22,18 +22,24 @@ using SENGENSystem.Server.Features.Dashboard;
 using SENGENSystem.Server.Features.EnrollmentCycle;
 using SENGENSystem.Server.Features.Documents.Checklist;
 using SENGENSystem.Server.Features.Documents.Reminders;
+using SENGENSystem.Server.Features.Documents.Requirements;
 using SENGENSystem.Server.Features.Enlistment.Approvals;
 using SENGENSystem.Server.Features.Enlistment.Browse;
 using SENGENSystem.Server.Features.Enlistment.MyEnlistment;
 using SENGENSystem.Server.Features.Enlistment.RequestSlot;
 using SENGENSystem.Server.Features.FacultyLoad;
 using SENGENSystem.Server.Features.FacultyLoad.Preferences;
+using SENGENSystem.Server.Features.Navigation;
 using SENGENSystem.Server.Features.Notifications;
+using SENGENSystem.Server.Features.Survey;
 using SENGENSystem.Server.Features.PreEnrollment.Import;
 using SENGENSystem.Server.Features.PreEnrollment.PreAuthorize;
+using SENGENSystem.Server.Features.Registration.AssignStudentNumber;
 using SENGENSystem.Server.Features.Registration.LinkAccount;
 using SENGENSystem.Server.Features.Auth.ForgotPassword;
 using SENGENSystem.Server.Features.Auth.Login;
+using SENGENSystem.Server.Features.Auth.TwoFactor;
+using SENGENSystem.Server.Features.Profile.TwoFactor;
 using SENGENSystem.Server.Features.Auth.Me;
 using SENGENSystem.Server.Features.Auth.Register;
 using SENGENSystem.Server.Features.Profile.ChangeEmail;
@@ -164,6 +170,9 @@ namespace SENGENSystem.Server
                         }
                     };
                 });
+            // A School Admin oversees the whole system: this hands their principal every role
+            // claim so every RequireRole endpoint accepts them (FR-AUTH-08).
+            builder.Services.AddSingleton<Microsoft.AspNetCore.Authentication.IClaimsTransformation, SchoolAdminClaimsTransformation>();
             builder.Services.AddAuthorization();
 
             var app = builder.Build();
@@ -227,6 +236,7 @@ namespace SENGENSystem.Server
             // Feature slices (Vertical Slice Architecture)
             app.MapRegister();
             app.MapLogin();
+            app.MapTwoFactor();
             app.MapMe();
             app.MapForgotPassword();
 
@@ -234,6 +244,7 @@ namespace SENGENSystem.Server
             app.MapUpdateProfile();
             app.MapChangePassword();
             app.MapChangeEmail();
+            app.MapProfileTwoFactor();
 
             // Scheduling slice (FR-SCHED, FR-FAC)
             app.MapGenerateSchedule();
@@ -256,10 +267,13 @@ namespace SENGENSystem.Server
             app.MapGetRegistration();
             app.MapUpdateRegistration();
             app.MapLinkAccount();
+            // Admission Officer records the external student number against a registration (FR-SIS)
+            app.MapAssignStudentNumber();
 
             // Documents slice — Admission Officer checklist board + reminder emails (FR-DOC)
             app.MapDocumentChecklist();
             app.MapDocumentReminders();
+            app.MapRequirements();
 
             // Pre-enrollment slice — .xlsx ETL import + Admission Officer pre-authorization (FR-PRE)
             app.MapPreEnrollmentImport();
@@ -319,6 +333,13 @@ namespace SENGENSystem.Server
 
             // Notifications slice — the signed-in user's in-app bell notices (FR-NOTIF)
             app.MapNotifications();
+
+            // Sidebar badge counts — role-scoped outstanding-work numbers for the nav
+            app.MapNavBadges();
+
+            // ISO/IEC 25010 rating survey — public token-gated taker + Super Admin dispatch/results
+            app.MapSurvey();
+            app.MapSurveyAdmin();
 
             // Audit trail slice (FR-AUD)
             app.MapGetAuditTrail();
