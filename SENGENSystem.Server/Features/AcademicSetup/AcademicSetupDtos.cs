@@ -79,9 +79,13 @@ namespace SENGENSystem.Server.Features.AcademicSetup
         string ProgramCode,
         int YearLevel,
         string SectionName,
-        string DisplayName)
+        string DisplayName,
+        Guid? CurriculumId,
+        string? CurriculumLabel)
     {
         public static ClassSectionDto From(ClassSection c) =>
-            new(c.Id, c.SemesterId, c.Semester?.Name, c.ProgramCode, c.YearLevel, c.SectionName, c.DisplayName);
+            new(c.Id, c.SemesterId, c.Semester?.Name, c.ProgramCode, c.YearLevel, c.SectionName, c.DisplayName,
+                c.CurriculumId,
+                c.Curriculum is null ? null : ClassSections.ClassSectionsEndpoints.CurriculumLabel(c.Curriculum));
     }
 }

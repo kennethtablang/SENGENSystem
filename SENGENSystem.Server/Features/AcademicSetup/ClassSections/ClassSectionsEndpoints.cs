@@ -8,7 +8,11 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
     // Vertical slice: the Academic Head (and School Admin) define student class blocks for a semester
     // (term) — a course (program) at a year level, split into a named section (e.g. BSCS · Year 3 · "A").
     // Classes are created afresh each semester; the cohort is the block a curriculum's subjects deliver to.
-    public record ClassSectionRequest(Guid? SemesterId, string? ProgramCode, int? YearLevel, string? SectionName);
+    public record ClassSectionRequest(Guid? SemesterId, string? ProgramCode, int? YearLevel, string? SectionName, Guid? CurriculumId);
+
+    // Lightweight option for the class-section modal's curriculum picker. Archived catalogs are
+    // offered too — a returning cohort deliberately stays on the retired curriculum (FR-SCHED-04).
+    public record CurriculumOptionDto(Guid Id, string ProgramCode, string Label, bool IsActive, bool IsArchived);
 
     public static class ClassSectionsEndpoints
     {
@@ -42,6 +46,16 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
                 .OrderBy(p => p.code)
                 .ToListAsync(ct);
 
+            // Every curriculum (active and archived) so the modal can attach a cohort to the exact
+            // catalog it follows — the whole point of per-section curricula (FR-SCHED-04).
+            var curriculumEntities = await db.Curricula.AsNoTracking()
+                .Include(c => c.SchoolYears).ThenInclude(l => l.SchoolYear)
+                .OrderBy(c => c.ProgramCode).ThenBy(c => c.IsArchived)
+                .ToListAsync(ct);
+            var curricula = curriculumEntities
+                .Select(c => new CurriculumOptionDto(c.Id, c.ProgramCode, CurriculumLabel(c), c.IsActive, c.IsArchived))
+                .ToList();
+
             var semester = await ResolveSemesterAsync(semesterId, db, ct);
             if (semester is null)
             {
@@ -51,6 +65,7 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
                     semesterName = (string?)null,
                     semesters,
                     programs,
+                    curricula,
                     count = 0,
                     classSections = Array.Empty<ClassSectionDto>()
                 });
@@ -58,6 +73,7 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
 
             var query = db.ClassSections.AsNoTracking()
                 .Include(c => c.Semester)
+                .Include(c => c.Curriculum).ThenInclude(cu => cu!.SchoolYears).ThenInclude(l => l.SchoolYear)
                 .Where(c => c.SemesterId == semester.Id);
             if (!string.IsNullOrWhiteSpace(programCode))
             {
@@ -74,15 +90,32 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
                 semesterName = semester.Name,
                 semesters,
                 programs,
+                curricula,
                 count = sections.Count,
                 classSections = sections.Select(ClassSectionDto.From).ToList()
             });
         }
 
+        /// <summary>
+        /// Identifies a curriculum for the picker/chip by its program and effectivity years, so old
+        /// and new versions of the same program read apart (e.g. "ITP · AY 2025-2026 (archived)").
+        /// </summary>
+        internal static string CurriculumLabel(Domain.Curriculum c)
+        {
+            var years = c.SchoolYears
+                .Select(l => l.SchoolYear?.Name)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .OrderBy(n => n)
+                .ToList();
+            var basis = years.Count > 0 ? string.Join(", ", years) : c.ProgramName;
+            var tag = c.IsArchived ? " (archived)" : c.IsActive ? " (active)" : string.Empty;
+            return $"{c.ProgramCode} · {basis}{tag}";
+        }
+
         private static async Task<IResult> CreateAsync(
             ClassSectionRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
         {
-            var (ok, semester, programCode, yearLevel, sectionName, problem) = await ValidateAsync(request, db, null, ct);
+            var (ok, semester, programCode, yearLevel, sectionName, curriculumId, problem) = await ValidateAsync(request, db, null, ct);
             if (!ok) return problem;
 
             var section = new ClassSection
@@ -90,7 +123,8 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
                 SemesterId = semester!.Id,
                 ProgramCode = programCode,
                 YearLevel = yearLevel,
-                SectionName = sectionName
+                SectionName = sectionName,
+                CurriculumId = curriculumId
             };
             db.ClassSections.Add(section);
             audit.Record(AuditAction.ClassSectionSaved,
@@ -99,6 +133,7 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
             await db.SaveChangesAsync(ct);
 
             section.Semester = semester;
+            section.Curriculum = await LoadCurriculumAsync(db, curriculumId, ct);
             return Results.Created($"/api/class-sections/{section.Id}", ClassSectionDto.From(section));
         }
 
@@ -108,13 +143,14 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
             var section = await db.ClassSections.FirstOrDefaultAsync(c => c.Id == id, ct);
             if (section is null) return Results.NotFound(new { message = "Class section not found." });
 
-            var (ok, semester, programCode, yearLevel, sectionName, problem) = await ValidateAsync(request, db, id, ct);
+            var (ok, semester, programCode, yearLevel, sectionName, curriculumId, problem) = await ValidateAsync(request, db, id, ct);
             if (!ok) return problem;
 
             section.SemesterId = semester!.Id;
             section.ProgramCode = programCode;
             section.YearLevel = yearLevel;
             section.SectionName = sectionName;
+            section.CurriculumId = curriculumId;
 
             audit.Record(AuditAction.ClassSectionSaved,
                 $"Updated class “{section.DisplayName}” for {semester.Name}.",
@@ -122,6 +158,7 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
             await db.SaveChangesAsync(ct);
 
             section.Semester = semester;
+            section.Curriculum = await LoadCurriculumAsync(db, curriculumId, ct);
             return Results.Ok(ClassSectionDto.From(section));
         }
 
@@ -142,7 +179,7 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
             return Results.NoContent();
         }
 
-        private static async Task<(bool Ok, Semester? Semester, string ProgramCode, int YearLevel, string SectionName, IResult Problem)>
+        private static async Task<(bool Ok, Semester? Semester, string ProgramCode, int YearLevel, string SectionName, Guid? CurriculumId, IResult Problem)>
             ValidateAsync(ClassSectionRequest request, AppDbContext db, Guid? id, CancellationToken ct)
         {
             var programCode = request.ProgramCode?.Trim() ?? string.Empty;
@@ -162,6 +199,36 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
             if (yearLevel is < 1 or > 3) errors["yearLevel"] = ["Year level must be between 1 and 3."];
             if (string.IsNullOrWhiteSpace(sectionName)) errors["sectionName"] = ["A section name is required."];
 
+            // Resolve the cohort's curriculum: an explicit choice must exist and belong to the same
+            // program; when omitted, default to the program's active curriculum (FR-SCHED-04).
+            Guid? curriculumId = null;
+            if (!string.IsNullOrWhiteSpace(programCode))
+            {
+                if (request.CurriculumId is { } cid)
+                {
+                    var curriculum = await db.Curricula.FirstOrDefaultAsync(c => c.Id == cid, ct);
+                    if (curriculum is null)
+                    {
+                        errors["curriculumId"] = ["The selected curriculum no longer exists."];
+                    }
+                    else if (!string.Equals(curriculum.ProgramCode, programCode, StringComparison.OrdinalIgnoreCase))
+                    {
+                        errors["curriculumId"] = [$"That curriculum belongs to {curriculum.ProgramCode}, not {programCode}."];
+                    }
+                    else
+                    {
+                        curriculumId = curriculum.Id;
+                    }
+                }
+                else
+                {
+                    curriculumId = await db.Curricula
+                        .Where(c => c.ProgramCode == programCode && c.IsActive && !c.IsArchived)
+                        .Select(c => (Guid?)c.Id)
+                        .FirstOrDefaultAsync(ct);
+                }
+            }
+
             if (errors.Count == 0)
             {
                 var duplicate = await db.ClassSections.AnyAsync(c =>
@@ -175,11 +242,19 @@ namespace SENGENSystem.Server.Features.AcademicSetup.ClassSections
 
             if (errors.Count > 0)
             {
-                return (false, semester, programCode, yearLevel, sectionName, Results.ValidationProblem(errors));
+                return (false, semester, programCode, yearLevel, sectionName, curriculumId, Results.ValidationProblem(errors));
             }
 
-            return (true, semester, programCode, yearLevel, sectionName, Results.Empty);
+            return (true, semester, programCode, yearLevel, sectionName, curriculumId, Results.Empty);
         }
+
+        // Reloads the chosen curriculum with its school years so the returned row carries a label.
+        private static async Task<Domain.Curriculum?> LoadCurriculumAsync(AppDbContext db, Guid? curriculumId, CancellationToken ct) =>
+            curriculumId is { } id
+                ? await db.Curricula.AsNoTracking()
+                    .Include(c => c.SchoolYears).ThenInclude(l => l.SchoolYear)
+                    .FirstOrDefaultAsync(c => c.Id == id, ct)
+                : null;
 
         private static async Task<Semester?> ResolveSemesterAsync(Guid? semesterId, AppDbContext db, CancellationToken ct) =>
             semesterId is { } id
