@@ -41,6 +41,17 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
             }
             var registration = eligibility.Registration!;
 
+            // Institution-wide gate (FR-ENL, System Parameters): the Registrar can close online slot
+            // selection between periods without touching any individual's eligibility.
+            var settings = await db.GetSettingsAsync(cancellationToken);
+            if (!settings.EnlistmentOpen)
+            {
+                return Results.Json(new
+                {
+                    message = "Online enlistment is currently closed. Please check back once the Registrar reopens it."
+                }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             var semester = await db.Semesters.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.IsActive, cancellationToken);
             if (semester is null)
@@ -80,6 +91,21 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
                     message = $"You already have a {sameSubject.Status} request for " +
                               $"{section.Subject?.Code} in section {sameSubject.Section?.SectionCode}."
                 });
+            }
+
+            // Institutional per-student unit ceiling (FR-ENL, System Parameters): 0 means no limit.
+            if (settings.MaxEnlistmentUnitsPerStudent > 0)
+            {
+                var currentUnits = active.Sum(r => r.Section?.Subject?.Units ?? 0);
+                var thisUnits = section.Subject?.Units ?? 0;
+                if (currentUnits + thisUnits > settings.MaxEnlistmentUnitsPerStudent)
+                {
+                    return Results.Conflict(new
+                    {
+                        message = $"This would put you at {currentUnits + thisUnits} units, over the " +
+                                  $"{settings.MaxEnlistmentUnitsPerStudent}-unit enlistment ceiling. Drop a subject first."
+                    });
+                }
             }
 
             if (section.EnrolledCount >= section.Capacity)
