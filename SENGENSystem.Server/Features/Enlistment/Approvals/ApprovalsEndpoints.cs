@@ -13,6 +13,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
     // (FR-ENL-03); the decision is emailed to the student and audited.
     public record ApprovalRowDto(
         Guid RequestId,
+        Guid SectionId,
         string StudentNumber,
         string StudentName,
         string Program,
@@ -29,6 +30,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
         public static ApprovalRowDto From(SlotRequest r) =>
             new(
                 r.Id,
+                r.SectionId,
                 r.StudentRegistration?.StudentNumber ?? string.Empty,
                 r.StudentRegistration?.FullName ?? string.Empty,
                 r.StudentRegistration?.Program.ToString() ?? string.Empty,
@@ -48,8 +50,14 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
 
     public record RejectRequest(string? Reason);
 
+    // FR-ENL-03 manual override: raise a section's seat cap so a short section can be completed.
+    public record OverrideCapacityRequest(int Capacity, string? Reason);
+
     public static class ApprovalsEndpoints
     {
+        // Guard rail on the override so a typo can't create a 10,000-seat section.
+        private const int MaxOverrideCapacity = 200;
+
         public static IEndpointRouteBuilder MapEnlistmentApprovals(this IEndpointRouteBuilder app)
         {
             var group = app.MapGroup("/api/enlistment/approvals")
@@ -59,6 +67,13 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             group.MapGet("", ListAsync);
             group.MapPost("{requestId:guid}/approve", ApproveAsync);
             group.MapPost("{requestId:guid}/reject", RejectAsync);
+
+            // Overriding the cap is a broader authority than approving (FR-ENL-03) — the Academic
+            // Head and School Admin may raise it too, so this route carries its own role policy
+            // rather than inheriting the group's Registrar-only one.
+            app.MapPost("/api/enlistment/approvals/sections/{sectionId:guid}/capacity", OverrideCapacityAsync)
+                .RequireAuthorization(policy => policy.RequireRole(
+                    nameof(UserRole.Registrar), nameof(UserRole.AcademicHead), nameof(UserRole.SchoolAdmin)));
             return app;
         }
 
@@ -72,6 +87,13 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                 .Include(r => r.StudentRegistration)
                 .Include(r => r.Section).ThenInclude(s => s!.Subject)
                 .AsQueryable();
+
+            // Scope to the active term's sections so the queue and its pending count stay correct
+            // and compact after a semester rollover, rather than listing every past term's requests.
+            if (await db.GetActiveSemesterIdAsync(cancellationToken) is { } activeSemesterId)
+            {
+                query = query.Where(r => r.Section!.SemesterId == activeSemesterId);
+            }
 
             if (!string.IsNullOrWhiteSpace(status)
                 && !string.Equals(status, "All", StringComparison.OrdinalIgnoreCase)
@@ -206,6 +228,21 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
 
             broadcaster.Announce("enlistment");
 
+            // If that approval just filled the section, alert the decision-makers (Registrar, Academic
+            // Head, School Admin) so they can open another section, raise the cap (FR-ENL-03), or move
+            // students (FR-NOTIF). Committed as its own small write; the approval already stands.
+            if (section.EnrolledCount >= section.Capacity)
+            {
+                var deciderIds = await NotificationRecipients.DecisionMakerUserIdsAsync(db, cancellationToken);
+                notifier.NotifyMany(deciderIds, NotificationKind.SectionFull,
+                    $"Section full: {section.SectionCode}",
+                    $"{section.Subject?.Code} ({section.SectionCode}) is now full at " +
+                    $"{section.EnrolledCount}/{section.Capacity} seats. Open another section, raise the cap, " +
+                    "or move students as needed.",
+                    "/approvals");
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
             // Decision email is best-effort: the approval is already committed (FR-ENL-04).
             var (subject, body) = EnlistmentEmails.SlotApproved(
                 request.StudentRegistration,
@@ -290,6 +327,95 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             }
 
             return Results.Ok(ApprovalRowDto.From(request));
+        }
+
+        // POST /api/enlistment/approvals/sections/{sectionId}/capacity — raise a section's seat cap
+        // so a section short of a full block can be completed (FR-ENL-03). The new cap can never be
+        // set below the seats already approved, and is bounded so a typo can't create a huge section.
+        private static async Task<IResult> OverrideCapacityAsync(
+            Guid sectionId,
+            OverrideCapacityRequest body,
+            ClaimsPrincipal principal,
+            AppDbContext db,
+            AuditLog audit,
+            Features.Reports.Live.ReportsBroadcaster broadcaster,
+            CancellationToken cancellationToken)
+        {
+            var section = await db.Sections
+                .Include(s => s.Subject)
+                .FirstOrDefaultAsync(s => s.Id == sectionId, cancellationToken);
+            if (section is null)
+            {
+                return Results.NotFound(new { message = "Section not found." });
+            }
+
+            if (body.Capacity < 1 || body.Capacity > MaxOverrideCapacity)
+            {
+                return Results.BadRequest(new
+                {
+                    message = $"Capacity must be between 1 and {MaxOverrideCapacity} seats."
+                });
+            }
+            if (body.Capacity < section.EnrolledCount)
+            {
+                return Results.Conflict(new
+                {
+                    message = $"{section.SectionCode} already has {section.EnrolledCount} approved seats — " +
+                              $"the cap can't be set below that."
+                });
+            }
+            if (body.Capacity == section.Capacity)
+            {
+                return Results.Ok(new
+                {
+                    sectionId = section.Id,
+                    sectionCode = section.SectionCode,
+                    capacity = section.Capacity,
+                    enrolled = section.EnrolledCount,
+                    previousCapacity = section.Capacity
+                });
+            }
+
+            var previous = section.Capacity;
+            var reason = string.IsNullOrWhiteSpace(body.Reason) ? null : body.Reason.Trim();
+            section.Capacity = body.Capacity;
+
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    audit.Record(AuditAction.SectionCapacityOverridden,
+                        $"Raised the seat cap of {section.Subject?.Code} ({section.SectionCode}) from {previous} to {section.Capacity}" +
+                        (reason is null ? "." : $" — {reason}."),
+                        "Section", section.Id.ToString());
+                    await db.SaveChangesAsync(cancellationToken);
+                    break;
+                }
+                catch (DbUpdateConcurrencyException) when (attempt < 5)
+                {
+                    // A racing approval consumed a seat first — reload, re-check the floor, re-apply.
+                    await db.Entry(section).ReloadAsync(cancellationToken);
+                    if (body.Capacity < section.EnrolledCount)
+                    {
+                        return Results.Conflict(new
+                        {
+                            message = $"{section.SectionCode} now has {section.EnrolledCount} approved seats — " +
+                                      $"the cap can't be set below that."
+                        });
+                    }
+                    section.Capacity = body.Capacity;
+                }
+            }
+
+            broadcaster.Announce("enlistment");
+            return Results.Ok(new
+            {
+                sectionId = section.Id,
+                sectionCode = section.SectionCode,
+                capacity = section.Capacity,
+                enrolled = section.EnrolledCount,
+                previousCapacity = previous
+            });
         }
 
         private static Guid? CurrentUserId(ClaimsPrincipal principal) =>
