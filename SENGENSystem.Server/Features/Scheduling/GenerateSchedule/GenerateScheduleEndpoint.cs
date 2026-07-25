@@ -130,16 +130,30 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 });
             }
 
-            // Archived subjects left the curriculum — offering them this term is a data error
-            // the Academic Head must resolve (drop the section or restore the subject).
-            var retired = sections.Where(s => s.Subject!.IsArchived).ToList();
+            // Curriculum-aware archived check (FR-SCHED-04). An archived subject is legitimate when it
+            // belongs to the curriculum its cohort is assigned to — that's exactly the "old cohort on
+            // the retired catalog" case. It's only a data error when the archived subject is NOT part
+            // of the cohort's curriculum (or the cohort has no curriculum to vouch for it): then the
+            // Academic Head must drop the section or restore/repoint the subject.
+            var cohorts = await db.ClassSections.AsNoTracking()
+                .Where(c => c.SemesterId == semester.Id)
+                .ToListAsync(cancellationToken);
+            Guid? CohortCurriculumId(Section s) => cohorts.FirstOrDefault(c =>
+                string.Equals(c.ProgramCode, s.ProgramCode, StringComparison.OrdinalIgnoreCase)
+                && c.YearLevel == s.YearLevel
+                && string.Equals(c.SectionName, s.Block, StringComparison.OrdinalIgnoreCase))?.CurriculumId;
+
+            var retired = sections
+                .Where(s => s.Subject!.IsArchived && CohortCurriculumId(s) != s.Subject!.CurriculumId)
+                .ToList();
             if (retired.Count > 0)
             {
                 return Results.UnprocessableEntity(new
                 {
-                    message = "Some sections offer archived subjects. Remove those sections or restore the subjects, then regenerate.",
+                    message = "Some sections offer archived subjects that aren't part of their cohort's curriculum. "
+                        + "Point the class section at the matching curriculum, drop the section, or restore the subject.",
                     reasons = retired
-                        .Select(s => $"{s.SectionCode}: {s.Subject!.Code} is archived" +
+                        .Select(s => $"{s.SectionCode}: {s.Subject!.Code} is archived and not in this cohort's curriculum" +
                             (s.Subject.ArchiveReason is null ? "." : $" ({s.Subject.ArchiveReason})."))
                         .ToList(),
                     steps = 0
@@ -149,7 +163,10 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             var rooms = await db.Rooms
                 .OrderBy(r => r.Name).ThenBy(r => r.Id)
                 .ToListAsync(cancellationToken);
+            // Only the admin-configured allowable slots form the engine's grid (FR-SCHED-05) —
+            // synthetic placement periods from earlier runs are excluded so they can't dilute it.
             var timeSlots = await db.TimeSlots
+                .Where(t => t.IsAllowable)
                 .OrderBy(t => t.Day).ThenBy(t => t.StartMinutes).ThenBy(t => t.Id)
                 .ToListAsync(cancellationToken);
             var faculty = await db.FacultyProfiles
@@ -277,9 +294,25 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 });
             }
 
+            // FR-SCHED-05: the soft-constraint weights are institution-tunable (the Academic Head
+            // adjusts them on the soft-constraints panel). Fall back to the engine defaults for a
+            // database seeded before they existed.
+            var settings = await db.GetSettingsAsync(cancellationToken);
+            var weights = new SoftWeights(
+                settings.WeightPreference,
+                settings.WeightIdleGap,
+                settings.WeightRoomFit)
+            {
+                GapSaturationHours = settings.GapSaturationHours
+            };
+
             var problem = new ScheduleProblem
             {
                 Seed = seed,
+                Weights = weights,
+                // Engine safety budgets are institution-tunable (System Parameters, FR-SCHED-07).
+                TimeBudget = TimeSpan.FromSeconds(Math.Clamp(settings.ScheduleTimeBudgetSeconds, 5, 120)),
+                MaxSteps = Math.Clamp(settings.ScheduleMaxStepsThousands, 50, 5000) * 1000,
                 Sections = meetings,
                 Rooms = rooms.Select(r => new RoomOption(r.Id, r.Capacity, r.Kind)).ToList(),
                 TimeSlots = timeSlots,
@@ -363,14 +396,21 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             // The grid stores only atomic periods, so persist (find-or-create) a TimeSlot for the
             // whole block — the same on-demand period pattern the manual board uses. A cache keeps
             // blocks with identical (day, start, end) mapped to a single row.
+            // Seed the cache from every existing period — allowable grid slots AND synthetic ones
+            // persisted by earlier runs — so a block reuses an existing row instead of piling up
+            // duplicate non-allowable periods across regenerations.
             var slotCache = new Dictionary<(DayOfWeek, int, int), TimeSlot>();
-            foreach (var t in timeSlots) slotCache.TryAdd((t.Day, t.StartMinutes, t.EndMinutes), t);
+            var existingSlots = await db.TimeSlots
+                .Where(t => t.IsAllowable || db.ScheduleAssignments.Any(a => a.TimeSlotId == t.Id))
+                .ToListAsync(cancellationToken);
+            foreach (var t in existingSlots) slotCache.TryAdd((t.Day, t.StartMinutes, t.EndMinutes), t);
 
             TimeSlot ResolveSlot(TimeSlot block)
             {
                 var key = (block.Day, block.StartMinutes, block.EndMinutes);
                 if (slotCache.TryGetValue(key, out var existing)) return existing;
-                var created = new TimeSlot { Day = block.Day, StartMinutes = block.StartMinutes, EndMinutes = block.EndMinutes };
+                // A synthetic period persisting one placement — not part of the allowable grid.
+                var created = new TimeSlot { Day = block.Day, StartMinutes = block.StartMinutes, EndMinutes = block.EndMinutes, IsAllowable = false };
                 db.TimeSlots.Add(created);
                 slotCache[key] = created;
                 return created;
