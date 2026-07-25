@@ -17,7 +17,8 @@ namespace SENGENSystem.Server.Features.UserManagement.UpdateUser
         public static IEndpointRouteBuilder MapUpdateUser(this IEndpointRouteBuilder app)
         {
             app.MapPut("/api/users/{id:guid}", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SchoolAdmin)));
+                .RequireAuthorization(policy => policy.RequireRole(
+                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
             return app;
         }
 
@@ -26,12 +27,24 @@ namespace SENGENSystem.Server.Features.UserManagement.UpdateUser
             UpdateUserRequest request,
             AppDbContext db,
             AuditLog audit,
+            HttpContext http,
             CancellationToken cancellationToken)
         {
             var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
             if (user is null)
             {
                 return Results.NotFound(new { message = "User not found." });
+            }
+
+            // Privilege guard: only a School Admin may edit a School Admin account (an Academic
+            // Head cannot alter a peer administrator). The assign-SchoolAdmin case is checked once
+            // the requested role is parsed, below.
+            var callerIsAdmin = http.User.IsInRole(nameof(UserRole.SchoolAdmin));
+            if (user.Role == UserRole.SchoolAdmin && !callerIsAdmin)
+            {
+                return Results.Json(
+                    new { message = "Only a School Admin can modify a School Admin account." },
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
             var errors = new Dictionary<string, string[]>();
@@ -52,6 +65,14 @@ namespace SENGENSystem.Server.Features.UserManagement.UpdateUser
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
+            }
+
+            // Privilege guard: an Academic Head cannot promote anyone into the School Admin role.
+            if (role == UserRole.SchoolAdmin && user.Role != UserRole.SchoolAdmin && !callerIsAdmin)
+            {
+                return Results.Json(
+                    new { message = "Only a School Admin can assign the School Admin role." },
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
             var email = request.Email!.Trim().ToLowerInvariant();
