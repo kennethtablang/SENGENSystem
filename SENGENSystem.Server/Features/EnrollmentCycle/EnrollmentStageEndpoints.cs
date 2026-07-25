@@ -6,19 +6,23 @@ using SENGENSystem.Server.Domain;
 namespace SENGENSystem.Server.Features.EnrollmentCycle
 {
     // Vertical slice: the active term's enrollment stage — the banner every signed-in user sees
-    // in the top bar, and the Registrar's control for moving the term to the next phase.
-    // Everyone may read it (it tells students what they can do right now); only the Registrar
+    // in the top bar, and the control for moving the term to the next phase.
+    // Everyone may read it (it tells students what they can do right now); only the Academic Head
     // and School Admin may change it.
     public record SetStageRequest(string? Stage);
 
     public static class EnrollmentStageEndpoints
     {
-        /// <summary>The cycle in order. Advancing means "the next one along this list".</summary>
+        /// <summary>
+        /// The cycle in order. Advancing means "the next one along this list". Registration (the
+        /// SIS) comes first: a student registers, then submits admission documents (which may keep
+        /// arriving even after enlistment opens), then enlists in subjects.
+        /// </summary>
         private static readonly EnrollmentStage[] Order =
         [
             EnrollmentStage.Preparation,
-            EnrollmentStage.DocumentSubmission,
             EnrollmentStage.Registration,
+            EnrollmentStage.DocumentSubmission,
             EnrollmentStage.Enlistment,
             EnrollmentStage.Closed
         ];
@@ -30,10 +34,10 @@ namespace SENGENSystem.Server.Features.EnrollmentCycle
             group.MapGet("", GetAsync);
             group.MapPost("", SetAsync)
                 .RequireAuthorization(policy => policy.RequireRole(
-                    nameof(UserRole.Registrar), nameof(UserRole.SchoolAdmin)));
+                    nameof(UserRole.AcademicHead), nameof(UserRole.SchoolAdmin)));
             group.MapPost("/advance", AdvanceAsync)
                 .RequireAuthorization(policy => policy.RequireRole(
-                    nameof(UserRole.Registrar), nameof(UserRole.SchoolAdmin)));
+                    nameof(UserRole.AcademicHead), nameof(UserRole.SchoolAdmin)));
             return app;
         }
 
@@ -114,7 +118,7 @@ namespace SENGENSystem.Server.Features.EnrollmentCycle
 
         private static object Payload(Semester? semester, HttpContext http)
         {
-            var canChange = http.User.IsInRole(nameof(UserRole.Registrar))
+            var canChange = http.User.IsInRole(nameof(UserRole.AcademicHead))
                 || http.User.IsInRole(nameof(UserRole.SchoolAdmin));
 
             if (semester is null)
