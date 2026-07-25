@@ -8,10 +8,10 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
     // Vertical slice: the Admission Officer's per-enrollee requirements checklist board
     // (FR-DOC-01..03). Lists every enrollee with per-document states and completion, and
     // records/updates each paper's submission status as an auditable action.
-    public record ChecklistDocumentDto(Guid Id, string DocumentType, string Label, string Status)
+    public record ChecklistDocumentDto(Guid Id, string RequirementCode, string Label, string Status)
     {
-        public static ChecklistDocumentDto From(RegistrationDocument d) =>
-            new(d.Id, d.DocumentType.ToString(), DocumentChecklist.Label(d.DocumentType), d.Status.ToString());
+        public static ChecklistDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
+            new(d.Id, d.RequirementCode, catalog.Label(d.RequirementCode), d.Status.ToString());
     }
 
     public record ChecklistRowDto(
@@ -28,7 +28,7 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         int TotalCount,
         IReadOnlyList<ChecklistDocumentDto> Documents)
     {
-        public static ChecklistRowDto From(StudentRegistration r) =>
+        public static ChecklistRowDto From(StudentRegistration r, RequirementCatalog catalog) =>
             new(
                 r.Id,
                 r.StudentNumber,
@@ -42,8 +42,8 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 DocumentChecklist.SubmittedCount(r.Documents),
                 r.Documents.Count,
                 r.Documents
-                    .OrderBy(d => d.DocumentType)
-                    .Select(ChecklistDocumentDto.From)
+                    .OrderBy(d => catalog.Order(d.RequirementCode))
+                    .Select(d => ChecklistDocumentDto.From(d, catalog))
                     .ToList());
     }
 
@@ -88,8 +88,10 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 .Take(500)
                 .ToListAsync(cancellationToken);
 
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+
             // Completion is derived from the document rows, so filter in memory.
-            var rows = items.Select(ChecklistRowDto.From);
+            var rows = items.Select(r => ChecklistRowDto.From(r, catalog));
             if (string.Equals(completion, "complete", StringComparison.OrdinalIgnoreCase))
             {
                 rows = rows.Where(r => r.IsComplete);
@@ -100,10 +102,19 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             }
 
             var list = rows.ToList();
+
+            // How many enrollees a "Send reminders" sweep would actually email — every non-rejected
+            // registration with at least one unsubmitted paper, independent of the current filter or
+            // search — so the confirmation can state a true count (mirrors SendRemindersEndpoint).
+            var reminderTargetCount = await db.StudentRegistrations.AsNoTracking()
+                .CountAsync(r => r.Status != RegistrationStatus.Rejected
+                    && r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted), cancellationToken);
+
             return Results.Ok(new
             {
                 count = list.Count,
                 completeCount = list.Count(r => r.IsComplete),
+                reminderTargetCount,
                 checklists = list
             });
         }
@@ -136,8 +147,9 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             {
                 var previous = document.Status;
                 document.Status = status;
+                var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
                 audit.Record(AuditAction.DocumentChecklistUpdated,
-                    $"Set {DocumentChecklist.Label(document.DocumentType)} of {registration.StudentNumber} " +
+                    $"Set {catalog.Label(document.RequirementCode)} of {registration.StudentNumber} " +
                     $"from {previous} to {status}.",
                     "StudentRegistration", registration.Id.ToString());
                 await db.SaveChangesAsync(cancellationToken);
