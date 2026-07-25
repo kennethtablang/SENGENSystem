@@ -11,7 +11,8 @@ namespace SENGENSystem.Server.Features.UserManagement.ListUsers
         public static IEndpointRouteBuilder MapListUsers(this IEndpointRouteBuilder app)
         {
             app.MapGet("/api/users", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SchoolAdmin)));
+                .RequireAuthorization(policy => policy.RequireRole(
+                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
             return app;
         }
 
