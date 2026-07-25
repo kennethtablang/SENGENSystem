@@ -34,6 +34,7 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
                 .OrderBy(b => b.Name)
                 .ToListAsync(ct);
             var timeSlots = await db.TimeSlots.AsNoTracking()
+                .Where(t => t.IsAllowable)
                 .OrderBy(t => t.Day).ThenBy(t => t.StartMinutes)
                 .ToListAsync(ct);
             var curricula = await db.Curricula.AsNoTracking()
