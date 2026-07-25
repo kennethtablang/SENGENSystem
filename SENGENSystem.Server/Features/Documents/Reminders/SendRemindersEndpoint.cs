@@ -49,13 +49,15 @@ namespace SENGENSystem.Server.Features.Documents.Reminders
                 });
             }
 
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+
             var emailsSent = 0;
             foreach (var registration in targets)
             {
                 var missing = registration.Documents
                     .Where(d => d.Status == DocumentStatus.NotSubmitted)
-                    .OrderBy(d => d.DocumentType)
-                    .Select(d => d.DocumentType)
+                    .OrderBy(d => catalog.Order(d.RequirementCode))
+                    .Select(d => catalog.Label(d.RequirementCode))
                     .ToList();
 
                 var (subject, body) = DocumentEmails.SubmissionReminder(registration, missing);
