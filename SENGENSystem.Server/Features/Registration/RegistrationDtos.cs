@@ -1,4 +1,5 @@
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Documents;
 
 namespace SENGENSystem.Server.Features.Registration
 {
@@ -10,10 +11,10 @@ namespace SENGENSystem.Server.Features.Registration
             value is { } v ? DateTime.SpecifyKind(v, DateTimeKind.Utc).ToString("o") : null;
     }
 
-    public record RegistrationDocumentDto(string DocumentType, string Status)
+    public record RegistrationDocumentDto(string RequirementCode, string Label, string Status)
     {
-        public static RegistrationDocumentDto From(RegistrationDocument d) =>
-            new(d.DocumentType.ToString(), d.Status.ToString());
+        public static RegistrationDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
+            new(d.RequirementCode, catalog.Label(d.RequirementCode), d.Status.ToString());
     }
 
     /// <summary>A row in the Registrar's SIS management list (FR-SIS-04).</summary>
@@ -88,7 +89,7 @@ namespace SENGENSystem.Server.Features.Registration
         string CreatedAtUtc,
         IReadOnlyList<RegistrationDocumentDto> Documents)
     {
-        public static StudentRegistrationDto From(StudentRegistration r) =>
+        public static StudentRegistrationDto From(StudentRegistration r, RequirementCatalog catalog) =>
             new(
                 r.Id,
                 r.StudentNumber,
@@ -130,8 +131,8 @@ namespace SENGENSystem.Server.Features.Registration
                 Iso.Utc(r.TermsAcceptedAtUtc),
                 Iso.Utc(r.CreatedAtUtc)!,
                 r.Documents
-                    .OrderBy(d => d.DocumentType)
-                    .Select(RegistrationDocumentDto.From)
+                    .OrderBy(d => catalog.Order(d.RequirementCode))
+                    .Select(d => RegistrationDocumentDto.From(d, catalog))
                     .ToList());
     }
 
