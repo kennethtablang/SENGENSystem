@@ -21,6 +21,7 @@ namespace SENGENSystem.Server.Common.Persistence
             await db.Database.MigrateAsync();
 
             await SeedSystemSettingsAsync(db);
+            await SeedSuperAdminAsync(db, hasher, config);
             await SeedAdminAsync(db, hasher, config);
             await SeedStaffAsync(db, hasher);
             await SeedSchedulingSampleAsync(db, hasher);
@@ -300,6 +301,9 @@ namespace SENGENSystem.Server.Common.Persistence
                     ("2026-000108", "Hernandez","Patricia",  RegistrationStatus.Confirmed, ProgramTrack.ITP, true,  DocumentStatus.Submitted)
                 };
 
+                var demoRequirements = await db.AdmissionRequirements
+                    .Include(r => r.Programs).Where(r => r.IsActive).ToListAsync();
+
                 foreach (var p in people)
                 {
                     if (await db.StudentRegistrations.AnyAsync(r => r.StudentNumber == p.Number))
@@ -340,9 +344,9 @@ namespace SENGENSystem.Server.Common.Persistence
                         GuardianMobile = "09170005678",
                         TermsAcceptedAtUtc = DateTime.UtcNow.AddDays(-Math.Abs(p.Number.GetHashCode() % 30))
                     };
-                    foreach (var docType in Enum.GetValues<DocumentType>())
+                    foreach (var req in demoRequirements.Where(r => r.Programs.Any(pr => pr.Program == reg.Program)))
                     {
-                        reg.Documents.Add(new RegistrationDocument { DocumentType = docType, Status = p.Docs });
+                        reg.Documents.Add(new RegistrationDocument { RequirementCode = req.Code, Status = p.Docs });
                     }
                     db.StudentRegistrations.Add(reg);
                 }
@@ -665,6 +669,32 @@ namespace SENGENSystem.Server.Common.Persistence
                 changed = true;
             }
 
+            // Class sections predate the per-cohort curriculum link — attach each to its program's
+            // active curriculum (fallback: any curriculum for that program) so faculty-load offers
+            // and schedule generation stay scoped once the field exists (FR-SCHED-04). Idempotent:
+            // only fills rows still missing a curriculum.
+            if (await db.ClassSections.AnyAsync(c => c.CurriculumId == null))
+            {
+                var curricula = await db.Curricula
+                    .Select(c => new { c.Id, c.ProgramCode, c.IsActive })
+                    .ToListAsync();
+                var activeByProgram = curricula
+                    .GroupBy(c => c.ProgramCode)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => (g.FirstOrDefault(c => c.IsActive) ?? g.First()).Id,
+                        StringComparer.OrdinalIgnoreCase);
+
+                foreach (var section in await db.ClassSections.Where(c => c.CurriculumId == null).ToListAsync())
+                {
+                    if (activeByProgram.TryGetValue(section.ProgramCode, out var curriculumId))
+                    {
+                        section.CurriculumId = curriculumId;
+                        changed = true;
+                    }
+                }
+            }
+
             if (changed)
             {
                 await db.SaveChangesAsync();
@@ -709,6 +739,43 @@ namespace SENGENSystem.Server.Common.Persistence
             {
                 await db.SaveChangesAsync();
             }
+        }
+
+        /// <summary>
+        /// The top-of-hierarchy Super Admin (FR-AUTH) — owns user management and the ISO 25010
+        /// rating survey. Seeded once; credentials come from config (Seed:SuperAdminEmail/Password)
+        /// with dev defaults. Idempotent on the SuperAdmin role.
+        /// </summary>
+        private static async Task SeedSuperAdminAsync(AppDbContext db, IPasswordHasher<User> hasher, IConfiguration config)
+        {
+            if (await db.Users.AnyAsync(u => u.Role == UserRole.SuperAdmin))
+            {
+                return;
+            }
+
+            var superAdmin = new User
+            {
+                FirstName = "Super",
+                LastName = "Admin",
+                Email = config["Seed:SuperAdminEmail"] ?? "superadmin@stialaminos.local",
+                Role = UserRole.SuperAdmin,
+                TermsAcceptedAtUtc = DateTime.UtcNow
+            };
+            superAdmin.PasswordHash = hasher.HashPassword(superAdmin, config["Seed:SuperAdminPassword"] ?? "ChangeMe123!");
+
+            db.Users.Add(superAdmin);
+            db.AuditEntries.Add(new AuditEntry
+            {
+                Action = AuditAction.UserAccountCreated,
+                Summary = "System initialized; seeded the Super Admin account.",
+                ActorUserId = superAdmin.Id,
+                ActorName = superAdmin.FullName,
+                ActorRole = superAdmin.Role.ToString(),
+                EntityType = "User",
+                EntityId = superAdmin.Id.ToString()
+            });
+
+            await db.SaveChangesAsync();
         }
 
         private static async Task SeedAdminAsync(AppDbContext db, IPasswordHasher<User> hasher, IConfiguration config)
@@ -963,13 +1030,16 @@ namespace SENGENSystem.Server.Common.Persistence
                 }
             };
 
+            var seedRequirements = await db.AdmissionRequirements
+                .Include(r => r.Programs).Where(r => r.IsActive).ToListAsync();
+
             foreach (var reg in seeds)
             {
-                foreach (var docType in Enum.GetValues<DocumentType>())
+                foreach (var req in seedRequirements.Where(r => r.Programs.Any(pr => pr.Program == reg.Program)))
                 {
                     reg.Documents.Add(new RegistrationDocument
                     {
-                        DocumentType = docType,
+                        RequirementCode = req.Code,
                         Status = DocumentStatus.Submitted
                     });
                 }

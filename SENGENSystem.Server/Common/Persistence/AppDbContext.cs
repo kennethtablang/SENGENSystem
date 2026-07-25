@@ -45,6 +45,10 @@ namespace SENGENSystem.Server.Common.Persistence
 
         public DbSet<RegistrationDocument> RegistrationDocuments => Set<RegistrationDocument>();
 
+        public DbSet<AdmissionRequirement> AdmissionRequirements => Set<AdmissionRequirement>();
+
+        public DbSet<AdmissionRequirementProgram> AdmissionRequirementPrograms => Set<AdmissionRequirementProgram>();
+
         public DbSet<TermActivation> TermActivations => Set<TermActivation>();
 
         public DbSet<SlotRequest> SlotRequests => Set<SlotRequest>();
@@ -54,6 +58,10 @@ namespace SENGENSystem.Server.Common.Persistence
         public DbSet<Notification> Notifications => Set<Notification>();
 
         public DbSet<SystemSettings> SystemSettings => Set<SystemSettings>();
+
+        public DbSet<SurveyInvitation> SurveyInvitations => Set<SurveyInvitation>();
+
+        public DbSet<SurveyResponse> SurveyResponses => Set<SurveyResponse>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -65,9 +73,12 @@ namespace SENGENSystem.Server.Common.Persistence
                 user.Property(u => u.LastName).HasMaxLength(100).IsRequired();
                 user.Property(u => u.PasswordHash).IsRequired();
                 user.Property(u => u.Role).HasConversion<string>().HasMaxLength(30);
+                user.Property(u => u.MustChangePassword).HasDefaultValue(false);
                 user.Property(u => u.PasswordResetTokenHash).HasMaxLength(88);
                 user.Property(u => u.PendingEmail).HasMaxLength(256);
                 user.Property(u => u.EmailChangeTokenHash).HasMaxLength(88);
+                user.Property(u => u.TwoFactorCodeHash).HasMaxLength(88);
+                user.Property(u => u.TwoFactorChallengeHash).HasMaxLength(88);
             });
 
             modelBuilder.Entity<SchoolYear>(schoolYear =>
@@ -186,6 +197,18 @@ namespace SENGENSystem.Server.Common.Persistence
                     "CK_SystemSettings_Singleton",
                     $"[Id] = {SENGENSystem.Server.Domain.SystemSettings.SingletonId} AND [SectionCapacityCap] >= 1"));
                 settings.Property(s => s.Id).ValueGeneratedNever();
+                // Defaults mirror the engine's built-in SoftWeights so the singleton row that
+                // already exists (and any created before these columns) behaves exactly as before.
+                settings.Property(s => s.WeightPreference).HasDefaultValue(0.40);
+                settings.Property(s => s.WeightIdleGap).HasDefaultValue(0.35);
+                settings.Property(s => s.WeightRoomFit).HasDefaultValue(0.25);
+                settings.Property(s => s.GapSaturationHours).HasDefaultValue(8.0);
+                // Enrollment/enlistment + engine-budget parameters default to the previous behaviour.
+                settings.Property(s => s.EnlistmentOpen).HasDefaultValue(true);
+                settings.Property(s => s.MaxEnlistmentUnitsPerStudent).HasDefaultValue(0);
+                settings.Property(s => s.MinSectionEnrollment).HasDefaultValue(15);
+                settings.Property(s => s.ScheduleTimeBudgetSeconds).HasDefaultValue(20);
+                settings.Property(s => s.ScheduleMaxStepsThousands).HasDefaultValue(2000);
             });
 
             modelBuilder.Entity<Section>(section =>
@@ -222,6 +245,48 @@ namespace SENGENSystem.Server.Common.Persistence
                     .WithMany()
                     .HasForeignKey(c => c.SemesterId)
                     .OnDelete(DeleteBehavior.Restrict);
+                // The cohort's curriculum version. Curricula are archived, never deleted, so restrict.
+                classSection.HasIndex(c => c.CurriculumId);
+                classSection.HasOne(c => c.Curriculum)
+                    .WithMany()
+                    .HasForeignKey(c => c.CurriculumId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<TimeSlot>(timeSlot =>
+            {
+                // A slot is an admin-configured allowable grid entry unless a scheduler/board
+                // placement created it (FR-SCHED-05). New rows default to allowable at the DB too.
+                timeSlot.Property(t => t.IsAllowable).HasDefaultValue(true);
+            });
+
+            modelBuilder.Entity<SurveyInvitation>(inv =>
+            {
+                inv.Property(i => i.RecipientName).HasMaxLength(201).IsRequired();
+                inv.Property(i => i.RecipientEmail).HasMaxLength(256).IsRequired();
+                inv.Property(i => i.RecipientRole).HasMaxLength(30).IsRequired();
+                inv.Property(i => i.TokenHash).HasMaxLength(88).IsRequired();
+                inv.HasIndex(i => i.TokenHash);
+                // Recipient is a user; guarded elsewhere, so restrict on delete.
+                inv.HasOne(i => i.User).WithMany().HasForeignKey(i => i.UserId).OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<SurveyResponse>(resp =>
+            {
+                resp.Property(r => r.RespondentName).HasMaxLength(201).IsRequired();
+                resp.Property(r => r.RespondentEmail).HasMaxLength(256).IsRequired();
+                resp.Property(r => r.RespondentRole).HasMaxLength(30).IsRequired();
+                resp.Property(r => r.Position).HasMaxLength(120);
+                resp.Property(r => r.Sex).HasMaxLength(20);
+                resp.Property(r => r.Department).HasMaxLength(120);
+                resp.Property(r => r.YearsUsing).HasMaxLength(40);
+                resp.Property(r => r.Suggestions).HasMaxLength(4000);
+                resp.Property(r => r.FurtherComments).HasMaxLength(4000);
+                // One response per invitation (the emailed link answers exactly once).
+                resp.HasOne(r => r.Invitation).WithOne(i => i!.Response)
+                    .HasForeignKey<SurveyResponse>(r => r.InvitationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                resp.HasIndex(r => r.InvitationId).IsUnique();
             });
 
             modelBuilder.Entity<ScheduleAssignment>(assignment =>
@@ -287,6 +352,12 @@ namespace SENGENSystem.Server.Common.Persistence
             {
                 reg.Property(r => r.StudentNumber).HasMaxLength(20).IsRequired();
                 reg.HasIndex(r => r.StudentNumber).IsUnique();
+                // The official (external) student number is optional, but no two enrollees may
+                // share one. A filtered unique index enforces that while allowing many NULLs.
+                reg.Property(r => r.OfficialStudentNumber).HasMaxLength(30);
+                reg.HasIndex(r => r.OfficialStudentNumber)
+                    .IsUnique()
+                    .HasFilter("[OfficialStudentNumber] IS NOT NULL");
                 reg.Property(r => r.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
                 reg.Property(r => r.StudentType).HasConversion<string>().HasMaxLength(20).IsRequired();
                 reg.Property(r => r.Program).HasConversion<string>().HasMaxLength(10).IsRequired();
@@ -339,9 +410,27 @@ namespace SENGENSystem.Server.Common.Persistence
 
             modelBuilder.Entity<RegistrationDocument>(doc =>
             {
-                doc.Property(d => d.DocumentType).HasConversion<string>().HasMaxLength(30).IsRequired();
+                doc.Property(d => d.RequirementCode).HasMaxLength(40).IsRequired();
                 doc.Property(d => d.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
-                doc.HasIndex(d => new { d.StudentRegistrationId, d.DocumentType }).IsUnique();
+                doc.HasIndex(d => new { d.StudentRegistrationId, d.RequirementCode }).IsUnique();
+            });
+
+            modelBuilder.Entity<AdmissionRequirement>(req =>
+            {
+                req.Property(r => r.Code).HasMaxLength(40).IsRequired();
+                req.Property(r => r.Name).HasMaxLength(150).IsRequired();
+                req.Property(r => r.Description).HasMaxLength(500);
+                req.HasIndex(r => r.Code).IsUnique();
+                req.HasMany(r => r.Programs)
+                    .WithOne(p => p.AdmissionRequirement!)
+                    .HasForeignKey(p => p.AdmissionRequirementId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<AdmissionRequirementProgram>(rp =>
+            {
+                rp.Property(p => p.Program).HasConversion<string>().HasMaxLength(10).IsRequired();
+                rp.HasIndex(p => new { p.AdmissionRequirementId, p.Program }).IsUnique();
             });
 
             modelBuilder.Entity<FacultyTimePreference>(pref =>

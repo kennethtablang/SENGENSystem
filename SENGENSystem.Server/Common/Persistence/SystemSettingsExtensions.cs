@@ -46,5 +46,20 @@ namespace SENGENSystem.Server.Common.Persistence
         {
             return (await db.GetSettingsAsync(ct)).SectionCapacityCap;
         }
+
+        /// <summary>
+        /// The active semester's id, or null if none is set. The single source of truth for
+        /// "the current term", so back-office queues (registrations, term activations, slot
+        /// approvals) and their badge counts scope to it and stay correct when the term rolls
+        /// over rather than accumulating every past semester's rows.
+        /// </summary>
+        public static Task<Guid?> GetActiveSemesterIdAsync(
+            this AppDbContext db, CancellationToken ct = default)
+        {
+            return db.Semesters.AsNoTracking()
+                .Where(s => s.IsActive)
+                .Select(s => (Guid?)s.Id)
+                .FirstOrDefaultAsync(ct);
+        }
     }
 }
