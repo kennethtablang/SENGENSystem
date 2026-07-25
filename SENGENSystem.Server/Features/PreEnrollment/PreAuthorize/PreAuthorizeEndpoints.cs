@@ -89,8 +89,9 @@ namespace SENGENSystem.Server.Features.PreEnrollment.PreAuthorize
             {
                 count = rows.Count,
                 authorizedCount = rows.Count(r => r.IsPreAuthorized),
+                // Eligible = confirmed SIS and not yet cleared. Document completeness is tracked
+                // for follow-up (DocumentsComplete on each row) but no longer gates pre-authorization.
                 eligibleCount = rows.Count(r => !r.IsPreAuthorized
-                    && r.DocumentsComplete
                     && r.RegistrationStatus == nameof(Domain.RegistrationStatus.Confirmed)),
                 students = rows
             });
@@ -118,25 +119,18 @@ namespace SENGENSystem.Server.Features.PreEnrollment.PreAuthorize
                 return Results.Ok(PreAuthorizationRowDto.From(registration));
             }
 
-            // FR-PRE-02: authorization only after document submission and SIS registration complete.
-            var blockers = new List<string>();
+            // The only hard precondition is a Registrar-confirmed SIS. Admission documents may
+            // still be arriving — a student can submit them even after enlistment opens — so an
+            // incomplete checklist no longer blocks clearing them for online slot selection.
             if (registration.Status != RegistrationStatus.Confirmed)
-            {
-                blockers.Add($"The SIS registration is {registration.Status} — the Registrar must confirm it first.");
-            }
-            if (!DocumentChecklist.IsComplete(registration.Documents))
-            {
-                var missing = registration.Documents
-                    .Where(d => d.Status == DocumentStatus.NotSubmitted)
-                    .Select(d => DocumentChecklist.Label(d.DocumentType));
-                blockers.Add($"The document checklist is incomplete — missing: {string.Join(", ", missing)}.");
-            }
-            if (blockers.Count > 0)
             {
                 return Results.BadRequest(new
                 {
                     message = "This student cannot be pre-authorized yet.",
-                    reasons = blockers
+                    reasons = new[]
+                    {
+                        $"The SIS registration is {registration.Status} — the Registrar must confirm it first."
+                    }
                 });
             }
 
