@@ -1,9 +1,18 @@
 using Microsoft.EntityFrameworkCore;
+using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 
 namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
 {
+    /// <summary>
+    /// The Academic Head's adjustment to the soft-constraint weights the CSP engine optimises
+    /// against (FR-SCHED-03/-05). Each is the relative importance of one concern; the engine
+    /// normalises every term to 0..1 before weighting, so raising one genuinely raises its pull.
+    /// </summary>
+    public record SoftConstraintWeightsRequest(
+        double? Preference, double? IdleGap, double? RoomFit, double? GapSaturationHours);
+
     // Vertical slice: the inputs the CSP engine optimises its soft constraints against, surfaced
     // so the Academic Head sees the basis behind a generated schedule and can correct it before
     // regenerating (FR-SCHED-03/-08):
@@ -31,11 +40,80 @@ namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
     {
         public static IEndpointRouteBuilder MapSoftConstraints(this IEndpointRouteBuilder app)
         {
-            app.MapGet("/api/scheduling/soft-constraints", HandleAsync)
+            var group = app.MapGroup("/api/scheduling/soft-constraints")
                 .RequireAuthorization(policy => policy.RequireRole(
                     nameof(UserRole.AcademicHead), nameof(UserRole.SchoolAdmin)));
+
+            group.MapGet("", HandleAsync);
+            group.MapPut("/weights", SetWeightsAsync);
             return app;
         }
+
+        // Widest sane idle-gap saturation, in hours — a whole long day.
+        private const double MaxGapSaturationHours = 24.0;
+
+        /// <summary>
+        /// PUT the soft-constraint weights the engine will use on the next generation. Values are
+        /// relative importances clamped to 0..1 (the engine normalises before weighting), and the
+        /// idle-gap saturation is the longest gap treated as "as bad as it gets", in hours.
+        /// </summary>
+        private static async Task<IResult> SetWeightsAsync(
+            SoftConstraintWeightsRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var errors = new Dictionary<string, string[]>();
+            var preference = Weight(errors, "preference", request.Preference);
+            var idleGap = Weight(errors, "idleGap", request.IdleGap);
+            var roomFit = Weight(errors, "roomFit", request.RoomFit);
+
+            var gapSaturation = request.GapSaturationHours ?? 0;
+            if (gapSaturation < 1 || gapSaturation > MaxGapSaturationHours)
+            {
+                errors["gapSaturationHours"] = [$"Choose an idle-gap saturation between 1 and {MaxGapSaturationHours:0} hours."];
+            }
+
+            if (errors.Count == 0 && preference + idleGap + roomFit <= 0)
+            {
+                errors["preference"] = ["At least one weight must be greater than zero, otherwise there is nothing to optimise."];
+            }
+
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var settings = await db.GetSettingsForUpdateAsync(ct);
+            settings.WeightPreference = preference;
+            settings.WeightIdleGap = idleGap;
+            settings.WeightRoomFit = roomFit;
+            settings.GapSaturationHours = gapSaturation;
+            settings.UpdatedAtUtc = DateTime.UtcNow;
+
+            audit.Record(AuditAction.SoftConstraintWeightsChanged,
+                $"Adjusted the scheduling soft-constraint weights — preference {preference:0.00}, " +
+                $"idle gap {idleGap:0.00}, room fit {roomFit:0.00}, gap saturation {gapSaturation:0.#}h.",
+                "SystemSettings", SystemSettings.SingletonId.ToString());
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(WeightsPayload(settings));
+        }
+
+        private static double Weight(Dictionary<string, string[]> errors, string key, double? value)
+        {
+            if (value is not { } v || double.IsNaN(v) || v < 0 || v > 1)
+            {
+                errors[key] = ["Choose a weight between 0 and 1."];
+                return 0;
+            }
+            return v;
+        }
+
+        private static object WeightsPayload(SystemSettings s) => new
+        {
+            preference = s.WeightPreference,
+            idleGap = s.WeightIdleGap,
+            roomFit = s.WeightRoomFit,
+            gapSaturationHours = s.GapSaturationHours
+        };
 
         private static async Task<IResult> HandleAsync(
             Guid? semesterId, AppDbContext db, CancellationToken ct)
@@ -108,10 +186,14 @@ namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
                 : Math.Round(Math.Sqrt(units.Sum(u => (u - mean) * (u - mean)) / units.Count), 1);
             var looksUneven = min > 0 && max >= min * 2 && max - min >= 3;
 
+            var settings = await db.GetSettingsAsync(ct);
+
             return Results.Ok(new
             {
                 semesterId = semester.Id,
                 semesterName = semester.Name,
+                // The tunable weights the engine will use on the next generation (FR-SCHED-05).
+                weights = WeightsPayload(settings),
                 facultyCount = loadRows.Count,
                 withPreferences = preferences.Count(p => p.Windows.Count > 0),
                 preferences,
