@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
-using SENGENSystem.Server.Common.Validation;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Documents;
 
 namespace SENGENSystem.Server.Features.Registration.RegisterStudent
 {
@@ -61,6 +61,8 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
             AppDbContext db,
             AuditLog audit,
             IEmailSender email,
+            Notifier notifier,
+            Microsoft.AspNetCore.Identity.IPasswordHasher<Domain.User> passwordHasher,
             Features.Reports.Live.ReportsBroadcaster broadcaster,
             CancellationToken cancellationToken)
         {
@@ -113,6 +115,17 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
                 errors["acceptedTerms"] = ["You must read and accept the terms and conditions to register."];
             }
 
+            // One SIS per email address: a re-registration on an email already on file is rejected.
+            // Emails are stored in CAPS, so compare against the uppercased submission.
+            if (!errors.ContainsKey("email"))
+            {
+                var normalizedEmail = request.Email!.Trim().ToUpperInvariant();
+                if (await db.StudentRegistrations.AnyAsync(r => r.Email == normalizedEmail, cancellationToken))
+                {
+                    errors["email"] = ["This email is already registered to the system."];
+                }
+            }
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -125,49 +138,71 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
                 StudentType = studentType,
                 Program = program,
                 SemesterId = semester.Id,
-                LastName = NameFormatter.ToProperCase(request.LastName!),
-                FirstName = NameFormatter.ToProperCase(request.FirstName!),
-                MiddleName = string.IsNullOrWhiteSpace(request.MiddleName) ? string.Empty : NameFormatter.ToProperCase(request.MiddleName),
+                LastName = Up(request.LastName!),
+                FirstName = Up(request.FirstName!),
+                MiddleName = UpOrEmpty(request.MiddleName),
                 DateOfBirth = dob,
-                Birthplace = request.Birthplace!.Trim(),
-                Citizenship = request.Citizenship!.Trim(),
+                Birthplace = Up(request.Birthplace!),
+                Citizenship = Up(request.Citizenship!),
                 CivilStatus = civilStatus,
                 Gender = gender,
-                Email = request.Email!.Trim().ToLowerInvariant(),
+                // The SIS is filled entirely in CAPS (FR-AUTH-03), email included. This is safe:
+                // every email comparison in the system (account linking, lookups) is
+                // case-insensitive, so an uppercased address still matches its lowercase account.
+                Email = Up(request.Email!),
                 MobileNumber = request.MobileNumber!.Trim(),
-                AddressLine = request.AddressLine!.Trim(),
-                Barangay = request.Barangay!.Trim(),
-                CityMunicipality = request.CityMunicipality!.Trim(),
-                Province = request.Province!.Trim(),
-                ZipCode = request.ZipCode?.Trim() ?? string.Empty,
+                AddressLine = Up(request.AddressLine!),
+                Barangay = Up(request.Barangay!),
+                CityMunicipality = Up(request.CityMunicipality!),
+                Province = Up(request.Province!),
+                ZipCode = UpOrEmpty(request.ZipCode),
                 LastSchoolLevel = lastSchoolLevel,
-                SchoolName = request.SchoolName!.Trim(),
-                SchoolProgram = request.SchoolProgram?.Trim() ?? string.Empty,
-                SchoolYear = request.SchoolYear?.Trim() ?? string.Empty,
+                SchoolName = Up(request.SchoolName!),
+                SchoolProgram = UpOrEmpty(request.SchoolProgram),
+                SchoolYear = UpOrEmpty(request.SchoolYear),
                 YearGradeLastAttended = yearGrade,
                 LastTerm = lastTerm,
-                FatherName = string.IsNullOrWhiteSpace(request.FatherName) ? string.Empty : NameFormatter.ToProperCase(request.FatherName),
+                FatherName = UpOrEmpty(request.FatherName),
                 FatherMobile = request.FatherMobile?.Trim() ?? string.Empty,
-                MotherName = string.IsNullOrWhiteSpace(request.MotherName) ? string.Empty : NameFormatter.ToProperCase(request.MotherName),
+                MotherName = UpOrEmpty(request.MotherName),
                 MotherMobile = request.MotherMobile?.Trim() ?? string.Empty,
                 GuardianRelationship = guardianRel,
-                GuardianName = NameFormatter.ToProperCase(request.GuardianName!),
+                GuardianName = Up(request.GuardianName!),
                 GuardianMobile = request.GuardianMobile!.Trim(),
-                ReferredBy = string.IsNullOrWhiteSpace(request.ReferredBy) ? null : NameFormatter.ToProperCase(request.ReferredBy),
+                ReferredBy = string.IsNullOrWhiteSpace(request.ReferredBy) ? null : Up(request.ReferredBy),
                 TermsAcceptedAtUtc = DateTime.UtcNow
             };
 
-            // Seed the admission-requirements checklist (FR-DOC-01), initially all unsubmitted.
-            foreach (var docType in Enum.GetValues<DocumentType>())
-            {
-                registration.Documents.Add(new RegistrationDocument { DocumentType = docType });
-            }
+            // Seed the admission-requirements checklist (FR-DOC-01): only the papers this student's
+            // program requires, per the configurable requirement catalog. Initially all unsubmitted.
+            var activeRequirements = await DocumentChecklist.LoadActiveRequirementsAsync(db, cancellationToken);
+            DocumentChecklist.SeedDocuments(registration, activeRequirements);
 
             db.StudentRegistrations.Add(registration);
             audit.RecordAnonymous(AuditAction.StudentRegistered,
                 $"Submitted a digital SIS ({Humanize(registration.StudentType.ToString())}, {registration.Program}) " +
                 $"as {registration.StudentNumber}.",
                 registration.FullName, "StudentRegistration", registration.Id.ToString());
+
+            // Provision the student's login from the SIS details, with a temporary password they
+            // must change on first sign-in — no separate account sign-up (duplicate emails were
+            // already rejected above, so this is a fresh account). Committed with the registration.
+            var provision = await Common.Auth.StudentAccountProvisioner.EnsureAsync(
+                registration, db, passwordHasher, cancellationToken);
+            if (provision.Created)
+            {
+                audit.RecordAnonymous(AuditAction.StudentAccountProvisioned,
+                    $"Provisioned a student login ({provision.User.Email}) from the SIS submission.",
+                    registration.FullName, "User", provision.User.Id.ToString());
+            }
+
+            // Put the new registration on every back-office bell, in the same transaction (FR-NOTIF).
+            var staffIds = await NotificationRecipients.StaffUserIdsAsync(db, cancellationToken);
+            notifier.NotifyMany(staffIds, NotificationKind.Registration,
+                "New student registration",
+                $"{registration.FullName} ({registration.StudentNumber}) submitted a {registration.Program} SIS registration.",
+                "/registrations");
+
             await db.SaveChangesAsync(cancellationToken);
 
             // Confirmation email is best-effort: the registration is already committed.
@@ -179,6 +214,23 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
                     $"Sent SIS registration confirmation to {registration.Email}.",
                     registration.FullName, "StudentRegistration", registration.Id.ToString());
                 await db.SaveChangesAsync(cancellationToken);
+            }
+
+            // Deliver the login credentials to the SIS email — only the mailbox owner receives the
+            // temporary password. Best-effort, like the confirmation above.
+            if (provision is { Created: true, TemporaryPassword: { } temporaryPassword })
+            {
+                var (credSubject, credBody) =
+                    RegistrationEmails.AccountCredentials(registration, provision.User.Email, temporaryPassword);
+                var credResult = await email.SendAsync(
+                    registration.Email, registration.FullName, credSubject, credBody, cancellationToken);
+                if (credResult.Sent)
+                {
+                    audit.RecordAnonymous(AuditAction.NotificationDispatched,
+                        $"Sent student account credentials to {registration.Email}.",
+                        registration.FullName, "User", provision.User.Id.ToString());
+                    await db.SaveChangesAsync(cancellationToken);
+                }
             }
 
             broadcaster.Announce("registration");
@@ -205,6 +257,13 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
             }
             return $"{prefix}{next:D6}";
         }
+
+        // The SIS stores every text field in uppercase (FR-AUTH-03) to mirror how the form is
+        // filled. Trim first so stray spacing never survives, then fold to caps.
+        private static string Up(string value) => value.Trim().ToUpperInvariant();
+
+        private static string UpOrEmpty(string? value) =>
+            string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
 
         private static void RequireText(Dictionary<string, string[]> errors, string key, string? value)
         {
