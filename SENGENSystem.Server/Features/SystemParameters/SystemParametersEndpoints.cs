@@ -14,6 +14,14 @@ namespace SENGENSystem.Server.Features.SystemParameters
 
     public record LoadLimitRequest(int? MaxLoadUnits);
 
+    // Only the fields supplied are changed, so the page can save one card at a time.
+    public record SettingsRequest(
+        bool? EnlistmentOpen,
+        int? MaxEnlistmentUnitsPerStudent,
+        int? MinSectionEnrollment,
+        int? ScheduleTimeBudgetSeconds,
+        int? ScheduleMaxStepsThousands);
+
     public static class SystemParametersEndpoints
     {
         /// <summary>Widest sane seat cap; guards a typo'd 4000 from reaching the database.</summary>
@@ -22,6 +30,15 @@ namespace SENGENSystem.Server.Features.SystemParameters
         /// <summary>Widest sane teaching ceiling in subject units per semester.</summary>
         private const int MaxLoadUnitsCeiling = 60;
 
+        /// <summary>Bounds for the engine budgets so a typo can't wedge or exhaust a run.</summary>
+        private const int MinTimeBudgetSeconds = 5;
+        private const int MaxTimeBudgetSeconds = 120;
+        private const int MinMaxStepsThousands = 50;
+        private const int MaxMaxStepsThousands = 5000;
+
+        /// <summary>Widest sane per-student unit ceiling for a term.</summary>
+        private const int MaxEnlistmentUnitsCeiling = 60;
+
         public static IEndpointRouteBuilder MapSystemParameters(this IEndpointRouteBuilder app)
         {
             var group = app.MapGroup("/api/parameters")
@@ -29,6 +46,7 @@ namespace SENGENSystem.Server.Features.SystemParameters
 
             group.MapGet("", GetAsync);
             group.MapPut("/section-capacity", SetSectionCapacityAsync);
+            group.MapPut("/settings", SetSettingsAsync);
             group.MapPost("/time-slots", CreateTimeSlotAsync);
             group.MapPut("/time-slots/{id:guid}", UpdateTimeSlotAsync);
             group.MapDelete("/time-slots/{id:guid}", DeleteTimeSlotAsync);
@@ -54,6 +72,7 @@ namespace SENGENSystem.Server.Features.SystemParameters
                 .ToHashSet();
 
             var timeSlots = (await db.TimeSlots.AsNoTracking()
+                    .Where(t => t.IsAllowable)
                     .OrderBy(t => t.Day).ThenBy(t => t.StartMinutes)
                     .ToListAsync(ct))
                 .Select(t => new
@@ -68,6 +87,14 @@ namespace SENGENSystem.Server.Features.SystemParameters
 
             var faculty = await LoadFacultyAsync(db, ct);
 
+            // Sections in the active term that haven't reached the viable minimum, so the admin can
+            // act (merge, promote, or move students) — advisory, mirroring the above-cap count.
+            var activeSemesterId = await db.GetActiveSemesterIdAsync(ct);
+            var underFilledSections = settings.MinSectionEnrollment > 0 && activeSemesterId is { } sid
+                ? await db.Sections.CountAsync(
+                    s => s.SemesterId == sid && s.EnrolledCount < settings.MinSectionEnrollment, ct)
+                : 0;
+
             return Results.Ok(new
             {
                 sectionCapacity = new
@@ -77,9 +104,102 @@ namespace SENGENSystem.Server.Features.SystemParameters
                     maxCap = MaxSectionCapacityCap,
                     sectionsAboveCap
                 },
+                enrollment = new
+                {
+                    enlistmentOpen = settings.EnlistmentOpen,
+                    maxEnlistmentUnitsPerStudent = settings.MaxEnlistmentUnitsPerStudent,
+                    maxEnlistmentUnitsCeiling = MaxEnlistmentUnitsCeiling,
+                    minSectionEnrollment = settings.MinSectionEnrollment,
+                    underFilledSections
+                },
+                engine = new
+                {
+                    timeBudgetSeconds = settings.ScheduleTimeBudgetSeconds,
+                    minTimeBudgetSeconds = MinTimeBudgetSeconds,
+                    maxTimeBudgetSeconds = MaxTimeBudgetSeconds,
+                    maxStepsThousands = settings.ScheduleMaxStepsThousands,
+                    minMaxStepsThousands = MinMaxStepsThousands,
+                    maxMaxStepsThousands = MaxMaxStepsThousands
+                },
                 timeSlots,
                 faculty,
                 updatedAtUtc = settings.UpdatedAtUtc
+            });
+        }
+
+        // ---------- Enrollment / enlistment + engine budgets ----------
+
+        private static async Task<IResult> SetSettingsAsync(
+            SettingsRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var errors = new Dictionary<string, string[]>();
+
+            if (request.MaxEnlistmentUnitsPerStudent is { } maxUnits && (maxUnits < 0 || maxUnits > MaxEnlistmentUnitsCeiling))
+            {
+                errors["maxEnlistmentUnitsPerStudent"] = [$"Must be between 0 (no limit) and {MaxEnlistmentUnitsCeiling}."];
+            }
+            if (request.MinSectionEnrollment is { } minEnroll && (minEnroll < 0 || minEnroll > MaxSectionCapacityCap))
+            {
+                errors["minSectionEnrollment"] = [$"Must be between 0 and {MaxSectionCapacityCap}."];
+            }
+            if (request.ScheduleTimeBudgetSeconds is { } budget && (budget < MinTimeBudgetSeconds || budget > MaxTimeBudgetSeconds))
+            {
+                errors["scheduleTimeBudgetSeconds"] = [$"Must be between {MinTimeBudgetSeconds} and {MaxTimeBudgetSeconds} seconds."];
+            }
+            if (request.ScheduleMaxStepsThousands is { } steps && (steps < MinMaxStepsThousands || steps > MaxMaxStepsThousands))
+            {
+                errors["scheduleMaxStepsThousands"] = [$"Must be between {MinMaxStepsThousands} and {MaxMaxStepsThousands} (thousand steps)."];
+            }
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var settings = await db.GetSettingsForUpdateAsync(ct);
+            var changes = new List<string>();
+
+            if (request.EnlistmentOpen is { } open && open != settings.EnlistmentOpen)
+            {
+                settings.EnlistmentOpen = open;
+                changes.Add(open ? "opened enlistment" : "closed enlistment");
+            }
+            if (request.MaxEnlistmentUnitsPerStudent is { } mu && mu != settings.MaxEnlistmentUnitsPerStudent)
+            {
+                settings.MaxEnlistmentUnitsPerStudent = mu;
+                changes.Add($"per-student unit ceiling → {(mu == 0 ? "no limit" : mu.ToString())}");
+            }
+            if (request.MinSectionEnrollment is { } me && me != settings.MinSectionEnrollment)
+            {
+                settings.MinSectionEnrollment = me;
+                changes.Add($"minimum section size → {me}");
+            }
+            if (request.ScheduleTimeBudgetSeconds is { } tb && tb != settings.ScheduleTimeBudgetSeconds)
+            {
+                settings.ScheduleTimeBudgetSeconds = tb;
+                changes.Add($"engine time budget → {tb}s");
+            }
+            if (request.ScheduleMaxStepsThousands is { } ms && ms != settings.ScheduleMaxStepsThousands)
+            {
+                settings.ScheduleMaxStepsThousands = ms;
+                changes.Add($"engine step budget → {ms}k");
+            }
+
+            if (changes.Count > 0)
+            {
+                settings.UpdatedAtUtc = DateTime.UtcNow;
+                audit.Record(AuditAction.SystemParametersUpdated,
+                    $"Updated system parameters: {string.Join("; ", changes)}.",
+                    "SystemSettings", SystemSettings.SingletonId.ToString());
+                await db.SaveChangesAsync(ct);
+            }
+
+            return Results.Ok(new
+            {
+                enlistmentOpen = settings.EnlistmentOpen,
+                maxEnlistmentUnitsPerStudent = settings.MaxEnlistmentUnitsPerStudent,
+                minSectionEnrollment = settings.MinSectionEnrollment,
+                timeBudgetSeconds = settings.ScheduleTimeBudgetSeconds,
+                maxStepsThousands = settings.ScheduleMaxStepsThousands
             });
         }
 
@@ -272,7 +392,7 @@ namespace SENGENSystem.Server.Features.SystemParameters
             {
                 var day = (DayOfWeek)rawDay;
                 var duplicate = await db.TimeSlots.AnyAsync(t =>
-                    t.Day == day && t.StartMinutes == start && t.EndMinutes == end
+                    t.IsAllowable && t.Day == day && t.StartMinutes == start && t.EndMinutes == end
                     && (excludeId == null || t.Id != excludeId), ct);
                 if (duplicate)
                 {
