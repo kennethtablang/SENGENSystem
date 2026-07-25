@@ -22,7 +22,8 @@ namespace SENGENSystem.Server.Features.UserManagement.CreateUser
         public static IEndpointRouteBuilder MapCreateUser(this IEndpointRouteBuilder app)
         {
             app.MapPost("/api/users", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SchoolAdmin)));
+                .RequireAuthorization(policy => policy.RequireRole(
+                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
             return app;
         }
 
@@ -31,6 +32,7 @@ namespace SENGENSystem.Server.Features.UserManagement.CreateUser
             AppDbContext db,
             IPasswordHasher<User> passwordHasher,
             AuditLog audit,
+            HttpContext http,
             CancellationToken cancellationToken)
         {
             var errors = new Dictionary<string, string[]>();
@@ -56,6 +58,22 @@ namespace SENGENSystem.Server.Features.UserManagement.CreateUser
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
+            }
+
+            // Privilege guard: only a School Admin may mint another School Admin, and only a Super
+            // Admin may mint a Super Admin. An Academic Head has user-management access for
+            // staff/students but cannot create a peer or higher administrator.
+            if (role == UserRole.SuperAdmin && !http.User.IsInRole(nameof(UserRole.SuperAdmin)))
+            {
+                return Results.Json(
+                    new { message = "Only a Super Admin can create a Super Admin account." },
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+            if (role == UserRole.SchoolAdmin && !http.User.IsInRole(nameof(UserRole.SchoolAdmin)))
+            {
+                return Results.Json(
+                    new { message = "Only a School Admin can create a School Admin account." },
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
             var email = request.Email!.Trim().ToLowerInvariant();
