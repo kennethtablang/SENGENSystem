@@ -16,10 +16,10 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
     // ever bind to an account on the email string alone.
     public record LinkAccountRequest(string? StudentNumber, string? DateOfBirth);
 
-    public record LinkedDocumentDto(string DocumentType, string Label, string Status)
+    public record LinkedDocumentDto(string RequirementCode, string Label, string Status)
     {
-        public static LinkedDocumentDto From(RegistrationDocument d) =>
-            new(d.DocumentType.ToString(), DocumentChecklist.Label(d.DocumentType), d.Status.ToString());
+        public static LinkedDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
+            new(d.RequirementCode, catalog.Label(d.RequirementCode), d.Status.ToString());
     }
 
     public record LinkedRegistrationDto(
@@ -36,7 +36,7 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
         bool IsPreAuthorized,
         IReadOnlyList<LinkedDocumentDto> Documents)
     {
-        public static LinkedRegistrationDto From(StudentRegistration r) =>
+        public static LinkedRegistrationDto From(StudentRegistration r, RequirementCatalog catalog) =>
             new(
                 r.Id,
                 r.StudentNumber,
@@ -50,8 +50,8 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
                 r.Documents.Count,
                 r.IsPreAuthorized,
                 r.Documents
-                    .OrderBy(d => d.DocumentType)
-                    .Select(LinkedDocumentDto.From)
+                    .OrderBy(d => catalog.Order(d.RequirementCode))
+                    .Select(d => LinkedDocumentDto.From(d, catalog))
                     .ToList());
     }
 
@@ -86,7 +86,8 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
 
             if (linked is not null)
             {
-                return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(linked) });
+                var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+                return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(linked, catalog) });
             }
 
             // Hint whether an unclaimed SIS record carries this account's email.
@@ -150,9 +151,11 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
                 });
             }
 
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+
             if (registration.UserId == user.Id)
             {
-                return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(registration) });
+                return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(registration, catalog) });
             }
 
             if (existing is not null)
@@ -190,7 +193,7 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
                 "StudentRegistration", registration.Id.ToString());
             await db.SaveChangesAsync(cancellationToken);
 
-            return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(registration) });
+            return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(registration, catalog) });
         }
 
         private static Guid? CurrentUserId(ClaimsPrincipal principal)
