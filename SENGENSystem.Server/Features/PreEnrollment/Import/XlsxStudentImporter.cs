@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Common.Validation;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Documents;
 
 namespace SENGENSystem.Server.Features.PreEnrollment.Import
 {
@@ -61,6 +62,9 @@ namespace SENGENSystem.Server.Features.PreEnrollment.Import
 
             var nextSequence = await NextSequenceAsync(db, semester, cancellationToken);
             var prefix = $"{semester.StartDate.Year}-";
+
+            // Active requirement catalog, loaded once — each row seeds only the papers its program needs.
+            var activeRequirements = await DocumentChecklist.LoadActiveRequirementsAsync(db, cancellationToken);
 
             for (var rowNumber = 2; rowNumber <= lastRow; rowNumber++)
             {
@@ -163,10 +167,7 @@ namespace SENGENSystem.Server.Features.PreEnrollment.Import
                     GuardianName = Proper(Cell("guardianname")),
                     GuardianMobile = Cell("guardianmobile")
                 };
-                foreach (var docType in Enum.GetValues<DocumentType>())
-                {
-                    registration.Documents.Add(new RegistrationDocument { DocumentType = docType });
-                }
+                DocumentChecklist.SeedDocuments(registration, activeRequirements);
                 db.StudentRegistrations.Add(registration);
 
                 results.Add(new ImportRowResult(
