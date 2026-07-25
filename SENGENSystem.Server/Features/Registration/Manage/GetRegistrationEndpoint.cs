@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Documents;
 
 namespace SENGENSystem.Server.Features.Registration.Manage
 {
@@ -26,9 +27,13 @@ namespace SENGENSystem.Server.Features.Registration.Manage
                 .Include(r => r.Documents)
                 .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
 
-            return registration is null
-                ? Results.NotFound(new { message = "Registration not found." })
-                : Results.Ok(StudentRegistrationDto.From(registration));
+            if (registration is null)
+            {
+                return Results.NotFound(new { message = "Registration not found." });
+            }
+
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+            return Results.Ok(StudentRegistrationDto.From(registration, catalog));
         }
     }
 }

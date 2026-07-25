@@ -1,15 +1,17 @@
 using System.Net.Mail;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
+using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Common.Validation;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Documents;
 
 namespace SENGENSystem.Server.Features.Registration.Manage
 {
     // Vertical slice: the Registrar corrects registration data, updates the admission-requirements
     // checklist, and confirms/rejects the SIS (FR-SIS-04, FR-DOC-02). Only supplied fields change.
-    public record DocumentUpdate(string DocumentType, string Status);
+    public record DocumentUpdate(string RequirementCode, string Status);
 
     public record UpdateRegistrationRequest(
         string? FirstName,
@@ -34,6 +36,7 @@ namespace SENGENSystem.Server.Features.Registration.Manage
             UpdateRegistrationRequest request,
             AppDbContext db,
             AuditLog audit,
+            Notifier notifier,
             CancellationToken cancellationToken)
         {
             var registration = await db.StudentRegistrations
@@ -66,15 +69,15 @@ namespace SENGENSystem.Server.Features.Registration.Manage
                 }
             }
 
-            var docChanges = new List<(DocumentType Type, DocumentStatus Status)>();
+            var docChanges = new List<(string Code, DocumentStatus Status)>();
             if (request.Documents is not null)
             {
                 foreach (var d in request.Documents)
                 {
-                    if (Enum.TryParse<DocumentType>(d.DocumentType, ignoreCase: true, out var dt) && Enum.IsDefined(dt)
+                    if (!string.IsNullOrWhiteSpace(d.RequirementCode)
                         && Enum.TryParse<DocumentStatus>(d.Status, ignoreCase: true, out var ds) && Enum.IsDefined(ds))
                     {
-                        docChanges.Add((dt, ds));
+                        docChanges.Add((d.RequirementCode, ds));
                     }
                     else
                     {
@@ -97,9 +100,10 @@ namespace SENGENSystem.Server.Features.Registration.Manage
             if (!string.IsNullOrWhiteSpace(request.MobileNumber)) registration.MobileNumber = request.MobileNumber.Trim();
 
             var documentsChanged = false;
-            foreach (var (type, status) in docChanges)
+            foreach (var (code, status) in docChanges)
             {
-                var doc = registration.Documents.FirstOrDefault(d => d.DocumentType == type);
+                var doc = registration.Documents.FirstOrDefault(d =>
+                    string.Equals(d.RequirementCode, code, StringComparison.OrdinalIgnoreCase));
                 if (doc is not null && doc.Status != status)
                 {
                     doc.Status = status;
@@ -125,10 +129,35 @@ namespace SENGENSystem.Server.Features.Registration.Manage
                         $"Confirmed the SIS registration of {registration.FullName} ({registration.StudentNumber}).",
                         "StudentRegistration", registration.Id.ToString());
                 }
+
+                // Announce the decision on the back-office bells, and to the student's own account
+                // when it's a terminal decision (confirmed/rejected). Staged in this transaction.
+                if (status2 is RegistrationStatus.Confirmed or RegistrationStatus.Rejected)
+                {
+                    var verb = status2 == RegistrationStatus.Confirmed ? "confirmed" : "rejected";
+                    var staffIds = await NotificationRecipients.StaffUserIdsAsync(db, cancellationToken);
+                    notifier.NotifyMany(staffIds, NotificationKind.Registration,
+                        $"Registration {verb}",
+                        $"{registration.FullName} ({registration.StudentNumber})'s SIS registration was {verb}.",
+                        "/registrations");
+
+                    if (registration.UserId is { } studentUserId)
+                    {
+                        notifier.Notify(studentUserId, NotificationKind.Registration,
+                            status2 == RegistrationStatus.Confirmed
+                                ? "Your registration is confirmed"
+                                : "Your registration was not approved",
+                            status2 == RegistrationStatus.Confirmed
+                                ? "The Registrar confirmed your SIS registration. You can proceed with the remaining enrollment steps."
+                                : "The Registrar could not approve your SIS registration. Please contact the Registrar's office.",
+                            "/documents");
+                    }
+                }
             }
 
             await db.SaveChangesAsync(cancellationToken);
-            return Results.Ok(StudentRegistrationDto.From(registration));
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+            return Results.Ok(StudentRegistrationDto.From(registration, catalog));
         }
     }
 }

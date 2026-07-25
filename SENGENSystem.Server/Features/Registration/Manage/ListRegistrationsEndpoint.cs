@@ -27,6 +27,15 @@ namespace SENGENSystem.Server.Features.Registration.Manage
                 .Include(r => r.Documents)
                 .AsQueryable();
 
+            // Keep the review queue scoped to the current term so it stays correct and compact when
+            // the semester rolls over — a search deliberately widens to every term so the Registrar
+            // can still look up any past student by number or name.
+            if (string.IsNullOrWhiteSpace(search)
+                && await db.GetActiveSemesterIdAsync(cancellationToken) is { } activeSemesterId)
+            {
+                query = query.Where(r => r.SemesterId == activeSemesterId);
+            }
+
             if (!string.IsNullOrWhiteSpace(status)
                 && !string.Equals(status, "All", StringComparison.OrdinalIgnoreCase)
                 && Enum.TryParse<RegistrationStatus>(status, ignoreCase: true, out var parsed))
