@@ -59,6 +59,9 @@ namespace SENGENSystem.Server.Features.Profile.ChangePassword
             }
 
             user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword);
+            // A student signing in on a provisioned temporary password satisfies the forced change
+            // here; clear the flag so they're no longer routed back to this screen.
+            user.MustChangePassword = false;
             audit.Record(AuditAction.PasswordChanged,
                 "Changed their own password.", "User", user.Id.ToString());
             await db.SaveChangesAsync(cancellationToken);
