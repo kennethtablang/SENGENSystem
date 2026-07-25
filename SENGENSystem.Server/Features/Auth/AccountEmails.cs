@@ -32,6 +32,29 @@ namespace SENGENSystem.Server.Features.Auth
                 $"<p>This link is valid for <strong>{validHours} hours</strong>. Until you confirm, you keep " +
                 "signing in with your current address. If you did not request this, ignore this email.</p>"));
 
+        public static (string Subject, string Body) TwoFactorCode(User user, string code, int validMinutes) =>
+            ("Your SEN-GEN Sign-in Code",
+             Wrap(
+                "<h2>Your one-time sign-in code</h2>" +
+                $"<p>Hi {Escape(user.FirstName)},</p>" +
+                "<p>Use this code to finish signing in to SEN-GEN:</p>" +
+                $"<p style=\"margin:20px 0\"><span style=\"font-family:monospace;font-size:30px;" +
+                "font-weight:bold;letter-spacing:8px;color:#003399;background:#f4f7fd;" +
+                $"padding:12px 22px;border-radius:12px;display:inline-block\">{Escape(code)}</span></p>" +
+                $"<p>The code is valid for <strong>{validMinutes} minutes</strong>. If you did not just try " +
+                "to sign in, someone may have your password — change it immediately and tell the School Admin.</p>"));
+
+        public static (string Subject, string Body) SurveyInvitation(User user, string link) =>
+            ("Help Us Improve SEN-GEN — Quick Evaluation Survey",
+             Wrap(
+                "<h2>Your feedback shapes SEN-GEN</h2>" +
+                $"<p>Hi {Escape(user.FirstName)},</p>" +
+                "<p>Please take a few minutes to rate SEN-GEN using our software-quality evaluation " +
+                "(based on the ISO/IEC 25010 standard). The questions are in both English and Filipino, " +
+                "and there's room at the end for your suggestions and comments.</p>" +
+                Button(link, "Answer the survey") +
+                "<p>The link is unique to you and can be answered once. Salamat sa iyong tulong!</p>"));
+
         private static string Button(string href, string label) =>
             $"<p style=\"margin:20px 0\"><a href=\"{href}\" " +
             "style=\"background:#FFD700;color:#003399;font-weight:bold;text-decoration:none;" +
