@@ -17,7 +17,8 @@ namespace SENGENSystem.Server.Features.UserManagement.SetUserActive
         public static IEndpointRouteBuilder MapSetUserActive(this IEndpointRouteBuilder app)
         {
             app.MapPost("/api/users/{id:guid}/active", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SchoolAdmin)));
+                .RequireAuthorization(policy => policy.RequireRole(
+                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
             return app;
         }
 
@@ -33,6 +34,14 @@ namespace SENGENSystem.Server.Features.UserManagement.SetUserActive
             if (user is null)
             {
                 return Results.NotFound(new { message = "User not found." });
+            }
+
+            // Privilege guard: only a School Admin may activate/deactivate a School Admin account.
+            if (user.Role == UserRole.SchoolAdmin && !principal.IsInRole(nameof(UserRole.SchoolAdmin)))
+            {
+                return Results.Json(
+                    new { message = "Only a School Admin can change a School Admin account's status." },
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
             if (!request.IsActive)
