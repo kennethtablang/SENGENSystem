@@ -16,7 +16,8 @@ namespace SENGENSystem.Server.Features.UserManagement.ResetUserPassword
         public static IEndpointRouteBuilder MapResetUserPassword(this IEndpointRouteBuilder app)
         {
             app.MapPost("/api/users/{id:guid}/password", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SchoolAdmin)));
+                .RequireAuthorization(policy => policy.RequireRole(
+                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
             return app;
         }
 
@@ -26,6 +27,7 @@ namespace SENGENSystem.Server.Features.UserManagement.ResetUserPassword
             AppDbContext db,
             IPasswordHasher<User> passwordHasher,
             AuditLog audit,
+            HttpContext http,
             CancellationToken cancellationToken)
         {
             if (!PasswordPolicy.IsValid(request.NewPassword))
@@ -40,6 +42,14 @@ namespace SENGENSystem.Server.Features.UserManagement.ResetUserPassword
             if (user is null)
             {
                 return Results.NotFound(new { message = "User not found." });
+            }
+
+            // Privilege guard: only a School Admin may reset a School Admin's password.
+            if (user.Role == UserRole.SchoolAdmin && !http.User.IsInRole(nameof(UserRole.SchoolAdmin)))
+            {
+                return Results.Json(
+                    new { message = "Only a School Admin can reset a School Admin account's password." },
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
             user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword!);
