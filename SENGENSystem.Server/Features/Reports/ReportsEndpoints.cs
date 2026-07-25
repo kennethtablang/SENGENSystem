@@ -227,6 +227,7 @@ namespace SENGENSystem.Server.Features.Reports
         internal static async Task<(string[] Headers, List<object[]> Rows)> DocumentCompletionRowsAsync(
             Semester semester, AppDbContext db, CancellationToken ct)
         {
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, ct);
             var rows = (await db.StudentRegistrations.AsNoTracking()
                 .Where(r => r.SemesterId == semester.Id)
                 .Include(r => r.Documents)
@@ -236,7 +237,8 @@ namespace SENGENSystem.Server.Features.Reports
                 {
                     var missing = r.Documents
                         .Where(d => d.Status == DocumentStatus.NotSubmitted)
-                        .Select(d => DocumentChecklist.Label(d.DocumentType));
+                        .OrderBy(d => catalog.Order(d.RequirementCode))
+                        .Select(d => catalog.Label(d.RequirementCode));
                     return new object[]
                     {
                         r.StudentNumber, r.FullName, r.Program.ToString(),
