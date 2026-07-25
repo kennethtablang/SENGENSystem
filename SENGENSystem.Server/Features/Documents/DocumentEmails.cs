@@ -11,7 +11,7 @@ namespace SENGENSystem.Server.Features.Documents
         private const string Brand = "STI College Alaminos — SEN-GEN";
 
         public static (string Subject, string Body) SubmissionReminder(
-            StudentRegistration r, IReadOnlyList<DocumentType> missing) =>
+            StudentRegistration r, IReadOnlyList<string> missing) =>
             ($"Admission Requirements Reminder — {r.StudentNumber}",
              Wrap(
                 $"<h2>Some admission requirements are still missing</h2>" +
@@ -19,7 +19,7 @@ namespace SENGENSystem.Server.Features.Documents
                 $"<p>Our records show your admission checklist is not yet complete. " +
                 $"Please submit the following to the Admission Office:</p>" +
                 "<ul>" +
-                string.Concat(missing.Select(m => $"<li>{Escape(DocumentChecklist.Label(m))}</li>")) +
+                string.Concat(missing.Select(m => $"<li>{Escape(m)}</li>")) +
                 "</ul>" +
                 $"<p><strong>Student number:</strong> {r.StudentNumber}</p>" +
                 $"<p>Completing your requirements keeps your enrollment on track — incomplete " +
