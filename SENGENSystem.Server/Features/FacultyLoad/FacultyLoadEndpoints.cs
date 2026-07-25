@@ -107,18 +107,24 @@ namespace SENGENSystem.Server.Features.FacultyLoad
                 .OrderBy(c => c.ProgramCode).ThenBy(c => c.YearLevel).ThenBy(c => c.SectionName)
                 .ToListAsync(ct);
 
-            // Archived subjects left the active curriculum — they never enter new load offers.
+            // All subjects (archived included) — the per-section scoping below decides which apply.
             var subjects = await db.Subjects.AsNoTracking()
-                .Where(s => !s.IsArchived)
                 .OrderBy(s => s.ProgramCode).ThenBy(s => s.YearLevel).ThenBy(s => s.Code)
                 .ToListAsync(ct);
 
-            // Expand each class section into the subjects its cohort takes (same program + year level).
+            // Expand each class section into the subjects its cohort takes. Strict curriculum scoping
+            // (FR-SCHED-04): a cohort is offered exactly its curriculum's subjects for its year —
+            // archived subjects included, since a cohort still on a retired catalog needs them.
+            // Class sections created before per-section curricula fall back to program + year, minus
+            // archived subjects (the old behaviour).
             var rows = new List<LoadRowDto>();
             var assignedUnits = 0;
             foreach (var c in classSections)
             {
-                foreach (var s in subjects.Where(s => s.ProgramCode == c.ProgramCode && s.YearLevel == c.YearLevel))
+                var offered = c.CurriculumId is { } curriculumId
+                    ? subjects.Where(s => s.CurriculumId == curriculumId && s.YearLevel == c.YearLevel)
+                    : subjects.Where(s => !s.IsArchived && s.ProgramCode == c.ProgramCode && s.YearLevel == c.YearLevel);
+                foreach (var s in offered)
                 {
                     holders.TryGetValue((s.Id, c.Id), out var holder);
                     var isMine = holder.FacultyProfileId == facultyProfileId && holder.FacultyProfileId != Guid.Empty;
