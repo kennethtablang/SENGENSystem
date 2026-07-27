@@ -54,11 +54,14 @@ namespace SENGENSystem.Server.Features.Documents.Reminders
             var emailsSent = 0;
             foreach (var registration in targets)
             {
-                var missing = registration.Documents
+                // Only chase papers this enrollee's student type is actually asked for, so a
+                // transferee is never reminded about a Form 138 (FR-DOC-01/05).
+                var missing = DocumentChecklist.Applicable(registration, catalog)
                     .Where(d => d.Status == DocumentStatus.NotSubmitted)
                     .OrderBy(d => catalog.Order(d.RequirementCode))
                     .Select(d => catalog.Label(d.RequirementCode))
                     .ToList();
+                if (missing.Count == 0) continue;
 
                 var (subject, body) = DocumentEmails.SubmissionReminder(registration, missing);
                 var result = await email.SendAsync(
