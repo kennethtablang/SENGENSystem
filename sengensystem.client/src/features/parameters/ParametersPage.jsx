@@ -4,7 +4,7 @@ import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmDelete } from '../shell/confirm';
 import { hhmm } from '../scheduling/calendarUtils';
 import {
-    getParameters, setSectionCapacityCap,
+    getParameters, setSectionCapacityCap, updateSettings,
     createTimeSlot, updateTimeSlot, deleteTimeSlot,
     setFacultyLoadLimit
 } from './api';
@@ -182,6 +182,167 @@ function SeatCapCard({ data, onChanged }) {
     );
 }
 
+// ---------------- Enrollment rules ----------------
+
+// Keyed on its values by the parent, so a reload re-mounts with fresh initial state.
+function EnrollmentRulesCard({ data, onChanged }) {
+    const [open, setOpen] = useState(data.enlistmentOpen);
+    const [maxUnits, setMaxUnits] = useState(String(data.maxEnlistmentUnitsPerStudent));
+    const [minEnroll, setMinEnroll] = useState(String(data.minSectionEnrollment));
+    const [saving, setSaving] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState({});
+
+    const dirty = open !== data.enlistmentOpen
+        || maxUnits !== String(data.maxEnlistmentUnitsPerStudent)
+        || minEnroll !== String(data.minSectionEnrollment);
+
+    async function toggleOpen() {
+        const next = !open;
+        setOpen(next);
+        setSaving(true);
+        try {
+            await updateSettings({ enlistmentOpen: next });
+            notifySuccess(next ? 'Online enlistment opened.' : 'Online enlistment closed.');
+            onChanged();
+        } catch (ex) {
+            setOpen(!next);
+            notifyError(ex.message);
+        } finally { setSaving(false); }
+    }
+
+    async function saveNumbers(e) {
+        e.preventDefault();
+        setFieldErrors({}); setSaving(true);
+        try {
+            await updateSettings({
+                maxEnlistmentUnitsPerStudent: maxUnits === '' ? 0 : Number(maxUnits),
+                minSectionEnrollment: minEnroll === '' ? 0 : Number(minEnroll)
+            });
+            notifySuccess('Enrollment rules saved.');
+            onChanged();
+        } catch (ex) {
+            notifyError(ex.message);
+            setFieldErrors(ex.fieldErrors || {});
+        } finally { setSaving(false); }
+    }
+
+    return (
+        <section className="card param-card">
+            <header className="param-card-head">
+                <div>
+                    <h3>Enrollment rules</h3>
+                    <p className="setup-sub">
+                        Institution-wide gates for online subject enlistment (FR-ENL) — independent of any
+                        one student’s eligibility.
+                    </p>
+                </div>
+                <label className="param-switch">
+                    <input type="checkbox" checked={open} disabled={saving} onChange={toggleOpen} />
+                    <span>{open ? 'Enlistment open' : 'Enlistment closed'}</span>
+                </label>
+            </header>
+
+            <form className="param-grid-form" onSubmit={saveNumbers} noValidate>
+                <div className="field">
+                    <label htmlFor="max-units">Max units per student</label>
+                    <input id="max-units" type="number" min="0" max={data.maxEnlistmentUnitsCeiling}
+                        value={maxUnits} onChange={e => setMaxUnits(e.target.value)} />
+                    <p className="field-hint">0 means no institutional ceiling — only per-section capacity applies.</p>
+                    {fieldErrors.maxEnlistmentUnitsPerStudent && (
+                        <p className="field-error">{fieldErrors.maxEnlistmentUnitsPerStudent[0]}</p>
+                    )}
+                </div>
+                <div className="field">
+                    <label htmlFor="min-enroll">Minimum section size</label>
+                    <input id="min-enroll" type="number" min="0" max="200"
+                        value={minEnroll} onChange={e => setMinEnroll(e.target.value)} />
+                    <p className="field-hint">Advisory: sections below this are flagged, never blocked.</p>
+                    {fieldErrors.minSectionEnrollment && (
+                        <p className="field-error">{fieldErrors.minSectionEnrollment[0]}</p>
+                    )}
+                </div>
+                <button className="btn btn-primary" type="submit" disabled={saving || !dirty}>
+                    {saving && <span className="spinner" aria-hidden="true" />}
+                    {saving ? 'Saving…' : 'Save rules'}
+                </button>
+            </form>
+
+            {data.underFilledSections > 0 && (
+                <p className="param-warn">
+                    {data.underFilledSections} active-term section{data.underFilledSections === 1 ? '' : 's'} sit
+                    below the {data.minSectionEnrollment}-seat minimum. Consider merging, promoting, or moving students.
+                </p>
+            )}
+        </section>
+    );
+}
+
+// ---------------- Scheduling engine budgets ----------------
+
+function EngineBudgetsCard({ data, onChanged }) {
+    const [budget, setBudget] = useState(String(data.timeBudgetSeconds));
+    const [steps, setSteps] = useState(String(data.maxStepsThousands));
+    const [saving, setSaving] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState({});
+
+    const dirty = budget !== String(data.timeBudgetSeconds) || steps !== String(data.maxStepsThousands);
+
+    async function save(e) {
+        e.preventDefault();
+        setFieldErrors({}); setSaving(true);
+        try {
+            await updateSettings({
+                scheduleTimeBudgetSeconds: budget === '' ? null : Number(budget),
+                scheduleMaxStepsThousands: steps === '' ? null : Number(steps)
+            });
+            notifySuccess('Engine budgets saved.');
+            onChanged();
+        } catch (ex) {
+            notifyError(ex.message);
+            setFieldErrors(ex.fieldErrors || {});
+        } finally { setSaving(false); }
+    }
+
+    return (
+        <section className="card param-card">
+            <header className="param-card-head">
+                <div>
+                    <h3>Scheduling engine budgets</h3>
+                    <p className="setup-sub">
+                        The safety limits one generation run may use before it stops (FR-SCHED-07). Raise them
+                        for large, tightly-constrained terms; lower them for a snappier run.
+                    </p>
+                </div>
+            </header>
+
+            <form className="param-grid-form" onSubmit={save} noValidate>
+                <div className="field">
+                    <label htmlFor="time-budget">Time budget (seconds)</label>
+                    <input id="time-budget" type="number" min={data.minTimeBudgetSeconds} max={data.maxTimeBudgetSeconds}
+                        value={budget} onChange={e => setBudget(e.target.value)} />
+                    <p className="field-hint">{data.minTimeBudgetSeconds}–{data.maxTimeBudgetSeconds} s. Default is 20.</p>
+                    {fieldErrors.scheduleTimeBudgetSeconds && (
+                        <p className="field-error">{fieldErrors.scheduleTimeBudgetSeconds[0]}</p>
+                    )}
+                </div>
+                <div className="field">
+                    <label htmlFor="max-steps">Step budget (thousands)</label>
+                    <input id="max-steps" type="number" min={data.minMaxStepsThousands} max={data.maxMaxStepsThousands}
+                        value={steps} onChange={e => setSteps(e.target.value)} />
+                    <p className="field-hint">{data.minMaxStepsThousands}–{data.maxMaxStepsThousands}k steps. Default is 2000.</p>
+                    {fieldErrors.scheduleMaxStepsThousands && (
+                        <p className="field-error">{fieldErrors.scheduleMaxStepsThousands[0]}</p>
+                    )}
+                </div>
+                <button className="btn btn-primary" type="submit" disabled={saving || !dirty}>
+                    {saving && <span className="spinner" aria-hidden="true" />}
+                    {saving ? 'Saving…' : 'Save budgets'}
+                </button>
+            </form>
+        </section>
+    );
+}
+
 // ---------------- Faculty ceilings ----------------
 
 // Keyed on the saved ceiling by the parent (see SeatCapCard) so a reload re-mounts the row.
@@ -275,6 +436,14 @@ export default function ParametersPage() {
             </header>
 
             <SeatCapCard key={data.sectionCapacity.cap} data={data.sectionCapacity} onChanged={refresh} />
+
+            <EnrollmentRulesCard
+                key={`enroll-${data.enrollment.enlistmentOpen}-${data.enrollment.maxEnlistmentUnitsPerStudent}-${data.enrollment.minSectionEnrollment}`}
+                data={data.enrollment} onChanged={refresh} />
+
+            <EngineBudgetsCard
+                key={`engine-${data.engine.timeBudgetSeconds}-${data.engine.maxStepsThousands}`}
+                data={data.engine} onChanged={refresh} />
 
             <section className="card param-card">
                 <header className="param-card-head">

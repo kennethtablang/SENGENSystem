@@ -46,6 +46,10 @@ export const getParameters = () => get('/api/parameters');
 // ---------- Section seat cap ----------
 export const setSectionCapacityCap = (cap) => send('PUT', '/api/parameters/section-capacity', { cap });
 
+// ---------- Enrollment rules + scheduling-engine budgets ----------
+// Only the fields passed are changed, so each card saves independently.
+export const updateSettings = (patch) => send('PUT', '/api/parameters/settings', patch);
+
 // ---------- Allowable time slots ----------
 export const createTimeSlot = (data) => send('POST', '/api/parameters/time-slots', data);
 export const updateTimeSlot = (id, data) => send('PUT', `/api/parameters/time-slots/${id}`, data);
