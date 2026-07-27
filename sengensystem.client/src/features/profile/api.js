@@ -35,15 +35,32 @@ export function changePassword(data) {
     return authPut('/api/profile/password', data);
 }
 
-export async function requestEmailChange(data) {
-    const response = await fetch('/api/profile/email/request', {
+async function authPost(url, data) {
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${getToken()}`
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data ?? {})
     });
     if (!response.ok) throw await parseError(response);
     return response.json();
+}
+
+export function requestEmailChange(data) {
+    return authPost('/api/profile/email/request', data);
+}
+
+// Two-factor authentication (opt-in email one-time code).
+export function startTwoFactor() {
+    return authPost('/api/profile/2fa/start');
+}
+
+export function enableTwoFactor(code) {
+    return authPost('/api/profile/2fa/enable', { code });
+}
+
+export function disableTwoFactor(password) {
+    return authPost('/api/profile/2fa/disable', { password });
 }
