@@ -565,14 +565,16 @@ function StaffDashboard() {
                             label: DOCUMENT_LABEL[d.document] || d.document,
                             segments: [
                                 { label: 'Original', value: d.submitted, tone: 'seg-up' },
-                                { label: 'Photocopy', value: d.xerox, tone: 'seg-yellow' },
+                                // A photocopy, or a certificate of grades standing in for the
+                                // transcript — either way the original is still to come.
+                                { label: 'Stand-in', value: d.xerox, tone: 'seg-yellow' },
                                 { label: 'Missing', value: d.missing, tone: 'seg-muted' }
                             ],
                             tip: <TipBody
                                 title={DOCUMENT_LABEL[d.document] || d.document}
                                 rows={[
                                     ['Original received', d.submitted],
-                                    ['Photocopy only', d.xerox],
+                                    ['Photocopy / cert. of grades', d.xerox],
                                     ['Not submitted', d.missing],
                                     ['Students tracked', d.total]
                                 ]}
@@ -822,6 +824,19 @@ function StudentDashboard() {
             done: (r?.registrationStatus === 'Confirmed' && r?.isPreAuthorized) ?? false,
             to: '/documents'
         },
+        // FR-EVAL: a transferee has one more gate than a new enrollee — the Registrar has to rule
+        // on which of their previous subjects count here before there is anything to enlist in. The
+        // step only exists for them, so a new student's journey is unchanged.
+        ...(r?.studentType === 'Transferee' ? [{
+            title: 'Get your credits evaluated',
+            detail: r.evaluationStatus === 'Completed'
+                ? `${r.creditedUnits} units credited · ${r.toTakeUnits} units to take · ${r.yearLevelLabel}`
+                : r.evaluationStatus === 'InProgress'
+                    ? 'The Registrar is working through your subjects.'
+                    : 'The Registrar reviews your transcript and rules on each subject.',
+            done: r.evaluationStatus === 'Completed',
+            to: '/my-subjects'
+        }] : []),
         {
             title: 'Enlist in subjects',
             detail: mine.approvedUnits > 0
