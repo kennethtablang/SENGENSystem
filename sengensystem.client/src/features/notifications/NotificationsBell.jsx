@@ -4,9 +4,8 @@ import { Icon } from '../shell/AppLayout';
 import { listNotifications, markAllRead, markRead } from './api';
 import { iconFor, relativeTime, NOTIFICATIONS_CHANGED, announceNotificationsChanged } from './meta';
 import { subscribeToReports } from '../reports/live';
+import { bellRefreshMs, showsBadges, marksReadOnOpen } from '../settings/prefs';
 import './notifications.css';
-
-const POLL_MS = 60_000;
 
 /* Top-bar bell: unread badge + a dropdown of the latest notices. */
 function NotificationsBell() {
@@ -31,7 +30,7 @@ function NotificationsBell() {
     // dispatched; polling stays as the fallback when the socket is down.
     useEffect(() => {
         const initial = setTimeout(load, 0);
-        const timer = setInterval(load, POLL_MS);
+        const timer = setInterval(load, bellRefreshMs());
         window.addEventListener(NOTIFICATIONS_CHANGED, load);
         const unsubscribe = subscribeToReports(payload => {
             if (payload?.area === 'notifications') setTimeout(load, 600);
@@ -64,7 +63,7 @@ function NotificationsBell() {
 
     const openItem = async item => {
         setOpen(false);
-        if (!item.isRead) {
+        if (!item.isRead && marksReadOnOpen()) {
             setItems(prev => prev.map(n => (n.id === item.id ? { ...n, isRead: true } : n)));
             setUnreadCount(c => Math.max(0, c - 1));
             try {
@@ -100,7 +99,7 @@ function NotificationsBell() {
                 title="Notifications"
             >
                 <Icon name="bell" />
-                {unreadCount > 0 && (
+                {unreadCount > 0 && showsBadges() && (
                     <span className="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
                 )}
             </button>

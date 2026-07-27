@@ -8,6 +8,10 @@ export const kindIcons = {
     FacultyLoadUpdated: 'users',
     Documents: 'file',
     Account: 'user',
+    Registration: 'idcard',
+    TermActivation: 'check',
+    SectionFull: 'users',
+    Survey: 'star',
     General: 'bell'
 };
 
