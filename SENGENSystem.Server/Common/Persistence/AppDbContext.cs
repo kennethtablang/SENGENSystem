@@ -49,6 +49,10 @@ namespace SENGENSystem.Server.Common.Persistence
 
         public DbSet<AdmissionRequirementProgram> AdmissionRequirementPrograms => Set<AdmissionRequirementProgram>();
 
+        public DbSet<TransfereeEvaluation> TransfereeEvaluations => Set<TransfereeEvaluation>();
+
+        public DbSet<TransfereeEvaluationItem> TransfereeEvaluationItems => Set<TransfereeEvaluationItem>();
+
         public DbSet<TermActivation> TermActivations => Set<TermActivation>();
 
         public DbSet<SlotRequest> SlotRequests => Set<SlotRequest>();
@@ -62,6 +66,8 @@ namespace SENGENSystem.Server.Common.Persistence
         public DbSet<SurveyInvitation> SurveyInvitations => Set<SurveyInvitation>();
 
         public DbSet<SurveyResponse> SurveyResponses => Set<SurveyResponse>();
+
+        public DbSet<SurveyCampaign> SurveyCampaigns => Set<SurveyCampaign>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -266,7 +272,11 @@ namespace SENGENSystem.Server.Common.Persistence
                 inv.Property(i => i.RecipientEmail).HasMaxLength(256).IsRequired();
                 inv.Property(i => i.RecipientRole).HasMaxLength(30).IsRequired();
                 inv.Property(i => i.TokenHash).HasMaxLength(88).IsRequired();
+                inv.Property(i => i.Note).HasMaxLength(500);
+                inv.Property(i => i.InvitedBy).HasMaxLength(201);
                 inv.HasIndex(i => i.TokenHash);
+                // The recipients page looks an invitation up by user to show live invite status.
+                inv.HasIndex(i => i.UserId).IsUnique();
                 // Recipient is a user; guarded elsewhere, so restrict on delete.
                 inv.HasOne(i => i.User).WithMany().HasForeignKey(i => i.UserId).OnDelete(DeleteBehavior.Restrict);
             });
@@ -287,6 +297,21 @@ namespace SENGENSystem.Server.Common.Persistence
                     .HasForeignKey<SurveyResponse>(r => r.InvitationId)
                     .OnDelete(DeleteBehavior.Cascade);
                 resp.HasIndex(r => r.InvitationId).IsUnique();
+            });
+
+            modelBuilder.Entity<SurveyCampaign>(campaign =>
+            {
+                campaign.Property(c => c.LastChangedBy).HasMaxLength(201);
+                // Exactly one collection window exists; seeding it here means the dashboard and the
+                // submission gate always find a row without a first-run special case.
+                campaign.HasData(new SurveyCampaign
+                {
+                    Id = SurveyCampaign.SingletonId,
+                    IsOpen = true,
+                    TargetResponses = 30,
+                    OpenedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    LastChangedBy = "System"
+                });
             });
 
             modelBuilder.Entity<ScheduleAssignment>(assignment =>
@@ -431,6 +456,42 @@ namespace SENGENSystem.Server.Common.Persistence
             {
                 rp.Property(p => p.Program).HasConversion<string>().HasMaxLength(10).IsRequired();
                 rp.HasIndex(p => new { p.AdmissionRequirementId, p.Program }).IsUnique();
+            });
+
+            modelBuilder.Entity<TransfereeEvaluation>(evaluation =>
+            {
+                evaluation.Property(e => e.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+                evaluation.Property(e => e.Remarks).HasMaxLength(1000);
+                // One evaluation per registration — a re-opened evaluation revises this row rather
+                // than starting a competing second sheet.
+                evaluation.HasIndex(e => e.StudentRegistrationId).IsUnique();
+                evaluation.HasOne(e => e.StudentRegistration)
+                    .WithOne()
+                    .HasForeignKey<TransfereeEvaluation>(e => e.StudentRegistrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                // The curriculum is pinned for provenance; retiring one must not delete evaluations.
+                evaluation.HasOne(e => e.Curriculum)
+                    .WithMany()
+                    .HasForeignKey(e => e.CurriculumId)
+                    .OnDelete(DeleteBehavior.SetNull);
+                evaluation.HasMany(e => e.Items)
+                    .WithOne(i => i.TransfereeEvaluation!)
+                    .HasForeignKey(i => i.TransfereeEvaluationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<TransfereeEvaluationItem>(item =>
+            {
+                item.Property(i => i.Decision).HasConversion<string>().HasMaxLength(20).IsRequired();
+                item.Property(i => i.SourceSubject).HasMaxLength(150);
+                item.Property(i => i.SourceGrade).HasMaxLength(20);
+                item.HasIndex(i => new { i.TransfereeEvaluationId, i.SubjectId }).IsUnique();
+                // Subjects are archived, never deleted, so Restrict keeps a decision from being
+                // orphaned by a catalog edit.
+                item.HasOne(i => i.Subject)
+                    .WithMany()
+                    .HasForeignKey(i => i.SubjectId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<FacultyTimePreference>(pref =>

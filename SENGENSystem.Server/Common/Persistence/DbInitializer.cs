@@ -289,16 +289,18 @@ namespace SENGENSystem.Server.Common.Persistence
             // ---- A batch of varied SIS registrations (statuses, docs, pre-authorization) ----
             if (await db.StudentRegistrations.CountAsync() < 8)
             {
-                var people = new (string Number, string Last, string First, RegistrationStatus Status, ProgramTrack Track, bool PreAuth, DocumentStatus Docs)[]
+                // Two transferees among them, so the transferee checklist (transcript + honorable
+                // dismissal, no Form 138/137 or good moral) is exercised by the demo data too.
+                var people = new (string Number, string Last, string First, RegistrationStatus Status, ProgramTrack Track, StudentType Type, bool PreAuth, DocumentStatus Docs)[]
                 {
-                    ("2026-000101", "Aquino",   "Paolo",     RegistrationStatus.Submitted, ProgramTrack.ITP, false, DocumentStatus.NotSubmitted),
-                    ("2026-000102", "Bautista", "Karen",     RegistrationStatus.Submitted, ProgramTrack.ITP, false, DocumentStatus.XeroxCopy),
-                    ("2026-000103", "Corpuz",   "Miguel",    RegistrationStatus.Confirmed, ProgramTrack.ITP, true,  DocumentStatus.Submitted),
-                    ("2026-000104", "Domingo",  "Alyssa",    RegistrationStatus.Confirmed, ProgramTrack.HRS, true,  DocumentStatus.Submitted),
-                    ("2026-000105", "Estrada",  "Ramon",     RegistrationStatus.Confirmed, ProgramTrack.HRA, false, DocumentStatus.XeroxCopy),
-                    ("2026-000106", "Fernandez","Bianca",    RegistrationStatus.Rejected,  ProgramTrack.ITP, false, DocumentStatus.NotSubmitted),
-                    ("2026-000107", "Garcia",   "Noel",      RegistrationStatus.Submitted, ProgramTrack.HRS, false, DocumentStatus.Submitted),
-                    ("2026-000108", "Hernandez","Patricia",  RegistrationStatus.Confirmed, ProgramTrack.ITP, true,  DocumentStatus.Submitted)
+                    ("2026-000101", "Aquino",   "Paolo",     RegistrationStatus.Submitted, ProgramTrack.ITP, StudentType.NewStudent, false, DocumentStatus.NotSubmitted),
+                    ("2026-000102", "Bautista", "Karen",     RegistrationStatus.Submitted, ProgramTrack.ITP, StudentType.NewStudent, false, DocumentStatus.XeroxCopy),
+                    ("2026-000103", "Corpuz",   "Miguel",    RegistrationStatus.Confirmed, ProgramTrack.ITP, StudentType.NewStudent, true,  DocumentStatus.Submitted),
+                    ("2026-000104", "Domingo",  "Alyssa",    RegistrationStatus.Confirmed, ProgramTrack.HRS, StudentType.Transferee, true,  DocumentStatus.Submitted),
+                    ("2026-000105", "Estrada",  "Ramon",     RegistrationStatus.Confirmed, ProgramTrack.HRA, StudentType.Transferee, false, DocumentStatus.XeroxCopy),
+                    ("2026-000106", "Fernandez","Bianca",    RegistrationStatus.Rejected,  ProgramTrack.ITP, StudentType.NewStudent, false, DocumentStatus.NotSubmitted),
+                    ("2026-000107", "Garcia",   "Noel",      RegistrationStatus.Submitted, ProgramTrack.HRS, StudentType.NewStudent, false, DocumentStatus.Submitted),
+                    ("2026-000108", "Hernandez","Patricia",  RegistrationStatus.Confirmed, ProgramTrack.ITP, StudentType.NewStudent, true,  DocumentStatus.Submitted)
                 };
 
                 var demoRequirements = await db.AdmissionRequirements
@@ -314,7 +316,7 @@ namespace SENGENSystem.Server.Common.Persistence
                     {
                         StudentNumber = p.Number,
                         Status = p.Status,
-                        StudentType = StudentType.NewStudent,
+                        StudentType = p.Type,
                         Program = p.Track,
                         SemesterId = active.Id,
                         IsPreAuthorized = p.PreAuth,
@@ -344,9 +346,16 @@ namespace SENGENSystem.Server.Common.Persistence
                         GuardianMobile = "09170005678",
                         TermsAcceptedAtUtc = DateTime.UtcNow.AddDays(-Math.Abs(p.Number.GetHashCode() % 30))
                     };
-                    foreach (var req in demoRequirements.Where(r => r.Programs.Any(pr => pr.Program == reg.Program)))
+                    foreach (var req in demoRequirements.Where(r =>
+                        r.Programs.Any(pr => pr.Program == reg.Program)
+                        && (reg.StudentType == StudentType.Transferee ? r.AppliesToTransferees : r.AppliesToNewStudents)))
                     {
-                        reg.Documents.Add(new RegistrationDocument { RequirementCode = req.Code, Status = p.Docs });
+                        // A photocopy is never on offer for a paper that takes a certificate of
+                        // grades instead (the transcript) — record that in its place.
+                        var status = p.Docs == DocumentStatus.XeroxCopy && req.AcceptsCertificateOfGrades
+                            ? DocumentStatus.CertificateOfGrades
+                            : p.Docs;
+                        reg.Documents.Add(new RegistrationDocument { RequirementCode = req.Code, Status = status });
                     }
                     db.StudentRegistrations.Add(reg);
                 }
@@ -1035,7 +1044,9 @@ namespace SENGENSystem.Server.Common.Persistence
 
             foreach (var reg in seeds)
             {
-                foreach (var req in seedRequirements.Where(r => r.Programs.Any(pr => pr.Program == reg.Program)))
+                foreach (var req in seedRequirements.Where(r =>
+                    r.Programs.Any(pr => pr.Program == reg.Program)
+                    && (reg.StudentType == StudentType.Transferee ? r.AppliesToTransferees : r.AppliesToNewStudents)))
                 {
                     reg.Documents.Add(new RegistrationDocument
                     {
