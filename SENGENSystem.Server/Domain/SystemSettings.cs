@@ -72,6 +72,15 @@ namespace SENGENSystem.Server.Domain
         /// <summary>Search-step ceiling for one CSP generation run, in thousands of steps.</summary>
         public int ScheduleMaxStepsThousands { get; set; } = 2000;
 
+        /// <summary>
+        /// The earliest a generated class may start, in minutes from midnight (FR-SCHED-05). The
+        /// engine only builds its blocks from allowable periods at or after this time, so the
+        /// institution decides when the teaching day opens without editing the period grid — a
+        /// 07:30 start simply drops the 07:00 period from consideration. Manual board placements
+        /// are unaffected; this governs generation.
+        /// </summary>
+        public int ClassDayStartMinutes { get; set; } = 7 * 60;
+
         /// <summary>Audit breadcrumb: when the parameters were last touched, and by whom.</summary>
         public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 

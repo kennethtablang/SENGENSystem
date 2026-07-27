@@ -36,6 +36,20 @@ namespace SENGENSystem.Server.Domain
 
         public ProgramTrack Program { get; set; }
 
+        /// <summary>
+        /// The curriculum year this student is taking subjects in (1–4). Derived rather than asked
+        /// for: a new enrollee starts at 1, a transferee gets the level their credited units earn
+        /// them once the Registrar completes their evaluation, and a returning student moves up a
+        /// year when their term activation is validated. Staff can override it — the derivation is
+        /// a recommendation, not a verdict. See <c>YearLevelPolicy</c>.
+        /// </summary>
+        public int YearLevel { get; set; } = 1;
+
+        /// <summary>When and by whom <see cref="YearLevel"/> was last set, for the audit trail.</summary>
+        public DateTime? YearLevelSetAtUtc { get; set; }
+
+        public Guid? YearLevelSetByUserId { get; set; }
+
         /// <summary>The term this SIS was submitted for (the active semester at submission).</summary>
         public Guid SemesterId { get; set; }
 

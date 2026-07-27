@@ -14,6 +14,9 @@ namespace SENGENSystem.Server.Domain
         Account = 7,
         Registration = 8,
         TermActivation = 9,
-        SectionFull = 10
+        SectionFull = 10,
+        Survey = 11,
+        ScheduleAmended = 12,
+        TransfereeEvaluation = 13
     }
 }

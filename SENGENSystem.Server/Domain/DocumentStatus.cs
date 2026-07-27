@@ -12,6 +12,14 @@ namespace SENGENSystem.Server.Domain
         Submitted = 2,
 
         /// <summary>Photocopy submitted (original still pending).</summary>
-        XeroxCopy = 3
+        XeroxCopy = 3,
+
+        /// <summary>
+        /// A Certificate of Grades stands in for the paper while the original is still with the
+        /// previous school. Offered instead of <see cref="XeroxCopy"/> on requirements flagged
+        /// <see cref="AdmissionRequirement.AcceptsCertificateOfGrades"/> — the Official Transcript
+        /// of Records, which a photocopy is never accepted for.
+        /// </summary>
+        CertificateOfGrades = 4
     }
 }

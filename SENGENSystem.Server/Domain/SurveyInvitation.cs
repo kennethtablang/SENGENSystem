@@ -28,6 +28,18 @@ namespace SENGENSystem.Server.Domain
 
         public DateTime? CompletedAtUtc { get; set; }
 
+        /// <summary>When the Super Admin last pushed an in-app bell notice for this invitation.</summary>
+        public DateTime? NotifiedAtUtc { get; set; }
+
+        /// <summary>How many follow-up nudges were sent after the first dispatch.</summary>
+        public int ReminderCount { get; set; }
+
+        /// <summary>Optional personal note the Super Admin attached when inviting this person.</summary>
+        public string? Note { get; set; }
+
+        /// <summary>Who dispatched the invitation, for the audit trail on the recipients page.</summary>
+        public string InvitedBy { get; set; } = string.Empty;
+
         public SurveyResponse? Response { get; set; }
     }
 }

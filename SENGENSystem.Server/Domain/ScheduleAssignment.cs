@@ -42,6 +42,19 @@ namespace SENGENSystem.Server.Domain
         /// <summary>True when a human adjusted this row rather than the engine (FR-FAC-02).</summary>
         public bool IsManualOverride { get; set; }
 
+        /// <summary>
+        /// True once this row was changed <i>after</i> it was published (FR-PUB-04). A published
+        /// class is a promise already emailed to faculty and enrolled students, so an edit to one
+        /// is not an ordinary override — it is an amendment those people must be told about. The
+        /// flag survives on the row so the board, the published view, and the reports can all show
+        /// which classes moved after the fact.
+        /// </summary>
+        public bool IsAmended { get; set; }
+
+        public DateTime? AmendedAtUtc { get; set; }
+
+        public Guid? AmendedByUserId { get; set; }
+
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     }
 }

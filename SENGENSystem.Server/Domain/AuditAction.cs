@@ -131,6 +131,24 @@ namespace SENGENSystem.Server.Domain
 
         // ISO/IEC 25010 rating survey — Super Admin dispatch and respondent submissions
         SurveyInvitationsSent = 63,
-        SurveyResponseSubmitted = 64
+        SurveyResponseSubmitted = 64,
+        SurveyRemindersSent = 65,
+        SurveyInvitationWithdrawn = 66,
+        SurveyCollectionChanged = 67,
+
+        // A published class was changed after publication (FR-PUB-04). Distinct from
+        // ScheduleOverridden: the people already told the old time have to be told again.
+        ScheduleAmended = 68,
+
+        // Registrar's per-subject credit evaluation of a transferee against the target
+        // curriculum (FR-EVAL) — saved decisions, and the completed evaluation that
+        // clears them for enlistment
+        TransfereeEvaluationSaved = 69,
+        TransfereeEvaluationCompleted = 70,
+        TransfereeEvaluationReopened = 71,
+
+        // A student's year level was set — automatically on registration/activation, or by
+        // hand when staff corrected the derivation (FR-SIS)
+        YearLevelAssigned = 72
     }
 }
