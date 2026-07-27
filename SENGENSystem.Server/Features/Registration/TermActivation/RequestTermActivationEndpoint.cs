@@ -15,9 +15,26 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
     // of the term they first enrolled and is not something they would have to hand. The registration
     // number is still accepted as a fallback so a student who only ever received that one (a recent
     // enrollee not yet issued an official number) is not locked out.
-    public record RequestTermActivationRequest(string? StudentNumber, string? LastName);
+    //
+    // This is step two: the student has already been shown their year level and the term on the
+    // lookup (see LookupTermActivationEndpoint) and now confirms both. The confirmation is not
+    // ceremony — SemesterId is checked against the live active term so a form left open across a
+    // term rollover cannot file into the wrong one, and the confirmed year level is filed with the
+    // request for the Admission Officer to weigh against the derived one.
+    public record RequestTermActivationRequest(
+        string? StudentNumber,
+        string? LastName,
+        Guid? SemesterId,
+        int? YearLevel,
+        bool? Confirmed);
 
-    public record RequestTermActivationResponse(Guid Id, string StudentNumber, string Status, string SemesterName);
+    public record RequestTermActivationResponse(
+        Guid Id,
+        string StudentNumber,
+        string Status,
+        string SemesterName,
+        int DeclaredYearLevel,
+        string DeclaredYearLevelLabel);
 
     public static class RequestTermActivationEndpoint
     {
@@ -35,14 +52,15 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
             Notifier notifier,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(request.StudentNumber) || string.IsNullOrWhiteSpace(request.LastName))
+            var settings = await db.GetSettingsAsync(cancellationToken);
+            if (!settings.TermActivationOpen)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["studentNumber"] = string.IsNullOrWhiteSpace(request.StudentNumber) ? ["Your student number is required."] : [],
-                    ["lastName"] = string.IsNullOrWhiteSpace(request.LastName) ? ["Your last name is required."] : []
-                });
+                return TermActivationIdentity.Closed();
             }
+
+            var (registration, problem) = await TermActivationIdentity.ResolveAsync(
+                request.StudentNumber, request.LastName, db, cancellationToken);
+            if (registration is null) return problem!;
 
             var semester = await db.Semesters.FirstOrDefaultAsync(s => s.IsActive, cancellationToken);
             if (semester is null)
@@ -50,21 +68,31 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
                 return Results.BadRequest(new { message = "Term activation is closed: no active semester is set." });
             }
 
-            var studentNumber = request.StudentNumber.Trim();
-            var lastName = request.LastName.Trim();
-
-            // Official student number first — that is what the form asks for and what the student
-            // has on their ID. The registration number is the fallback for anyone never issued one.
-            var registration = await db.StudentRegistrations
-                .FirstOrDefaultAsync(r => r.OfficialStudentNumber == studentNumber, cancellationToken)
-                ?? await db.StudentRegistrations
-                    .FirstOrDefaultAsync(r => r.StudentNumber == studentNumber, cancellationToken);
-
-            // Same generic message whether the number is unknown or the name doesn't match — don't
-            // confirm which student numbers exist.
-            if (registration is null || !string.Equals(registration.LastName, lastName, StringComparison.OrdinalIgnoreCase))
+            // The confirmation step. Anything missing here means the request did not come through
+            // the check the student is supposed to have made, so it is a validation failure rather
+            // than something to guess a default for.
+            var errors = new Dictionary<string, string[]>();
+            if (request.Confirmed != true)
             {
-                return Results.NotFound(new { message = "We couldn't find a matching student record. Check your student number and last name." });
+                errors["confirmed"] = ["Please confirm your year level and term before finalizing."];
+            }
+            if (request.YearLevel is not { } declaredYearLevel || !YearLevelPolicy.IsValid(declaredYearLevel))
+            {
+                errors["yearLevel"] =
+                    [$"Choose the year level you are coming back into ({YearLevelPolicy.MinYearLevel}–{YearLevelPolicy.MaxYearLevel})."];
+                declaredYearLevel = registration.YearLevel;
+            }
+            // A form opened before a term rollover would otherwise file silently into the new term.
+            // Refusing sends the student back through the lookup, where they see the term that is
+            // actually open now.
+            if (request.SemesterId is not { } confirmedSemesterId || confirmedSemesterId != semester.Id)
+            {
+                errors["semesterId"] =
+                    [$"The term you were shown has changed — activation is now for {semester.Name}. Please check your details again."];
+            }
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
             }
 
             var alreadyActive = await db.TermActivations.AnyAsync(
@@ -81,11 +109,16 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
             {
                 StudentRegistrationId = registration.Id,
                 SemesterId = semester.Id,
-                Status = TermActivationStatus.Pending
+                Status = TermActivationStatus.Pending,
+                DeclaredYearLevel = declaredYearLevel
             };
             db.TermActivations.Add(activation);
             audit.RecordAnonymous(AuditAction.TermActivationRequested,
-                $"Requested term activation for {semester.Name}.",
+                $"Requested term activation for {semester.Name}, confirming " +
+                $"{YearLevelPolicy.Label(declaredYearLevel)}" +
+                (declaredYearLevel == registration.YearLevel
+                    ? "."
+                    : $" (their record currently reads {YearLevelPolicy.Label(registration.YearLevel)})."),
                 registration.FullName, "TermActivation", activation.Id.ToString());
 
             // Put the request on every back-office bell (the Admission Office validates it), committed
@@ -117,7 +150,9 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
                     // Echo back the number they identified themselves with, not the internal one.
                     registration.OfficialStudentNumber ?? registration.StudentNumber,
                     activation.Status.ToString(),
-                    semester.Name));
+                    semester.Name,
+                    declaredYearLevel,
+                    YearLevelPolicy.Label(declaredYearLevel)));
         }
     }
 }
