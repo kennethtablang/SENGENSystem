@@ -7,7 +7,10 @@ namespace SENGENSystem.Server.Features.Enlistment.Browse
     // Vertical slice: students browse the published schedule as enlistable sections with
     // real-time seat availability (FR-ENL-01/02). Only published assignments are shown —
     // drafts stay invisible until the Registrar publishes (FR-PUB-01).
-    public record SectionMeetingDto(string Day, string Time, string Room, string Faculty);
+    // StartMinutes/EndMinutes travel alongside the formatted string so the browser can render the
+    // time in the reader's own 12/24-hour Settings preference — a server-baked string cannot.
+    public record SectionMeetingDto(
+        string Day, string Time, int StartMinutes, int EndMinutes, string Room, string Faculty, bool IsAmended);
 
     public record BrowseSectionDto(
         Guid SectionId,
@@ -84,8 +87,11 @@ namespace SENGENSystem.Server.Features.Enlistment.Browse
                             .Select(a => new SectionMeetingDto(
                                 a.TimeSlot!.Day.ToString(),
                                 $"{Format(a.TimeSlot.StartMinutes)}–{Format(a.TimeSlot.EndMinutes)}",
+                                a.TimeSlot.StartMinutes,
+                                a.TimeSlot.EndMinutes,
                                 a.Room?.Name ?? string.Empty,
-                                a.FacultyProfile?.User?.FullName ?? string.Empty))
+                                a.FacultyProfile?.User?.FullName ?? string.Empty,
+                                a.IsAmended))
                             .ToList(),
                         mine?.Status.ToString(),
                         mine?.Id);
