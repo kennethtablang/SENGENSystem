@@ -55,6 +55,20 @@ namespace SENGENSystem.Server.Features.Enlistment
             {
                 blockers.Add("The Admission Office has not yet cleared you for online slot selection.");
             }
+            // FR-EVAL-02: a transferee's credit evaluation comes before enlistment. Until the
+            // Registrar has ruled on which of their previous subjects count here, there is no
+            // honest answer to which subjects are theirs to take — so there is nothing to enlist in.
+            if (registration.StudentType == StudentType.Transferee)
+            {
+                var evaluated = await db.TransfereeEvaluations.AsNoTracking()
+                    .AnyAsync(e => e.StudentRegistrationId == registration.Id
+                        && e.Status == TransfereeEvaluationStatus.Completed, cancellationToken);
+                if (!evaluated)
+                {
+                    blockers.Add("The Registrar has not finished evaluating your transfer credits yet. "
+                        + "Your subjects for the term are set once that evaluation is complete.");
+                }
+            }
 
             return new EligibilityResult(registration, blockers);
         }
