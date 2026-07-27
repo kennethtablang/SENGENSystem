@@ -165,10 +165,25 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 .ToListAsync(cancellationToken);
             // Only the admin-configured allowable slots form the engine's grid (FR-SCHED-05) —
             // synthetic placement periods from earlier runs are excluded so they can't dilute it.
-            var timeSlots = await db.TimeSlots
+            // The configured class start time trims the front of that grid: periods that begin
+            // before the teaching day opens are simply not offered to the engine, so the
+            // institution moves its first class without editing the period grid itself.
+            var generationSettings = await db.GetSettingsAsync(cancellationToken);
+            var classDayStart = generationSettings.ClassDayStartMinutes;
+            var allowableSlots = await db.TimeSlots
                 .Where(t => t.IsAllowable)
                 .OrderBy(t => t.Day).ThenBy(t => t.StartMinutes).ThenBy(t => t.Id)
                 .ToListAsync(cancellationToken);
+            var timeSlots = allowableSlots.Where(t => t.StartMinutes >= classDayStart).ToList();
+
+            if (allowableSlots.Count > 0 && timeSlots.Count == 0)
+            {
+                return Results.BadRequest(new
+                {
+                    message = $"No time slots start at or after the configured class start time " +
+                        $"({Hhmm(classDayStart)}). Move the start time earlier, or add later periods."
+                });
+            }
             var faculty = await db.FacultyProfiles
                 .Include(f => f.User)
                 .OrderBy(f => f.EmployeeId).ThenBy(f => f.Id)
@@ -297,7 +312,7 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             // FR-SCHED-05: the soft-constraint weights are institution-tunable (the Academic Head
             // adjusts them on the soft-constraints panel). Fall back to the engine defaults for a
             // database seeded before they existed.
-            var settings = await db.GetSettingsAsync(cancellationToken);
+            var settings = generationSettings;
             var weights = new SoftWeights(
                 settings.WeightPreference,
                 settings.WeightIdleGap,
@@ -464,6 +479,8 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                     opt.LoadLooksUneven,
                     opt.AverageRoomFitPct)));
         }
+
+        private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
 
         /// <summary>
         /// FR-SCHED-04: validates the semester's offerings against `SubjectPrerequisite` edges.
