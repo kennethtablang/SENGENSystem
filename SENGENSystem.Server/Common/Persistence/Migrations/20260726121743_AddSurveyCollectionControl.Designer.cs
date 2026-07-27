@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SENGENSystem.Server.Common.Persistence;
 
@@ -11,9 +12,11 @@ using SENGENSystem.Server.Common.Persistence;
 namespace SENGENSystem.Server.Common.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260726121743_AddSurveyCollectionControl")]
+    partial class AddSurveyCollectionControl
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -28,15 +31,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<bool>("AcceptsCertificateOfGrades")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("AppliesToNewStudents")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("AppliesToTransferees")
-                        .HasColumnType("bit");
-
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -50,9 +44,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasColumnType("nvarchar(500)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsRequiredForAuthorization")
                         .HasColumnType("bit");
 
                     b.Property<string>("Name")
@@ -458,12 +449,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime?>("AmendedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("AmendedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -472,9 +457,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.Property<DateTime?>("FinalizedAtUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsAmended")
-                        .HasColumnType("bit");
 
                     b.Property<bool>("IsFinalized")
                         .HasColumnType("bit");
@@ -878,15 +860,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<int>("YearLevel")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("YearLevelSetAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("YearLevelSetByUserId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("ZipCode")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -1180,9 +1153,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
-                    b.Property<int>("ClassDayStartMinutes")
-                        .HasColumnType("int");
-
                     b.Property<bool>("EnlistmentOpen")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -1309,90 +1279,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TimeSlots");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.TransfereeEvaluation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("AssignedYearLevel")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("CurriculumId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("EvaluatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("EvaluatedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("RecommendedYearLevel")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Remarks")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<Guid>("StudentRegistrationId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CurriculumId");
-
-                    b.HasIndex("StudentRegistrationId")
-                        .IsUnique();
-
-                    b.ToTable("TransfereeEvaluations");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.TransfereeEvaluationItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Decision")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("SourceGrade")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("SourceSubject")
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<Guid>("SubjectId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("TransfereeEvaluationId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SubjectId");
-
-                    b.HasIndex("TransfereeEvaluationId", "SubjectId")
-                        .IsUnique();
-
-                    b.ToTable("TransfereeEvaluationItems");
                 });
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.User", b =>
@@ -1790,43 +1676,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Navigation("StudentRegistration");
                 });
 
-            modelBuilder.Entity("SENGENSystem.Server.Domain.TransfereeEvaluation", b =>
-                {
-                    b.HasOne("SENGENSystem.Server.Domain.Curriculum", "Curriculum")
-                        .WithMany()
-                        .HasForeignKey("CurriculumId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("SENGENSystem.Server.Domain.StudentRegistration", "StudentRegistration")
-                        .WithOne()
-                        .HasForeignKey("SENGENSystem.Server.Domain.TransfereeEvaluation", "StudentRegistrationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Curriculum");
-
-                    b.Navigation("StudentRegistration");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.TransfereeEvaluationItem", b =>
-                {
-                    b.HasOne("SENGENSystem.Server.Domain.Subject", "Subject")
-                        .WithMany()
-                        .HasForeignKey("SubjectId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SENGENSystem.Server.Domain.TransfereeEvaluation", "TransfereeEvaluation")
-                        .WithMany("Items")
-                        .HasForeignKey("TransfereeEvaluationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Subject");
-
-                    b.Navigation("TransfereeEvaluation");
-                });
-
             modelBuilder.Entity("SENGENSystem.Server.Domain.AdmissionRequirement", b =>
                 {
                     b.Navigation("Programs");
@@ -1862,11 +1711,6 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
             modelBuilder.Entity("SENGENSystem.Server.Domain.SurveyInvitation", b =>
                 {
                     b.Navigation("Response");
-                });
-
-            modelBuilder.Entity("SENGENSystem.Server.Domain.TransfereeEvaluation", b =>
-                {
-                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }
