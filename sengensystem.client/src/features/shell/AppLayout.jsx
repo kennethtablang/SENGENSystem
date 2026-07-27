@@ -6,6 +6,8 @@ import NotificationsBell from '../notifications/NotificationsBell';
 import EnrollmentTicker from '../enrollment-stage/EnrollmentTicker';
 import { confirmAction } from './confirm';
 import { iconPaths, searchableItems, visibleGroups, visibleMinor } from './nav';
+import { useNavBadges } from './useNavBadges';
+import { confirmsSignout, showsBadges } from '../settings/prefs';
 import './shell.css';
 
 const roleLabels = {
@@ -14,7 +16,8 @@ const roleLabels = {
     AdmissionOfficer: 'Admission Officer',
     Registrar: 'Registrar',
     AcademicHead: 'Academic Head',
-    SchoolAdmin: 'School Admin'
+    SchoolAdmin: 'School Admin',
+    SuperAdmin: 'Super Admin'
 };
 
 export function Icon({ name }) {
@@ -27,12 +30,12 @@ export function Icon({ name }) {
 }
 
 /* Type-to-jump: finds any function the current role can open. */
-function FunctionSearch({ role }) {
+function FunctionSearch({ role, badges }) {
     const navigate = useNavigate();
     const boxRef = useRef(null);
     const [q, setQ] = useState('');
 
-    const items = useMemo(() => searchableItems(role), [role]);
+    const items = useMemo(() => searchableItems(role, badges), [role, badges]);
     const matches = q.trim()
         ? items.filter(i => i.label.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6)
         : [];
@@ -153,8 +156,12 @@ function UserMenu({ user, logout }) {
 function AppLayout() {
     const { user, logout } = useAuth();
 
-    // Second thought before ending the session — mirrors the delete confirmations.
+    // Second thought before ending the session — honors the "Confirm before signing out" preference.
     const confirmLogout = async () => {
+        if (!confirmsSignout()) {
+            logout();
+            return;
+        }
         const ok = await confirmAction({
             title: 'Sign out of SEN-GEN?',
             message: 'You’ll need to sign in again to keep working.',
@@ -183,10 +190,21 @@ function AppLayout() {
         });
     };
 
-    const groups = visibleGroups(user.role);
-    const minor = visibleMinor(user.role);
+    // Badges resolve first: they also decide whether badge-gated items (the evaluation survey)
+    // belong in the sidebar at all, not just what number they carry.
+    const badges = useNavBadges();
+    const groups = visibleGroups(user.role, badges);
+    const minor = visibleMinor(user.role, badges);
     // Tooltips carry the labels once they are hidden by the collapsed rail.
     const tip = label => (collapsed ? label : undefined);
+    // The numbered pill a nav item shows when its role has outstanding work — suppressed
+    // entirely when the "Show number badges" preference is off.
+    const badgesOn = showsBadges();
+    const badgeFor = item => {
+        const count = item.badge ? badges[item.badge] : 0;
+        if (!count || !badgesOn) return null;
+        return <span className="nav-badge" aria-label={`${count} pending`}>{count > 99 ? '99+' : count}</span>;
+    };
 
     return (
         <div className="shell">
@@ -221,6 +239,7 @@ function AppLayout() {
                                 >
                                     <Icon name={item.icon} />
                                     <span>{item.label}</span>
+                                    {badgeFor(item)}
                                 </NavLink>
                             ))}
                         </div>
@@ -264,7 +283,7 @@ function AppLayout() {
                     <EnrollmentTicker />
 
                     <div className="shell-user">
-                        <FunctionSearch role={user.role} />
+                        <FunctionSearch role={user.role} badges={badges} />
                         <NotificationsBell />
                         <span className="chip chip-blue">{roleLabels[user.role] ?? user.role}</span>
                         <UserMenu user={user} logout={confirmLogout} />

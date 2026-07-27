@@ -1,13 +1,13 @@
 import { toast } from 'react-toastify';
-import { toastAutoClose } from '../settings/prefs';
+import { toastAutoClose, toastPosition } from '../settings/prefs';
 
 // One voice for every CRUD outcome in SEN-GEN (FR-wide UX): call notifySuccess after a
 // create/update/delete commits, notifyError from the catch. Pages may still render inline
 // alerts for detail (validation lists, blockers) — the toast is the at-a-glance signal.
-// Lifetime follows the "Notification duration" preference on the Settings page.
+// Lifetime and corner follow the Settings-page notification preferences.
 
 const base = () => ({
-    position: 'top-right',
+    position: toastPosition(),
     autoClose: toastAutoClose(),
     hideProgressBar: false,
     closeOnClick: true,

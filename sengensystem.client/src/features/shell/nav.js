@@ -22,7 +22,19 @@ export const navGroups = [
                 label: 'Notifications',
                 icon: 'bell',
                 roles: ALL,
+                badge: 'notifications',
                 desc: 'Enrollment reminders, confirmations, and schedule alerts sent to you.'
+            },
+            {
+                to: '/survey',
+                label: 'Evaluation survey',
+                icon: 'star',
+                roles: ALL,
+                badge: 'survey',
+                // Only surfaces while this user actually owes a response (see canSee) — there is
+                // nothing to open for someone who was never invited or already answered.
+                onlyWhenBadge: 'survey',
+                desc: 'Rate SEN-GEN using the ISO/IEC 25010 evaluation — questions in English and Filipino.'
             }
         ]
     },
@@ -41,6 +53,7 @@ export const navGroups = [
                 label: 'Registration (SIS)',
                 icon: 'idcard',
                 roles: ['Registrar'],
+                badge: 'registrations',
                 desc: 'Review digital Student Information Sheets, verify requirements, and confirm registrations.'
             },
             {
@@ -48,7 +61,41 @@ export const navGroups = [
                 label: 'Term activations',
                 icon: 'check',
                 roles: ['AdmissionOfficer'],
+                badge: 'termActivations',
                 desc: 'Validate returning students’ requests to activate for the current term.'
+            },
+            {
+                to: '/term-activation-control',
+                label: 'Term activation control',
+                icon: 'sliders',
+                // The people who own the enrollment cycle decide when the window is open; the two
+                // admin roles reach it through the wildcard. Not the Admission Officer, who
+                // validates the requests rather than deciding when they may be filed.
+                roles: ['Registrar', 'AcademicHead'],
+                desc: 'Open or close the public term-activation form for returning students.'
+            },
+            {
+                to: '/assign-student-number',
+                label: 'Assign student number',
+                icon: 'idcard',
+                roles: ['AdmissionOfficer'],
+                desc: 'Record the official student number (issued by the separate student system) against a registration.'
+            },
+            {
+                to: '/evaluate-transferee',
+                label: 'Evaluate transferee',
+                icon: 'scale',
+                roles: ['Registrar', 'AdmissionOfficer', 'AcademicHead'],
+                badge: 'evaluations',
+                desc: 'Rule subject by subject on a transferee’s credits from their previous school — '
+                    + 'this sets the subjects they still take and the year level they enter at.'
+            },
+            {
+                to: '/prospectus',
+                label: 'Curriculum prospectus',
+                icon: 'book',
+                roles: ['Registrar', 'AcademicHead', 'AdmissionOfficer'],
+                desc: 'Download the subjects a year level takes, as a printable PDF.'
             },
             {
                 to: '/pre-enrollment',
@@ -77,10 +124,18 @@ export const navGroups = [
                 desc: 'Browse published sections with live slot counts and reserve your seats.'
             },
             {
+                to: '/my-subjects',
+                label: 'My subjects',
+                icon: 'book',
+                roles: ['Student'],
+                desc: 'The subjects your year level takes, and a printable copy of the ones you are enrolled in.'
+            },
+            {
                 to: '/approvals',
                 label: 'Enlistment approvals',
                 icon: 'check',
                 roles: ['Registrar'],
+                badge: 'approvals',
                 desc: 'Review and approve student slot requests (40 per section).'
             }
         ]
@@ -93,6 +148,9 @@ export const navGroups = [
                 label: 'My schedule',
                 icon: 'calendar',
                 roles: ['Student', 'FacultyMember'],
+                // The School Admin oversees institution-wide schedules, not a personal timetable —
+                // exclude it from the wildcard so the admin sidebar doesn't show an empty page.
+                hideFor: ['SchoolAdmin'],
                 desc: 'Your weekly timetable for the active semester.'
             },
             {
@@ -210,8 +268,25 @@ export const navGroups = [
                 to: '/users',
                 label: 'User management',
                 icon: 'users',
-                roles: [],
-                desc: 'Create, update, and deactivate accounts across all six roles.'
+                roles: ['AcademicHead'],
+                desc: 'Create, update, and deactivate accounts across all roles.'
+            },
+            {
+                to: '/survey-admin',
+                label: 'Rating survey',
+                icon: 'star',
+                roles: ['SuperAdmin'],
+                // Super-admin-only: kept from the School Admin wildcard.
+                hideFor: ['SchoolAdmin'],
+                desc: 'ISO 25010 usability report — overall scores, per-characteristic results, and comments.'
+            },
+            {
+                to: '/survey-recipients',
+                label: 'Survey recipients',
+                icon: 'users',
+                roles: ['SuperAdmin'],
+                hideFor: ['SchoolAdmin'],
+                desc: 'Choose which users receive the evaluation survey and push it to them.'
             },
             {
                 to: '/parameters',
@@ -256,23 +331,32 @@ export const navMinor = [
     }
 ];
 
-export function canSee(item, role) {
-    return role === 'SchoolAdmin' || item.roles.includes(role);
+/* `badges` is the live count map from useNavBadges. It is optional: callers that don't have it
+   simply won't see the badge-gated items, which is the safe default for a personal, transient
+   entry nobody should be pointed at speculatively. */
+export function canSee(item, role, badges = null) {
+    // An explicit hideFor overrides everything, including the admin wildcards below.
+    if (item.hideFor?.includes(role)) return false;
+    // Badge-gated items (an open evaluation survey) exist only while their count says so.
+    if (item.onlyWhenBadge && !(badges?.[item.onlyWhenBadge] > 0)) return false;
+    // Super Admin and School Admin both reach every function (Super Admin also the super-admin-only
+    // items, which are kept from School Admin with hideFor).
+    return role === 'SuperAdmin' || role === 'SchoolAdmin' || item.roles.includes(role);
 }
 
-export function visibleGroups(role) {
+export function visibleGroups(role, badges = null) {
     return navGroups
-        .map(group => ({ ...group, items: group.items.filter(i => canSee(i, role)) }))
+        .map(group => ({ ...group, items: group.items.filter(i => canSee(i, role, badges)) }))
         .filter(group => group.items.length > 0);
 }
 
-export function visibleMinor(role) {
-    return navMinor.filter(i => canSee(i, role));
+export function visibleMinor(role, badges = null) {
+    return navMinor.filter(i => canSee(i, role, badges));
 }
 
 /* Everything the given role may open — powers the top-bar search. */
-export function searchableItems(role) {
-    return allNavItems().filter(i => canSee(i, role));
+export function searchableItems(role, badges = null) {
+    return allNavItems().filter(i => canSee(i, role, badges));
 }
 
 export function allNavItems() {
@@ -305,5 +389,7 @@ export const iconPaths = {
     user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9',
     chevrons: 'M11 17l-5-5 5-5M18 17l-5-5 5-5',
     help: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01',
-    signout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9'
+    signout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+    star: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01z',
+    scale: 'M12 3v18M7 21h10M3 7h18M6.5 7 3 14h7zM17.5 7 14 14h7zM3 14a3.5 3.5 0 0 0 7 0M14 14a3.5 3.5 0 0 0 7 0'
 };
