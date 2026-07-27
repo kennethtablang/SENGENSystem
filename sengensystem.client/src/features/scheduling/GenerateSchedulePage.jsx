@@ -412,25 +412,34 @@ function GenerateSchedulePage() {
     }, []);
 
     async function run() {
-        // Second thought before a heavy run (the CSP search can take up to ~20s), and because a
-        // regenerate replaces the current unpublished draft — honors the "Confirm heavy actions" pref.
+        // Second thought before a heavy run (the CSP search can take up to ~20s), and because
+        // generating REPLACES the term's timetable rather than adding to it — honors the
+        // "Confirm heavy actions" pref.
         const isRegenerate = rows.length > 0;
         if (confirmsHeavy()) {
             const ok = await confirmAction({
                 title: isRegenerate ? 'Regenerate the schedule?' : 'Generate the schedule?',
                 message: (isRegenerate
-                    ? 'This discards the current generated draft and builds a new conflict-free arrangement from scratch. '
+                    ? 'This throws away the current schedule for this term and builds a completely new '
+                      + 'conflict-free arrangement from scratch — it does not add to what is on the board. '
                     : 'This runs the scheduling engine across every section, room, and time slot to build a conflict-free timetable. ')
                     + 'It can take up to about 20 seconds — keep this tab open while it runs.',
                 confirmLabel: isRegenerate ? 'Regenerate' : 'Generate'
             });
             if (!ok) return;
         }
+        await execute(false);
+    }
+
+    /* The run itself, separated so the published-rewrite path can retry it with consent.
+       `replacePublished` is never defaulted on: the server refuses without it, and the only way it
+       becomes true is the second confirmation below. */
+    async function execute(replacePublished) {
         setGenerating(true);
         setAlert(null);
         setSummary(null);
         try {
-            const data = await generateSchedule();
+            const data = await generateSchedule(null, { replacePublished });
             setRows(data.schedule);
             setSemesterId(data.semesterId);
             setSemesterName(data.semesterName);
@@ -443,12 +452,39 @@ function GenerateSchedulePage() {
                 seed: data.seed,
                 optimization: data.optimization
             });
+            const replacedNote = data.replacedPublishedCount > 0
+                ? ` The previously published timetable (${data.replacedPublishedCount} placements) was replaced —`
+                  + ' publish this term again so students and faculty see the new one.'
+                : '';
             setAlert({
                 kind: 'success',
-                text: `Generated a conflict-free schedule: ${data.assignedCount} class meetings across ${data.sectionCount} sections.`
+                text: `Generated a conflict-free schedule: ${data.assignedCount} class meetings across `
+                    + `${data.sectionCount} sections.${replacedNote}`
             });
             notifySuccess(`Generated a conflict-free schedule for all ${data.assignedCount} class meetings.`);
         } catch (err) {
+            // The server found a published timetable and is asking whether we really mean it. This
+            // confirmation is NOT behind the "Confirm heavy actions" preference: turning off a
+            // convenience prompt is not consent to discard something already sent to students.
+            if (err.requiresConfirmation) {
+                setGenerating(false);
+                const ok = await confirmAction({
+                    title: 'Rewrite the published schedule?',
+                    message: `${semesterName || 'This term'} already has a published schedule. Regenerating `
+                        + `deletes all ${err.publishedCount} published class placements across `
+                        + `${err.publishedSections} sections and builds a brand-new timetable in their place.`
+                        + (err.affectedStudents > 0
+                            ? ` ${err.affectedStudents} students hold approved seats — their class days, times, `
+                              + 'and rooms will change.'
+                            : '')
+                        + ' The result comes back as an unpublished draft, so you must publish the term again '
+                        + 'before anyone sees it. This cannot be undone.',
+                    confirmLabel: 'Yes, rewrite it',
+                    danger: true
+                });
+                if (ok) await execute(true);
+                return;
+            }
             setAlert({
                 kind: 'error',
                 text: err.message,
