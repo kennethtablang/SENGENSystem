@@ -2,18 +2,45 @@ import { useEffect, useMemo, useState } from 'react';
 import { listPreAuthorizations, grantPreAuthorization, revokePreAuthorization } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { humanize, formatPHT } from '../registration/options';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import '../registration/registration.css';
 
+const preAuthColumns = {
+    studentNumber: r => r.studentNumber,
+    fullName: r => r.fullName,
+    program: r => r.program,
+    studentType: r => r.studentType,
+    registrationStatus: r => r.registrationStatus,
+    submittedCount: r => r.submittedCount,
+    hasLinkedAccount: r => (r.hasLinkedAccount ? 1 : 0),
+    authorization: r => (r.isPreAuthorized ? 2 : eligibility(r) === 'Eligible' ? 1 : 0)
+};
+
 /* FR-PRE-02/04: the Admission Officer clears incoming and returning students for online
-   subject slot selection. The server enforces the gate — Registrar-confirmed SIS AND a
-   complete document checklist — so the button simply surfaces the blockers when refused. */
+   subject slot selection. The server enforces the gate — a Registrar-confirmed SIS AND the
+   papers marked required for authorization (report card + good moral for a new enrollee,
+   transcript + certificate of transfer for a transferee). The rest of the checklist may still
+   be arriving, so it is shown for follow-up rather than treated as a blocker. */
 
 const filters = ['All', 'Eligible', 'Authorized', 'Blocked'];
 
+const missingRequired = (row) => row.missingAuthorizationRequirements ?? [];
+
 function eligibility(row) {
     if (row.isPreAuthorized) return 'Authorized';
-    if (row.registrationStatus === 'Confirmed' && row.documentsComplete) return 'Eligible';
+    if (row.registrationStatus === 'Confirmed' && missingRequired(row).length === 0) return 'Eligible';
     return 'Blocked';
+}
+
+/** Why this student can't be cleared yet — the same reasons the server would refuse with. */
+function blockers(row) {
+    const reasons = [];
+    if (row.registrationStatus !== 'Confirmed') {
+        reasons.push(`SIS is ${row.registrationStatus} — the Registrar must confirm it first`);
+    }
+    reasons.push(...missingRequired(row).map(name => `${name} not submitted`));
+    return reasons;
 }
 
 function PreAuthorizationPage() {
@@ -48,6 +75,10 @@ function PreAuthorizationPage() {
     const visible = useMemo(
         () => filter === 'All' ? rows : rows.filter(r => eligibility(r) === filter),
         [rows, filter]);
+    const table = useTableControls(visible, {
+        columns: preAuthColumns,
+        initialSort: { key: 'fullName', dir: 'asc' }
+    });
 
     async function grant(row) {
         setBusyId(row.registrationId);
@@ -88,7 +119,9 @@ function PreAuthorizationPage() {
                     <h2>Pre-authorization</h2>
                     <p className="reg-sub">
                         Clear students for online subject slot selection. A student becomes eligible once the
-                        Registrar confirms their SIS and their document checklist is complete.
+                        Registrar confirms their SIS and the papers required for authorization are on file —
+                        the report card and good moral for a new enrollee, the transcript and certificate of
+                        transfer for a transferee. The remaining requirements can follow.
                     </p>
                 </div>
                 <div className="reg-controls">
@@ -127,19 +160,19 @@ function PreAuthorizationPage() {
                     <table className="reg-table">
                         <thead>
                             <tr>
-                                <th>Student no.</th>
-                                <th>Name</th>
-                                <th>Program</th>
-                                <th>Type</th>
-                                <th>SIS status</th>
-                                <th>Requirements</th>
-                                <th>Account</th>
-                                <th>Authorization</th>
+                                <SortHeader label="Student no." sortKey="studentNumber" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Name" sortKey="fullName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Program" sortKey="program" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Type" sortKey="studentType" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="SIS status" sortKey="registrationStatus" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Requirements" sortKey="submittedCount" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Account" sortKey="hasLinkedAccount" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Authorization" sortKey="authorization" sort={table.sort} onSort={table.toggleSort} />
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {visible.map(row => {
+                            {table.pageRows.map(row => {
                                 const state = eligibility(row);
                                 return (
                                     <tr key={row.registrationId}>
@@ -164,9 +197,17 @@ function PreAuthorizationPage() {
                                                     Authorized
                                                 </span>
                                             ) : (
-                                                <span className={state === 'Eligible' ? 'chip chip-yellow' : 'chip chip-muted'}>
+                                                <span
+                                                    className={state === 'Eligible' ? 'chip chip-yellow' : 'chip chip-muted'}
+                                                    title={state === 'Eligible' ? undefined : blockers(row).join(' · ')}
+                                                >
                                                     {state === 'Eligible' ? 'Ready to authorize' : 'Blocked'}
                                                 </span>
+                                            )}
+                                            {!row.isPreAuthorized && missingRequired(row).length > 0 && (
+                                                <div className="reg-when">
+                                                    Waiting on {missingRequired(row).join(', ')}
+                                                </div>
                                             )}
                                         </td>
                                         <td>
@@ -180,7 +221,7 @@ function PreAuthorizationPage() {
                                                 <button
                                                     className="btn btn-primary" type="button"
                                                     disabled={busyId === row.registrationId || state !== 'Eligible'}
-                                                    title={state !== 'Eligible' ? 'Confirm the SIS and complete the checklist first' : undefined}
+                                                    title={state !== 'Eligible' ? blockers(row).join(' · ') : undefined}
                                                     onClick={() => grant(row)}
                                                 >Authorize</button>
                                             )}
@@ -190,6 +231,7 @@ function PreAuthorizationPage() {
                             })}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 
