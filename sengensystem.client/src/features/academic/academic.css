@@ -47,6 +47,47 @@
   overflow-x: auto;
 }
 
+/* Class sections separated into one card per course, still listed within each card. */
+.cs-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.cs-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.cs-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.cs-card-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--sti-blue);
+}
+
+.cs-card-sub {
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+.cs-card-table {
+  font-size: 0.83rem;
+}
+
+.cs-card-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .setup-table {
   width: 100%;
   border-collapse: collapse;
