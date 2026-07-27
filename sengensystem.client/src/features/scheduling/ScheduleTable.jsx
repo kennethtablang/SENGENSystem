@@ -2,6 +2,8 @@
    ordered by cohort → day → start time from the server. Shared by the generate
    and review pages (FR-SCHED-06). */
 
+import { hhmm } from './calendarUtils';
+
 const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 function groupByCohort(rows) {
@@ -69,7 +71,7 @@ function ScheduleTable({ rows }) {
                                             </td>
                                             <td className="sched-mono">{row.sectionCode}</td>
                                             <td>{row.day}</td>
-                                            <td className="sched-mono">{row.time}</td>
+                                            <td className="sched-mono">{hhmm(row.startMinutes)}–{hhmm(row.endMinutes)}</td>
                                             <td>{row.room}</td>
                                             <td>{row.faculty}</td>
                                             <td><StatusBadge row={row} /></td>

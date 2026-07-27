@@ -312,13 +312,68 @@
 
 /* ---------- Soft-constraint data (the basis panel) ---------- */
 
-.sched-basis {
+.sched-basis,
+.sched-weights {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   padding: 1rem 1.1rem;
   margin-bottom: 1.1rem;
+}
+
+.sched-weights > h3 {
+  font-size: 1rem;
+  color: var(--sti-blue);
+}
+
+.sched-weights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem 1.4rem;
+  margin-top: 0.4rem;
+}
+
+.sched-weight {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sched-weight-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font: 600 0.85rem/1.2 var(--sans);
+  color: var(--text-1);
+}
+
+.sched-weight-val {
+  font-variant-numeric: tabular-nums;
+  color: var(--sti-blue);
+}
+
+.sched-weight input[type="range"] {
+  width: 100%;
+  accent-color: var(--sti-blue);
+  cursor: pointer;
+}
+
+.sched-weight input[type="range"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sched-weight small {
+  font-size: 0.76rem;
+  color: var(--text-3);
+}
+
+.sched-weights-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
 }
 
 .sched-basis > h3 {
@@ -574,4 +629,26 @@
   margin: 1rem 0 0;
   font-size: 0.78rem;
   color: var(--text-3);
+}
+
+/* When the teaching day opens — the first of the generation settings, since it decides which of
+   the period grid the engine is even allowed to consider (FR-SCHED-05). */
+.sched-daystart {
+  margin: 0 0 0.9rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px dashed var(--line);
+}
+
+.sched-daystart .sched-weight {
+  max-width: 22rem;
+}
+
+.sched-daystart select {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
 }

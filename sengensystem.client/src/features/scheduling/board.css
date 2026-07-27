@@ -638,3 +638,108 @@
   color: hsl(152 55% 75%);
   background: hsl(152 40% 20%);
 }
+
+/* ---- Room selection (a drop made in the "All rooms" view) ---------------------------------- */
+
+.room-picker {
+  width: min(34rem, calc(100vw - 2rem));
+}
+
+.room-picker-lead {
+  margin: 0 0 0.3rem;
+  font-size: 0.86rem;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+.room-picker-count {
+  margin: 0 0 0.7rem;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+.room-picker-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.room-picker-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'main meta'
+    'state state';
+  gap: 0.15rem 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.room-picker-item:hover:not(:disabled),
+.room-picker-item:focus-visible:not(:disabled) {
+  border-color: var(--sti-blue);
+  background: var(--surface-2, var(--surface));
+}
+
+/* Muted, not hidden: an unavailable room still tells you what is standing in the way. */
+.room-picker-item.is-unavailable,
+.room-picker-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--surface-2, var(--surface));
+}
+
+.room-picker-main {
+  grid-area: main;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.room-picker-name {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--text-1);
+}
+
+.room-picker-meta {
+  grid-area: meta;
+  font-size: 0.76rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.room-picker-state {
+  grid-area: state;
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+.room-picker-state.is-free {
+  color: var(--sti-blue);
+  font-weight: 700;
+}
+
+/* ---- Amended after publication (FR-PUB-04) ---------------------------------------------------
+   A published class that was later moved. The dashed edge is deliberately visible at a glance:
+   these are the classes people were told one thing about and then another. */
+
+.fc .fc-event.ev-amended {
+  outline: 2px dashed var(--sti-gold, #ffd700);
+  outline-offset: -2px;
+}
+
+.board-tooltip-tag.is-amended {
+  color: var(--sti-gold-ink, #8a6d00);
+  background: var(--sti-gold-soft, hsl(45 100% 92%));
+}

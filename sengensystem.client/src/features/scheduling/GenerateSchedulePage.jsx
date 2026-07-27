@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { generateSchedule, getSchedule, getSoftConstraints, finalizeSchedule, reopenSchedule } from './api';
+import { useCallback, useEffect, useState } from 'react';
+import { generateSchedule, getSchedule, getSoftConstraints, updateSoftConstraintWeights, finalizeSchedule, reopenSchedule } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
+import { confirmsHeavy } from '../settings/prefs';
 import { hhmm } from './calendarUtils';
 import ScheduleTable from './ScheduleTable';
 import ThinkingOverlay from './ThinkingOverlay';
@@ -102,6 +103,153 @@ function OptimizationPanel({ opt }) {
         </section>
     );
 }
+/* The times of day a class may be told to start, on the half hour across a plausible teaching
+   day. Half-hour steps match the period grid, so a chosen start always lands on a slot boundary. */
+const CLASS_START_CHOICES = Array.from({ length: 25 }, (_, i) => 6 * 60 + i * 30); // 06:00–18:00
+
+/* FR-SCHED-05: the tunable generation settings. The Academic Head sets when the teaching day
+   opens and leans the engine toward the concerns the institution cares about most; the values
+   apply on the next generation. Hard constraints stay guarantees regardless of these. */
+function ConstraintWeightsPanel({ weights, slots, disabled, onSaved }) {
+    const [draft, setDraft] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    const snapshot = (w) => ({
+        preference: w.preference,
+        idleGap: w.idleGap,
+        roomFit: w.roomFit,
+        gapSaturationHours: w.gapSaturationHours,
+        classStartMinutes: w.classStartMinutes ?? 7 * 60
+    });
+
+    useEffect(() => {
+        if (weights) setDraft(snapshot(weights));
+    }, [weights]);
+
+    if (!draft) return null;
+
+    const dirty = !!weights && (
+        draft.preference !== weights.preference
+        || draft.idleGap !== weights.idleGap
+        || draft.roomFit !== weights.roomFit
+        || draft.gapSaturationHours !== weights.gapSaturationHours
+        || draft.classStartMinutes !== (weights.classStartMinutes ?? 7 * 60)
+    );
+
+    const setField = (key, value) => setDraft(prev => ({ ...prev, [key]: value }));
+    const reset = () => setDraft(snapshot(weights));
+
+    // Saved setting vs. the grid it has to live on — a start time past every period would leave
+    // the engine nothing to place, so say so here instead of failing on the Generate button.
+    const savedStart = weights.classStartMinutes ?? 7 * 60;
+    const noUsableSlots = slots && slots.allowableSlotCount > 0 && slots.usableSlotCount === 0;
+    const trimmedSlots = slots ? slots.allowableSlotCount - slots.usableSlotCount : 0;
+
+    async function save() {
+        setSaving(true);
+        try {
+            const updated = await updateSoftConstraintWeights(draft);
+            onSaved(updated);
+            notifySuccess('Generation settings saved — they apply on the next generation.');
+        } catch (err) {
+            notifyError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    const sliders = [
+        ['preference', 'Preferred time slots (S1)', 'Reward for landing inside a faculty member’s declared window.'],
+        ['idleGap', 'Minimised idle gaps (S2)', 'Penalty for dead time between a cohort’s or member’s consecutive classes.'],
+        ['roomFit', 'Room fit', 'Reward for a snugly sized room over an oversized one.']
+    ];
+
+    return (
+        <section className="sched-weights" aria-label="Generation settings">
+            <h3>Generation settings</h3>
+            <p className="sched-basis-intro">
+                When the teaching day opens, and how hard the engine leans on each preference. Weights are
+                relative (0–1) and normalised before weighting — raise one to give that concern more pull.
+                Hard constraints are never traded for these. Changes apply on the next generation.
+            </p>
+
+            <div className="sched-daystart">
+                <label className="sched-weight">
+                    <span className="sched-weight-top">
+                        <span>Classes start at</span>
+                        <span className="sched-weight-val">{hhmm(draft.classStartMinutes)}</span>
+                    </span>
+                    <select
+                        value={draft.classStartMinutes}
+                        disabled={disabled || saving}
+                        onChange={e => setField('classStartMinutes', parseInt(e.target.value, 10))}
+                    >
+                        {CLASS_START_CHOICES.map(m => (
+                            <option key={m} value={m}>{hhmm(m)}</option>
+                        ))}
+                    </select>
+                    <small>
+                        The earliest a generated class may be placed. Periods that begin before this are
+                        left out of the engine&rsquo;s grid — nothing is scheduled ahead of the school day.
+                        Manual placements on the board are not restricted by it.
+                    </small>
+                </label>
+                {noUsableSlots ? (
+                    <p className="sched-basis-warn">
+                        No allowable period starts at or after {hhmm(savedStart)} — generation has nothing to
+                        place. Move the start time earlier, or add later periods in System parameters.
+                    </p>
+                ) : trimmedSlots > 0 && (
+                    <p className="sched-basis-note">
+                        {trimmedSlots} of {slots.allowableSlotCount} periods start before {hhmm(savedStart)} and
+                        are left out of generation.
+                    </p>
+                )}
+            </div>
+
+            <div className="sched-weights-grid">
+                {sliders.map(([key, label, hint]) => (
+                    <label key={key} className="sched-weight">
+                        <span className="sched-weight-top">
+                            <span>{label}</span>
+                            <span className="sched-weight-val">{Number(draft[key]).toFixed(2)}</span>
+                        </span>
+                        <input
+                            type="range" min="0" max="1" step="0.05"
+                            value={draft[key]}
+                            disabled={disabled || saving}
+                            onChange={e => setField(key, parseFloat(e.target.value))}
+                        />
+                        <small>{hint}</small>
+                    </label>
+                ))}
+                <label className="sched-weight">
+                    <span className="sched-weight-top">
+                        <span>Idle-gap saturation</span>
+                        <span className="sched-weight-val">{Number(draft.gapSaturationHours).toFixed(1)} h</span>
+                    </span>
+                    <input
+                        type="range" min="1" max="24" step="0.5"
+                        value={draft.gapSaturationHours}
+                        disabled={disabled || saving}
+                        onChange={e => setField('gapSaturationHours', parseFloat(e.target.value))}
+                    />
+                    <small>The longest idle gap treated as “as bad as it gets”.</small>
+                </label>
+            </div>
+            <div className="sched-weights-actions">
+                <button className="btn btn-ghost" type="button" onClick={reset} disabled={!dirty || saving || disabled}>
+                    Reset
+                </button>
+                <button className="btn btn-primary" type="button" onClick={save} disabled={!dirty || saving || disabled}>
+                    {saving && <span className="spinner" aria-hidden="true" />}
+                    {saving ? 'Saving…' : 'Save settings'}
+                </button>
+            </div>
+        </section>
+    );
+}
+
 /* The data behind the soft constraints — the basis the engine optimises toward. Shown before and
    after generation so the Academic Head can judge (and fix) the inputs, not just trust the output. */
 function SoftConstraintDataPanel({ data, loading }) {
@@ -238,7 +386,16 @@ function GenerateSchedulePage() {
     }, []);
 
     // The soft-constraint inputs (preferred windows + load allocation) are the basis for
-    // generation — load them independently so they show even before the first run.
+    // generation — load them independently so they show even before the first run. Re-read after
+    // a settings save too: the class start time changes how much of the period grid is usable.
+    const reloadSoftData = useCallback(async () => {
+        try {
+            setSoftData(await getSoftConstraints());
+        } catch {
+            // Non-fatal: the basis panel keeps whatever it last had.
+        }
+    }, []);
+
     useEffect(() => {
         let active = true;
         (async () => {
@@ -255,6 +412,20 @@ function GenerateSchedulePage() {
     }, []);
 
     async function run() {
+        // Second thought before a heavy run (the CSP search can take up to ~20s), and because a
+        // regenerate replaces the current unpublished draft — honors the "Confirm heavy actions" pref.
+        const isRegenerate = rows.length > 0;
+        if (confirmsHeavy()) {
+            const ok = await confirmAction({
+                title: isRegenerate ? 'Regenerate the schedule?' : 'Generate the schedule?',
+                message: (isRegenerate
+                    ? 'This discards the current generated draft and builds a new conflict-free arrangement from scratch. '
+                    : 'This runs the scheduling engine across every section, room, and time slot to build a conflict-free timetable. ')
+                    + 'It can take up to about 20 seconds — keep this tab open while it runs.',
+                confirmLabel: isRegenerate ? 'Regenerate' : 'Generate'
+            });
+            if (!ok) return;
+        }
         setGenerating(true);
         setAlert(null);
         setSummary(null);
@@ -419,6 +590,16 @@ function GenerateSchedulePage() {
             )}
 
             {summary && <OptimizationPanel opt={summary.optimization} />}
+
+            <ConstraintWeightsPanel
+                weights={softData?.weights}
+                slots={softData && {
+                    allowableSlotCount: softData.allowableSlotCount ?? 0,
+                    usableSlotCount: softData.usableSlotCount ?? 0
+                }}
+                disabled={generating || finalized}
+                onSaved={reloadSoftData}
+            />
 
             <SoftConstraintDataPanel data={softData} loading={softLoading} />
 

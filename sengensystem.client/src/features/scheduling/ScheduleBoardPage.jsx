@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin, { Draggable } from '@fullcalendar/interaction';
@@ -6,9 +7,11 @@ import { getBoard, placeEntry, moveEntry, removeEntry } from './boardApi';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import { REF_DATES, toIso, fromDate, fmtHours, hhmm, subjectColor, slotLabelFormat } from './calendarUtils';
+import RoomPickerModal from './RoomPickerModal';
 import './board.css';
 
 const DEFAULT_MINUTES = 90; // a dropped subject starts as a 90-minute block; resize to taste.
+const DAY_END_MINUTES = 18 * 60; // the calendar's last visible minute — a drop never runs past it.
 
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -32,6 +35,11 @@ export default function ScheduleBoardPage() {
     // Hover tooltip for a placed class: { x, y, e } where e is the entry's extendedProps.
     const [tooltip, setTooltip] = useState(null);
     const [fullscreen, setFullscreen] = useState(false);
+    // A drop made in the "All rooms" view, waiting on which room it should land in.
+    const [roomPicker, setRoomPicker] = useState(null);
+    const [pickerBusy, setPickerBusy] = useState(false);
+    // When the teaching day opens (System parameters) — the calendar starts its axis there.
+    const [classStartMinutes, setClassStartMinutes] = useState(7 * 60);
     // Tracker row the user clicked, as its pool key ("{loadId}:{Lecture|Laboratory}"). Its blocks
     // on the calendar light up and everything else dims, so "where did these hours go?" is a
     // single click instead of a visual hunt through a full week.
@@ -55,6 +63,7 @@ export default function ScheduleBoardPage() {
         setEntries(data.entries);
         setTracker(data.hoursTracker);
         setSemesterName(data.semesterName || '');
+        if (data.classStartMinutes != null) setClassStartMinutes(data.classStartMinutes);
         return data;
     }
 
@@ -149,6 +158,9 @@ export default function ScheduleBoardPage() {
             const c = subjectColor(e.subjectId);
             const classNames = [];
             if (e.component === 'Laboratory') classNames.push('ev-lab');
+            // A class changed after publication carries a mark, so "what did we move on people
+            // who had already been told?" is visible on the board itself (FR-PUB-04).
+            if (e.isAmended) classNames.push('ev-amended');
             // With a tracker row focused, its own blocks lift and the rest recede.
             if (focusKey) classNames.push(meetingKey(e) === focusKey ? 'ev-focus' : 'ev-dim');
             return {
@@ -183,30 +195,72 @@ export default function ScheduleBoardPage() {
         return () => window.removeEventListener('keydown', onKey);
     }, [focusKey]);
 
+    // Place a dropped meeting into a specific room. Shared by the direct path (a room is
+    // selected) and the room-picker path (the "All rooms" view asks which one).
+    async function place({ loadId, component, targetRoomId, day, startMinutes, endMinutes }) {
+        setAlert(null);
+        await placeEntry({
+            facultyLoadAssignmentId: loadId,
+            component,
+            roomId: targetRoomId,
+            day,
+            startMinutes,
+            endMinutes
+        });
+        notifySuccess('Class placed on the board.');
+        await refresh();
+    }
+
     async function handleExternalDrop(info) {
         const { loadId, component } = info.draggedEl.dataset;
         if (!loadId || !roomId) return;
-        if (allRooms) {
-            notifyError('Pick a specific room to place a class — “All rooms” is a viewing mode.');
-            return;
-        }
         const { day, minutes } = fromDate(info.date);
         if (day < 1 || day > 6) return;
-        setAlert(null);
+        const endMinutes = Math.min(minutes + DEFAULT_MINUTES, DAY_END_MINUTES);
+
+        // "All rooms" is a read-across view, so the drop hasn't named a room. Rather than refuse
+        // it, ask — with each room's availability for this exact window shown on the spot.
+        if (allRooms) {
+            const meeting = pool.find(p =>
+                p.facultyLoadAssignmentId === loadId && p.component === component);
+            if (!meeting) {
+                notifyError('That assigned subject is no longer in the pool. Refresh the board.');
+                return;
+            }
+            // A faculty or cohort clash rules out every room, so say that instead of opening a
+            // picker in which nothing could be chosen. (The server checks these too.)
+            const clash = entries.find(e =>
+                e.day === day && minutes < e.endMinutes && e.startMinutes < endMinutes
+                && (e.facultyProfileId === meeting.facultyProfileId || e.cohortKey === meeting.cohortKey));
+            if (clash) {
+                const who = clash.facultyProfileId === meeting.facultyProfileId
+                    ? `${meeting.facultyName} is already teaching`
+                    : `${meeting.cohortLabel} already has a class`;
+                notifyError(`${who} ${hhmm(clash.startMinutes)}–${hhmm(clash.endMinutes)} (${clash.subjectCode}).`);
+                return;
+            }
+            setRoomPicker({ loadId, component, day, startMinutes: minutes, endMinutes, meeting });
+            return;
+        }
+
         try {
-            await placeEntry({
-                facultyLoadAssignmentId: loadId,
-                component,
-                roomId,
-                day,
-                startMinutes: minutes,
-                endMinutes: Math.min(minutes + DEFAULT_MINUTES, 18 * 60)
-            });
-            notifySuccess('Class placed on the board.');
-            await refresh();
+            await place({ loadId, component, targetRoomId: roomId, day, startMinutes: minutes, endMinutes });
         } catch (err) {
             setAlert(err.message);
             notifyError(err.message);
+        }
+    }
+
+    async function pickRoom(chosenRoomId) {
+        setPickerBusy(true);
+        try {
+            await place({ ...roomPicker, targetRoomId: chosenRoomId });
+            setRoomPicker(null);
+        } catch (err) {
+            setAlert(err.message);
+            notifyError(err.message);
+        } finally {
+            setPickerBusy(false);
         }
     }
 
@@ -216,10 +270,27 @@ export default function ScheduleBoardPage() {
         const { minutes: endMinutes } = fromDate(e.end);
         // In the all-rooms view a moved class keeps its own room; otherwise it takes the selected one.
         const targetRoomId = allRooms ? e.extendedProps.roomId : roomId;
+        const wasPublished = e.extendedProps.isPublished;
+
+        // Moving a published class is legitimate but it is not a quiet edit — the faculty member
+        // and every enrolled student were already told the old time, and will be told the new one.
+        if (wasPublished) {
+            const ok = await confirmAction({
+                title: 'This class is already published',
+                message: `${e.extendedProps.subjectCode} (${e.extendedProps.cohortLabel}) has been announced to `
+                    + 'its faculty member and to every student holding a seat. Moving it now sends them all a '
+                    + 'schedule-change notice, and the class is marked as amended.',
+                confirmLabel: 'Move and notify'
+            });
+            if (!ok) { info.revert(); return; }
+        }
+
         try {
-            const updated = await moveEntry(e.id, { roomId: targetRoomId, day, startMinutes, endMinutes });
-            setEntries(prev => prev.map(x => x.assignmentId === e.id ? updated : x));
-            notifySuccess('Class rescheduled.');
+            const result = await moveEntry(e.id, { roomId: targetRoomId, day, startMinutes, endMinutes });
+            setEntries(prev => prev.map(x => x.assignmentId === e.id ? result.entry : x));
+            notifySuccess(result.amended
+                ? `Class rescheduled — ${result.notifiedCount} notice(s) sent to the faculty member and enrolled students.`
+                : 'Class rescheduled.');
         } catch (err) {
             info.revert();
             setAlert(err.message);
@@ -230,16 +301,22 @@ export default function ScheduleBoardPage() {
     async function handleEventClick(info) {
         const e = info.event.extendedProps;
         const ok = await confirmAction({
-            title: 'Remove from the calendar?',
-            message: `${e.subjectCode} (${e.cohortLabel}) will go back to the assigned-subjects pool.`,
-            confirmLabel: 'Remove',
+            title: e.isPublished ? 'Remove a published class?' : 'Remove from the calendar?',
+            message: e.isPublished
+                ? `${e.subjectCode} (${e.cohortLabel}) has been announced to its faculty member and to every `
+                  + 'student holding a seat. Removing it sends them all a schedule-change notice, and the '
+                  + 'subject returns to the assigned-subjects pool.'
+                : `${e.subjectCode} (${e.cohortLabel}) will go back to the assigned-subjects pool.`,
+            confirmLabel: e.isPublished ? 'Remove and notify' : 'Remove',
             danger: true
         });
         if (!ok) return;
         setAlert(null);
         try {
-            await removeEntry(info.event.id);
-            notifySuccess(`${e.subjectCode} (${e.cohortLabel}) returned to the pool.`);
+            const result = await removeEntry(info.event.id);
+            notifySuccess(result?.amended
+                ? `${e.subjectCode} removed — ${result.notifiedCount} notice(s) sent to the faculty member and enrolled students.`
+                : `${e.subjectCode} (${e.cohortLabel}) returned to the pool.`);
             await refresh();
         } catch (err) {
             setAlert(err.message);
@@ -360,7 +437,7 @@ export default function ScheduleBoardPage() {
                             </h3>
                             <p className="board-panel-hint">
                                 {allRooms
-                                    ? 'Viewing every room’s schedule — pick a specific room to place new classes.'
+                                    ? 'Viewing every room’s schedule. Drop a meeting anywhere and you’ll be asked which room it goes in, with each room’s availability for that slot.'
                                     : `Drag a meeting onto the calendar for ${selectedRoom?.name || 'a room'}` +
                                       `${selectedRoom ? ` (${selectedRoom.kindLabel.toLowerCase()})` : ''}. ` +
                                       'Lecture and laboratory hours are dragged separately.'}
@@ -419,7 +496,7 @@ export default function ScheduleBoardPage() {
                                 hiddenDays={[0]}
                                 allDaySlot={false}
                                 dayHeaderFormat={{ weekday: 'long' }}
-                                slotMinTime="07:00:00"
+                                slotMinTime={`${String(Math.floor(classStartMinutes / 60)).padStart(2, '0')}:${String(classStartMinutes % 60).padStart(2, '0')}:00`}
                                 slotMaxTime="18:00:00"
                                 slotDuration="00:30:00"
                                 snapDuration="00:30:00"
@@ -520,6 +597,17 @@ export default function ScheduleBoardPage() {
                 </div>
             )}
 
+            {roomPicker && (
+                <RoomPickerModal
+                    request={roomPicker}
+                    rooms={rooms}
+                    entries={entries}
+                    busy={pickerBusy}
+                    onPick={pickRoom}
+                    onCancel={() => setRoomPicker(null)}
+                />
+            )}
+
             {tooltip && (() => {
                 const { x, y, e } = tooltip;
                 // Keep the tooltip on-screen: flip it left/up when near the right/bottom edge.
@@ -531,7 +619,14 @@ export default function ScheduleBoardPage() {
                     transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`
                 };
                 const durationH = (e.endMinutes - e.startMinutes) / 60;
-                return (
+                // The tooltip is position:fixed off the cursor's viewport coordinates. The board
+                // page's rise animation makes it a containing block, so a tooltip nested inside it
+                // is measured from the page corner, not the viewport — the misplacement seen out of
+                // fullscreen. Portal to <body> to fix that; but a fullscreen element only paints its
+                // own subtree in the top layer, so there it must stay inside the board page — which
+                // is exactly document.fullscreenElement while the board is full-screen.
+                const portalTarget = document.fullscreenElement || document.body;
+                return createPortal((
                     <div className="board-tooltip" role="tooltip" style={style}>
                         <div className="board-tooltip-head">
                             <span className="board-tooltip-dot" style={{ background: subjectColor(e.subjectId).border }} />
@@ -542,6 +637,7 @@ export default function ScheduleBoardPage() {
                             <span className={`board-tooltip-tag ${e.isPublished ? 'is-published' : 'is-draft'}`}>
                                 {e.isPublished ? 'Published' : 'Draft'}
                             </span>
+                            {e.isAmended && <span className="board-tooltip-tag is-amended">Amended</span>}
                         </div>
                         <div className="board-tooltip-title">{e.subjectTitle}</div>
                         <dl className="board-tooltip-grid">
@@ -551,9 +647,16 @@ export default function ScheduleBoardPage() {
                             <div><dt>Section</dt><dd>{e.cohortLabel}</dd></div>
                             <div><dt>Faculty</dt><dd>{e.facultyName}</dd></div>
                         </dl>
-                        {e.isManualOverride && <div className="board-tooltip-note">Manually overridden</div>}
+                        {e.isAmended && (
+                            <div className="board-tooltip-note">
+                                Changed after publication — the faculty member and enrolled students were notified.
+                            </div>
+                        )}
+                        {e.isManualOverride && !e.isAmended && (
+                            <div className="board-tooltip-note">Manually overridden</div>
+                        )}
                     </div>
-                );
+                ), portalTarget);
             })()}
         </div>
     );

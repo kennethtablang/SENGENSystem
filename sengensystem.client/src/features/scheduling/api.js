@@ -22,6 +22,12 @@ async function parseError(response) {
         // just a bare title.
         reasons: payload?.reasons?.length ? payload.reasons : (payload?.detail ? [payload.detail] : []),
         reference: payload?.reference || null,
+        // A refusal the caller can answer rather than only report: generating over a published
+        // timetable comes back as a 409 asking to be confirmed, with the counts to confirm against.
+        requiresConfirmation: payload?.requiresConfirmation === true,
+        publishedCount: payload?.publishedCount ?? 0,
+        publishedSections: payload?.publishedSections ?? 0,
+        affectedStudents: payload?.affectedStudents ?? 0,
         fieldErrors: payload?.errors || {}
     };
 }
@@ -39,11 +45,17 @@ async function authRequest(url, { method = 'GET', body } = {}) {
     return response.json();
 }
 
-// FR-SCHED-06: Academic Head triggers CSP generation for a semester.
-export function generateSchedule(semesterId) {
+/**
+ * FR-SCHED-06: Academic Head triggers CSP generation for a semester.
+ *
+ * Generation replaces the semester's whole timetable. When part of it is already published the
+ * server refuses with a 409 carrying `requiresConfirmation` and the counts at stake; pass
+ * `replacePublished: true` to go ahead, which is the caller saying yes to discarding it.
+ */
+export function generateSchedule(semesterId, { replacePublished = false } = {}) {
     return authRequest('/api/scheduling/generate', {
         method: 'POST',
-        body: { semesterId: semesterId ?? null }
+        body: { semesterId: semesterId ?? null, replacePublished }
     });
 }
 
@@ -58,6 +70,14 @@ export function getSchedule(semesterId) {
 export function getSoftConstraints(semesterId) {
     const query = semesterId ? `?semesterId=${encodeURIComponent(semesterId)}` : '';
     return authRequest(`/api/scheduling/soft-constraints${query}`);
+}
+
+// FR-SCHED-05: the Academic Head tunes the soft-constraint weights the engine optimises against.
+export function updateSoftConstraintWeights(weights) {
+    return authRequest('/api/scheduling/soft-constraints/weights', {
+        method: 'PUT',
+        body: weights
+    });
 }
 
 // FR-SCHED-06: Academic Head signs off the draft as final & ready to publish (locks it),

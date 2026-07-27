@@ -42,6 +42,10 @@ export const getBoard = (semesterId) =>
 export const placeEntry = (body) => send('POST', '/api/scheduling/board', body);
 
 // body: { roomId, day, startMinutes, endMinutes }
+// Returns { entry, amended, change, notifiedCount }. `amended` is true when the class was already
+// published — the server flags the row and notifies the faculty member and enrolled students, so
+// the board can tell the Academic Head that the move went out to people (FR-PUB-04).
 export const moveEntry = (assignmentId, body) => send('PUT', `/api/scheduling/board/${assignmentId}`, body);
 
+// Returns { removed, amended, notifiedCount } — same amendment semantics as a move.
 export const removeEntry = (assignmentId) => send('DELETE', `/api/scheduling/board/${assignmentId}`);
