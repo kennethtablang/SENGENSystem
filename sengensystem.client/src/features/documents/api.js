@@ -50,6 +50,30 @@ export function sendReminders(registrationId) {
     });
 }
 
+// ---- Configurable requirement catalog (FR-DOC-01) ----
+
+export function listRequirements() {
+    return authRequest('/api/requirements');
+}
+
+export function createRequirement({ name, description, programs, isActive }) {
+    return authRequest('/api/requirements', {
+        method: 'POST',
+        body: { name, description, programs, isActive }
+    });
+}
+
+export function updateRequirement(id, { name, description, programs, isActive }) {
+    return authRequest(`/api/requirements/${id}`, {
+        method: 'PUT',
+        body: { name, description, programs, isActive }
+    });
+}
+
+export function archiveRequirement(id) {
+    return authRequest(`/api/requirements/${id}`, { method: 'DELETE' });
+}
+
 // ---- Student: own record link + checklist (FR-ENL-05 identity link) ----
 
 export function getMyLink() {
