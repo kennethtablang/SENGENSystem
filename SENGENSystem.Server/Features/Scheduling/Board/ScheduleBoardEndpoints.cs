@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
+using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 
@@ -42,6 +43,10 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 .Select(r => new BoardRoomDto(r.Id, r.Name, r.Capacity, r.Kind.ToString(), r.Kind.Label(), r.IsLaboratory))
                 .ToList();
 
+            // The teaching day's opening time governs generation; the board shows the same window so
+            // a hand-built timetable and a generated one are read against one grid (FR-SCHED-05).
+            var classStartMinutes = (await db.GetSettingsAsync(ct)).ClassDayStartMinutes;
+
             var semester = await ResolveSemesterAsync(semesterId, db, ct);
             if (semester is null)
             {
@@ -51,6 +56,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                     semesterName = (string?)null,
                     semesters,
                     rooms,
+                    classStartMinutes,
                     faculty = Array.Empty<BoardFacultyDto>(),
                     pool = Array.Empty<PoolItemDto>(),
                     entries = Array.Empty<BoardEntryDto>(),
@@ -173,6 +179,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 semesterName = semester.Name,
                 semesters,
                 rooms,
+                classStartMinutes,
                 faculty,
                 pool,
                 entries = entryDtos,
@@ -291,8 +298,17 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
         }
 
         // PUT /api/scheduling/board/{id} — move, resize, or re-room an existing placement.
+        // Moving a *published* class is allowed but is an amendment, not a quiet edit: the people
+        // already told the old time are told the new one (FR-PUB-04, ScheduleAmendments).
         private static async Task<IResult> MoveAsync(
-            Guid assignmentId, MoveRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
+            Guid assignmentId,
+            MoveRequest request,
+            AppDbContext db,
+            AuditLog audit,
+            Notifier notifier,
+            IEmailSender email,
+            System.Security.Claims.ClaimsPrincipal principal,
+            CancellationToken ct)
         {
             if (Validate(request.Day, request.StartMinutes, request.EndMinutes) is { } badTime)
             {
@@ -302,12 +318,21 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             var assignment = await db.ScheduleAssignments
                 .Include(a => a.Section).ThenInclude(s => s!.Subject)
                 .Include(a => a.Room)
+                .Include(a => a.TimeSlot)
                 .Include(a => a.FacultyProfile).ThenInclude(f => f!.User)
                 .FirstOrDefaultAsync(a => a.Id == assignmentId, ct);
             if (assignment?.Section is null)
             {
                 return Results.NotFound(new { message = "That placement no longer exists. Refresh the board." });
             }
+
+            // Captured before the edit so the amendment notice can say what it moved *from*.
+            var wasPublished = assignment.IsPublished;
+            var before = assignment.TimeSlot is null
+                ? null
+                : ScheduleAmendments.Describe(
+                    assignment.TimeSlot.Day, assignment.TimeSlot.StartMinutes,
+                    assignment.TimeSlot.EndMinutes, assignment.Room?.Name ?? "its room");
 
             if (await EnsureNotArchivedAsync(db, assignment.SemesterId, ct) is { } frozen) return frozen;
             if (await EnsureNotFinalizedAsync(db, assignment.SemesterId, ct) is { } locked) return locked;
@@ -346,30 +371,85 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             audit.Record(AuditAction.ScheduleOverridden,
                 $"Moved {assignment.Section.Subject?.Code} ({CohortLabel(assignment.Section)}) to {room.Name}, {DayName(request.Day)} {Hhmm(request.StartMinutes)}–{Hhmm(request.EndMinutes)}.",
                 "ScheduleAssignment", assignment.Id.ToString());
+
+            var after = ScheduleAmendments.Describe(
+                (DayOfWeek)request.Day, request.StartMinutes, request.EndMinutes, room.Name);
+            var change = before is null ? $"was moved to {after}" : $"moved from {before} to {after}";
+            if (wasPublished)
+            {
+                await ScheduleAmendments.RecordAsync(assignment, change, db, audit, notifier, principal, ct);
+            }
+
             await db.SaveChangesAsync(ct);
 
             assignment.Room = room;
             assignment.TimeSlot = timeSlot;
-            return Results.Ok(ToEntryDto(assignment));
+
+            // After the commit: the edit stands whatever the mail server does.
+            var emailsSent = wasPublished
+                ? await ScheduleAmendments.EmailAsync(assignment, change, db, email, ct)
+                : 0;
+
+            return Results.Ok(new
+            {
+                entry = ToEntryDto(assignment),
+                amended = wasPublished,
+                change = wasPublished ? change : null,
+                notifiedCount = emailsSent
+            });
         }
 
-        // DELETE /api/scheduling/board/{id} — unplace (returns the subject to the pool).
-        private static async Task<IResult> RemoveAsync(Guid assignmentId, AppDbContext db, AuditLog audit, CancellationToken ct)
+        // DELETE /api/scheduling/board/{id} — unplace (returns the subject to the pool). Removing a
+        // *published* class is the sharpest amendment of all: the people holding it need to know it
+        // is gone, so the notice goes out before the row does (FR-PUB-04).
+        private static async Task<IResult> RemoveAsync(
+            Guid assignmentId,
+            AppDbContext db,
+            AuditLog audit,
+            Notifier notifier,
+            IEmailSender email,
+            System.Security.Claims.ClaimsPrincipal principal,
+            CancellationToken ct)
         {
             var assignment = await db.ScheduleAssignments
                 .Include(a => a.Section).ThenInclude(s => s!.Subject)
+                .Include(a => a.Room)
+                .Include(a => a.TimeSlot)
                 .FirstOrDefaultAsync(a => a.Id == assignmentId, ct);
             if (assignment is null) return Results.NotFound(new { message = "That placement no longer exists." });
 
             if (await EnsureNotArchivedAsync(db, assignment.SemesterId, ct) is { } frozen) return frozen;
             if (await EnsureNotFinalizedAsync(db, assignment.SemesterId, ct) is { } locked) return locked;
 
-            db.ScheduleAssignments.Remove(assignment);
+            var wasPublished = assignment.IsPublished;
+            var where = assignment.TimeSlot is null
+                ? "its published slot"
+                : ScheduleAmendments.Describe(
+                    assignment.TimeSlot.Day, assignment.TimeSlot.StartMinutes,
+                    assignment.TimeSlot.EndMinutes, assignment.Room?.Name ?? "its room");
+            var change = $"was removed from the schedule (it was {where})";
+
+            // Notices are staged against the still-present row, then the row is removed in the same
+            // transaction — the notice and the removal commit together or not at all.
+            if (wasPublished)
+            {
+                await ScheduleAmendments.RecordAsync(assignment, change, db, audit, notifier, principal, ct);
+            }
+
             audit.Record(AuditAction.ScheduleOverridden,
                 $"Removed {assignment.Section?.Subject?.Code} from the calendar.",
                 "ScheduleAssignment", assignment.Id.ToString());
+
+            db.ScheduleAssignments.Remove(assignment);
             await db.SaveChangesAsync(ct);
-            return Results.NoContent();
+
+            // After the commit, as with a move: the removal stands whatever the mail server does.
+            // The recipients are looked up by section and faculty id, both of which outlive the row.
+            var emailsSent = wasPublished
+                ? await ScheduleAmendments.EmailAsync(assignment, change, db, email, ct)
+                : 0;
+
+            return Results.Ok(new { removed = true, amended = wasPublished, notifiedCount = emailsSent });
         }
 
         // ---- helpers ----
@@ -495,7 +575,11 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 a.Section?.CohortKey ?? string.Empty,
                 a.Section is null ? string.Empty : CohortLabel(a.Section),
                 a.IsPublished,
-                a.IsManualOverride);
+                a.IsManualOverride,
+                a.IsAmended,
+                a.AmendedAtUtc is { } amended
+                    ? DateTime.SpecifyKind(amended, DateTimeKind.Utc).ToString("o")
+                    : null);
         }
 
         /// <summary>

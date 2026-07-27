@@ -59,7 +59,11 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
         string CohortKey,
         string CohortLabel,
         bool IsPublished,
-        bool IsManualOverride);
+        bool IsManualOverride,
+        // Changed after it was published (FR-PUB-04) — the board marks these so the Academic Head
+        // can see at a glance which classes moved on people who had already been told.
+        bool IsAmended,
+        string? AmendedAtUtc);
 
     /// <summary>
     /// One line in the Weekly Hours Tracker: a single component of a subject taught by a faculty
