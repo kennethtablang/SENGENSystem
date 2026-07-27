@@ -46,17 +46,22 @@ namespace SENGENSystem.Server.Features.Reports
         internal static async Task<(string[] Headers, List<object[]> Rows)> RegistrationRowsAsync(
             Semester semester, AppDbContext db, CancellationToken ct)
         {
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, ct);
             var rows = (await db.StudentRegistrations.AsNoTracking()
                 .Where(r => r.SemesterId == semester.Id)
                 .Include(r => r.Documents)
                 .OrderBy(r => r.StudentNumber)
                 .ToListAsync(ct))
-                .Select(r => new object[]
+                .Select(r =>
                 {
-                    r.StudentNumber, r.FullName, r.Program.ToString(), Humanize(r.StudentType.ToString()),
-                    r.Status.ToString(), r.Email,
-                    DocumentChecklist.SubmittedCount(r.Documents), r.Documents.Count,
-                    r.IsPreAuthorized ? "Yes" : "No"
+                    var documents = DocumentChecklist.Applicable(r, catalog);
+                    return new object[]
+                    {
+                        r.StudentNumber, r.FullName, r.Program.ToString(), Humanize(r.StudentType.ToString()),
+                        r.Status.ToString(), r.Email,
+                        DocumentChecklist.SubmittedCount(documents), documents.Count,
+                        r.IsPreAuthorized ? "Yes" : "No"
+                    };
                 })
                 .ToList();
 
@@ -235,15 +240,16 @@ namespace SENGENSystem.Server.Features.Reports
                 .ToListAsync(ct))
                 .Select(r =>
                 {
-                    var missing = r.Documents
+                    var documents = DocumentChecklist.Applicable(r, catalog);
+                    var missing = documents
                         .Where(d => d.Status == DocumentStatus.NotSubmitted)
                         .OrderBy(d => catalog.Order(d.RequirementCode))
                         .Select(d => catalog.Label(d.RequirementCode));
                     return new object[]
                     {
                         r.StudentNumber, r.FullName, r.Program.ToString(),
-                        DocumentChecklist.SubmittedCount(r.Documents), r.Documents.Count,
-                        DocumentChecklist.IsComplete(r.Documents) ? "Complete" : "Incomplete",
+                        DocumentChecklist.SubmittedCount(documents), documents.Count,
+                        DocumentChecklist.IsComplete(documents) ? "Complete" : "Incomplete",
                         string.Join("; ", missing)
                     };
                 })
