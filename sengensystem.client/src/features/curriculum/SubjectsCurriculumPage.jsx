@@ -75,8 +75,10 @@ export default function SubjectsCurriculumPage() {
         () => allSubjects.filter(s => s.isArchived).length + curricula.filter(c => c.isArchived).length,
         [allSubjects, curricula]
     );
-    // The sheet always shows the live curriculum; archived rows live in the drawer.
-    const visibleSubjects = useMemo(() => subjects.filter(s => !s.isArchived), [subjects]);
+    // Show every subject of the selected curriculum, archived ones included but clearly tagged —
+    // a cohort can deliberately stay on a retired curriculum, so its (archived) subjects must stay
+    // visible here, not only in the archive drawer.
+    const visibleSubjects = useMemo(() => subjects, [subjects]);
 
     // Group subjects by year level, then by term (First/Second Semester), for the curriculum sheet.
     const groups = useMemo(() => {
@@ -203,10 +205,16 @@ export default function SubjectsCurriculumPage() {
                                                     <table className="curr-table">
                                                         <tbody>
                                                             {t.list.map(s => (
-                                                                <tr key={s.id} className="curr-subj-row" onClick={() => setSubjModal(s)}>
+                                                                <tr key={s.id} className={`curr-subj-row${s.isArchived ? ' is-archived' : ''}`} onClick={() => setSubjModal(s)}>
                                                                     <td className="curr-subj-code">{s.code}</td>
                                                                     <td className="curr-subj-title">
                                                                         {s.title}
+                                                                        {s.isArchived && (
+                                                                            <span className="chip chip-muted curr-archived-chip"
+                                                                                title={s.archiveReason || 'This subject has been archived.'}>
+                                                                                Archived
+                                                                            </span>
+                                                                        )}
                                                                         {s.prerequisites.length > 0 && (
                                                                             <span className="curr-prereq-chips">
                                                                                 {s.prerequisites.map(p => (

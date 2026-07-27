@@ -279,6 +279,16 @@
   background: var(--surface-hover);
 }
 
+/* Retired subject kept visible for cohorts still on its curriculum — muted, with an Archived tag. */
+.curr-subj-row.is-archived {
+  opacity: 0.62;
+}
+
+.curr-archived-chip {
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
 .curr-subj-code {
   font: 600 0.82rem/1.2 var(--mono, 'IBM Plex Mono', monospace);
   color: var(--sti-blue);
