@@ -46,6 +46,26 @@ export async function loginAccount(data) {
     return response.json();
 }
 
+export async function verifyTwoFactor(data) {
+    const response = await fetch('/api/auth/2fa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) throw await parseError(response);
+    return response.json();
+}
+
+export async function resendTwoFactor(challengeToken) {
+    const response = await fetch('/api/auth/2fa/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken })
+    });
+    if (!response.ok) throw await parseError(response);
+    return response.json();
+}
+
 export async function forgotPassword(email) {
     const response = await fetch('/api/auth/forgot-password', {
         method: 'POST',
