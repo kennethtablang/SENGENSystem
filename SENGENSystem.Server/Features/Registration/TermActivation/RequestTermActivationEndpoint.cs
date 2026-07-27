@@ -8,6 +8,13 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
 {
     // Vertical slice: a returning student self-requests activation for the active term via a public
     // lookup (student number + last name). No SIS re-entry; an Admission Officer validates it later.
+    //
+    // The number asked for is the **official student number** — the one on the student's ID, issued
+    // by the student-records system and recorded here by the Admission Officer. A returning student
+    // has carried that number for years; SEN-GEN's own registration number is an internal artifact
+    // of the term they first enrolled and is not something they would have to hand. The registration
+    // number is still accepted as a fallback so a student who only ever received that one (a recent
+    // enrollee not yet issued an official number) is not locked out.
     public record RequestTermActivationRequest(string? StudentNumber, string? LastName);
 
     public record RequestTermActivationResponse(Guid Id, string StudentNumber, string Status, string SemesterName);
@@ -46,8 +53,12 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
             var studentNumber = request.StudentNumber.Trim();
             var lastName = request.LastName.Trim();
 
+            // Official student number first — that is what the form asks for and what the student
+            // has on their ID. The registration number is the fallback for anyone never issued one.
             var registration = await db.StudentRegistrations
-                .FirstOrDefaultAsync(r => r.StudentNumber == studentNumber, cancellationToken);
+                .FirstOrDefaultAsync(r => r.OfficialStudentNumber == studentNumber, cancellationToken)
+                ?? await db.StudentRegistrations
+                    .FirstOrDefaultAsync(r => r.StudentNumber == studentNumber, cancellationToken);
 
             // Same generic message whether the number is unknown or the name doesn't match — don't
             // confirm which student numbers exist.
@@ -101,7 +112,12 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
             }
 
             return Results.Created($"/api/registration/term-activation/{activation.Id}",
-                new RequestTermActivationResponse(activation.Id, registration.StudentNumber, activation.Status.ToString(), semester.Name));
+                new RequestTermActivationResponse(
+                    activation.Id,
+                    // Echo back the number they identified themselves with, not the internal one.
+                    registration.OfficialStudentNumber ?? registration.StudentNumber,
+                    activation.Status.ToString(),
+                    semester.Name));
         }
     }
 }

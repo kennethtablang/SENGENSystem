@@ -137,6 +137,10 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
                 Status = RegistrationStatus.Submitted,
                 StudentType = studentType,
                 Program = program,
+                // Nobody types a year level on the SIS (FR-SIS-09). A new enrollee starts at 1; a
+                // transferee also starts there and is moved by the Registrar's credit evaluation,
+                // so an unevaluated transferee is never silently placed in a higher year.
+                YearLevel = YearLevelPolicy.ForNewRegistration(studentType),
                 SemesterId = semester.Id,
                 LastName = Up(request.LastName!),
                 FirstName = Up(request.FirstName!),

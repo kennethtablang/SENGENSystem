@@ -11,10 +11,19 @@ namespace SENGENSystem.Server.Features.Registration
             value is { } v ? DateTime.SpecifyKind(v, DateTimeKind.Utc).ToString("o") : null;
     }
 
-    public record RegistrationDocumentDto(string RequirementCode, string Label, string Status)
+    /// <summary>
+    /// One checklist line on the Registrar's drawer. <paramref name="Statuses"/> is what this
+    /// particular paper may be recorded as — the catalog decides whether a photocopy or a
+    /// certificate of grades is the third option.
+    /// </summary>
+    public record RegistrationDocumentDto(
+        string RequirementCode, string Label, string Status, IReadOnlyList<string> Statuses)
     {
         public static RegistrationDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
-            new(d.RequirementCode, catalog.Label(d.RequirementCode), d.Status.ToString());
+            new(d.RequirementCode,
+                catalog.Label(d.RequirementCode),
+                d.Status.ToString(),
+                catalog.StatusesFor(d.RequirementCode).Select(s => s.ToString()).ToList());
     }
 
     /// <summary>A row in the Registrar's SIS management list (FR-SIS-04).</summary>
@@ -31,8 +40,10 @@ namespace SENGENSystem.Server.Features.Registration
         int DocumentsTotal,
         string CreatedAtUtc)
     {
-        public static RegistrationListItemDto From(StudentRegistration r) =>
-            new(
+        public static RegistrationListItemDto From(StudentRegistration r, RequirementCatalog catalog)
+        {
+            var documents = DocumentChecklist.Applicable(r, catalog);
+            return new(
                 r.Id,
                 r.StudentNumber,
                 r.FullName,
@@ -41,9 +52,10 @@ namespace SENGENSystem.Server.Features.Registration
                 r.Status.ToString(),
                 r.Email,
                 r.Semester?.Name,
-                r.Documents.Count(d => d.Status != DocumentStatus.NotSubmitted),
-                r.Documents.Count,
+                documents.Count(d => d.Status != DocumentStatus.NotSubmitted),
+                documents.Count,
                 Iso.Utc(r.CreatedAtUtc)!);
+        }
     }
 
     /// <summary>Full SIS detail for the Registrar's view/correct screen.</summary>
@@ -130,7 +142,8 @@ namespace SENGENSystem.Server.Features.Registration
                 r.ReferredBy,
                 Iso.Utc(r.TermsAcceptedAtUtc),
                 Iso.Utc(r.CreatedAtUtc)!,
-                r.Documents
+                // Only the papers this enrollee's student type is asked for (FR-DOC-01).
+                DocumentChecklist.Applicable(r, catalog)
                     .OrderBy(d => catalog.Order(d.RequirementCode))
                     .Select(d => RegistrationDocumentDto.From(d, catalog))
                     .ToList());
@@ -140,9 +153,15 @@ namespace SENGENSystem.Server.Features.Registration
     public record TermActivationDto(
         Guid Id,
         Guid StudentRegistrationId,
-        string StudentNumber,
+        // The official student number the returning student identifies themselves by. The internal
+        // registration number is carried alongside it for staff who need to trace the record.
+        string? OfficialStudentNumber,
+        string RegistrationNumber,
         string StudentName,
+        string LastName,
         string Program,
+        int YearLevel,
+        string YearLevelLabel,
         string? SemesterName,
         string Status,
         string RequestedAtUtc,
@@ -153,9 +172,13 @@ namespace SENGENSystem.Server.Features.Registration
             new(
                 a.Id,
                 a.StudentRegistrationId,
+                a.StudentRegistration?.OfficialStudentNumber,
                 a.StudentRegistration?.StudentNumber ?? string.Empty,
                 a.StudentRegistration?.FullName ?? string.Empty,
+                a.StudentRegistration?.LastName ?? string.Empty,
                 a.StudentRegistration?.Program.ToString() ?? string.Empty,
+                a.StudentRegistration?.YearLevel ?? 1,
+                YearLevelPolicy.Label(a.StudentRegistration?.YearLevel ?? 1),
                 a.Semester?.Name,
                 a.Status.ToString(),
                 Iso.Utc(a.RequestedAtUtc)!,

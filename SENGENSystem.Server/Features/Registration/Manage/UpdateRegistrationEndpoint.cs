@@ -69,13 +69,18 @@ namespace SENGENSystem.Server.Features.Registration.Manage
                 }
             }
 
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+
             var docChanges = new List<(string Code, DocumentStatus Status)>();
             if (request.Documents is not null)
             {
                 foreach (var d in request.Documents)
                 {
+                    // The catalog decides which statuses a paper offers — a photocopy, or a
+                    // certificate of grades standing in for it, never both.
                     if (!string.IsNullOrWhiteSpace(d.RequirementCode)
-                        && Enum.TryParse<DocumentStatus>(d.Status, ignoreCase: true, out var ds) && Enum.IsDefined(ds))
+                        && Enum.TryParse<DocumentStatus>(d.Status, ignoreCase: true, out var ds) && Enum.IsDefined(ds)
+                        && catalog.StatusesFor(d.RequirementCode).Contains(ds))
                     {
                         docChanges.Add((d.RequirementCode, ds));
                     }
@@ -156,7 +161,6 @@ namespace SENGENSystem.Server.Features.Registration.Manage
             }
 
             await db.SaveChangesAsync(cancellationToken);
-            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
             return Results.Ok(StudentRegistrationDto.From(registration, catalog));
         }
     }

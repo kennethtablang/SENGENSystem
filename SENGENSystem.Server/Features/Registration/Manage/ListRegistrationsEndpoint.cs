@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Documents;
 
 namespace SENGENSystem.Server.Features.Registration.Manage
 {
@@ -57,10 +58,11 @@ namespace SENGENSystem.Server.Features.Registration.Manage
                 .Take(500)
                 .ToListAsync(cancellationToken);
 
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
             return Results.Ok(new
             {
                 count = items.Count,
-                registrations = items.Select(RegistrationListItemDto.From).ToList()
+                registrations = items.Select(r => RegistrationListItemDto.From(r, catalog)).ToList()
             });
         }
     }

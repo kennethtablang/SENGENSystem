@@ -16,10 +16,16 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
     // ever bind to an account on the email string alone.
     public record LinkAccountRequest(string? StudentNumber, string? DateOfBirth);
 
-    public record LinkedDocumentDto(string RequirementCode, string Label, string Status)
+    public record LinkedDocumentDto(
+        string RequirementCode, string Label, string Status, bool GatesAuthorization)
     {
         public static LinkedDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
-            new(d.RequirementCode, catalog.Label(d.RequirementCode), d.Status.ToString());
+            new(d.RequirementCode,
+                catalog.Label(d.RequirementCode),
+                d.Status.ToString(),
+                // Flagged to the student so they know which papers actually hold up their
+                // clearance and which may follow (FR-PRE-02).
+                catalog.GatesAuthorization(d.RequirementCode));
     }
 
     public record LinkedRegistrationDto(
@@ -34,10 +40,30 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
         int SubmittedCount,
         int TotalCount,
         bool IsPreAuthorized,
+        int YearLevel,
+        string YearLevelLabel,
+        // FR-EVAL: a transferee's credit evaluation stands between them and enlistment, so their
+        // own dashboard has to be able to show it as a step. Null for a new student, who has no
+        // such step at all.
+        string? EvaluationStatus,
+        int? CreditedUnits,
+        int? ToTakeUnits,
         IReadOnlyList<LinkedDocumentDto> Documents)
     {
-        public static LinkedRegistrationDto From(StudentRegistration r, RequirementCatalog catalog) =>
-            new(
+        public static LinkedRegistrationDto From(
+            StudentRegistration r,
+            RequirementCatalog catalog,
+            Domain.TransfereeEvaluation? evaluation = null)
+        {
+            // Only the papers this student's route into the school actually calls for — a
+            // transferee is never shown a Form 138 they cannot produce (FR-DOC-01).
+            var documents = DocumentChecklist.Applicable(r, catalog);
+            var isTransferee = r.StudentType == Domain.StudentType.Transferee;
+            var totals = isTransferee
+                ? TransfereeEvaluation.TransfereeEvaluationEndpoints.Totals(evaluation)
+                : default;
+
+            return new(
                 r.Id,
                 r.StudentNumber,
                 r.FullName,
@@ -45,14 +71,22 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
                 r.StudentType.ToString(),
                 r.Status.ToString(),
                 r.Semester?.Name,
-                DocumentChecklist.IsComplete(r.Documents),
-                DocumentChecklist.SubmittedCount(r.Documents),
-                r.Documents.Count,
+                DocumentChecklist.IsComplete(documents),
+                DocumentChecklist.SubmittedCount(documents),
+                documents.Count,
                 r.IsPreAuthorized,
-                r.Documents
+                r.YearLevel,
+                YearLevelPolicy.Label(r.YearLevel),
+                isTransferee
+                    ? (evaluation?.Status ?? TransfereeEvaluationStatus.Pending).ToString()
+                    : null,
+                isTransferee ? totals.Credited : null,
+                isTransferee ? totals.ToTake : null,
+                documents
                     .OrderBy(d => catalog.Order(d.RequirementCode))
                     .Select(d => LinkedDocumentDto.From(d, catalog))
                     .ToList());
+        }
     }
 
     public static class LinkAccountEndpoint
@@ -65,6 +99,18 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
                 .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.Student)));
             return app;
         }
+
+        /// <summary>
+        /// A transferee's credit evaluation, or null for a new student (who never has one). Kept
+        /// beside the link payload so the student's dashboard can show the evaluation as the step
+        /// it is, rather than leaving them staring at a blocked enlistment with no explanation.
+        /// </summary>
+        private static async Task<Domain.TransfereeEvaluation?> LoadEvaluationAsync(
+            AppDbContext db, StudentRegistration registration, CancellationToken ct) =>
+            registration.StudentType != StudentType.Transferee
+                ? null
+                : await TransfereeEvaluation.TransfereeEvaluationEndpoints
+                    .LoadEvaluationAsync(db, registration.Id, tracking: false, ct);
 
         /// <summary>The signed-in student's link state — powers the "claim your record" card.</summary>
         private static async Task<IResult> GetAsync(
@@ -87,7 +133,7 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
             if (linked is not null)
             {
                 var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
-                return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(linked, catalog) });
+                return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(linked, catalog, await LoadEvaluationAsync(db, linked, cancellationToken)) });
             }
 
             // Hint whether an unclaimed SIS record carries this account's email.
@@ -155,7 +201,7 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
 
             if (registration.UserId == user.Id)
             {
-                return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(registration, catalog) });
+                return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(registration, catalog, await LoadEvaluationAsync(db, registration, cancellationToken)) });
             }
 
             if (existing is not null)
@@ -193,7 +239,7 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
                 "StudentRegistration", registration.Id.ToString());
             await db.SaveChangesAsync(cancellationToken);
 
-            return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(registration, catalog) });
+            return Results.Ok(new { linked = true, registration = LinkedRegistrationDto.From(registration, catalog, await LoadEvaluationAsync(db, registration, cancellationToken)) });
         }
 
         private static Guid? CurrentUserId(ClaimsPrincipal principal)

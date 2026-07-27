@@ -47,16 +47,21 @@ namespace SENGENSystem.Server.Features.Registration.AssignStudentNumber
             return app;
         }
 
-        // Search registrations so the officer can find the enrollee to number. Defaults to those
-        // still missing an official student number (the actual work queue); an explicit search
-        // widens to any registration, matched on registration number or name.
+        // Search registrations so the officer can find the enrollee to number. `status` chooses the
+        // view — "pending" (the work queue, and the default), "numbered" (those already issued a
+        // student number, so the officer can confirm or correct one), or "all". An explicit search
+        // always spans every registration, matched on registration number, name, or student number.
         private static async Task<IResult> ListAsync(
             string? search,
+            string? status,
             bool? unassignedOnly,
             AppDbContext db,
             CancellationToken cancellationToken)
         {
             var query = db.StudentRegistrations.AsNoTracking().AsQueryable();
+
+            // `unassignedOnly=false` was the old way of asking for everything; keep it working.
+            var view = (status ?? (unassignedOnly is false ? "all" : "pending")).Trim();
 
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -67,9 +72,13 @@ namespace SENGENSystem.Server.Features.Registration.AssignStudentNumber
                     || r.FirstName.Contains(term)
                     || (r.OfficialStudentNumber != null && r.OfficialStudentNumber.Contains(term)));
             }
-            else if (unassignedOnly ?? true)
+            else if (string.Equals(view, "pending", StringComparison.OrdinalIgnoreCase))
             {
                 query = query.Where(r => r.OfficialStudentNumber == null);
+            }
+            else if (string.Equals(view, "numbered", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(r => r.OfficialStudentNumber != null);
             }
 
             var items = await query
@@ -77,9 +86,18 @@ namespace SENGENSystem.Server.Features.Registration.AssignStudentNumber
                 .Take(500)
                 .ToListAsync(cancellationToken);
 
+            // Whole-queue tallies, independent of the current view and search, so the page can
+            // always say how many students are numbered and how many are still waiting.
+            var totalCount = await db.StudentRegistrations.CountAsync(cancellationToken);
+            var numberedCount = await db.StudentRegistrations
+                .CountAsync(r => r.OfficialStudentNumber != null, cancellationToken);
+
             return Results.Ok(new
             {
                 count = items.Count,
+                totalCount,
+                numberedCount,
+                pendingCount = totalCount - numberedCount,
                 registrations = items.Select(AssignableRegistrationDto.From).ToList()
             });
         }
