@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
@@ -7,9 +8,12 @@ using SENGENSystem.Server.Domain;
 
 namespace SENGENSystem.Server.Features.Survey
 {
-    // Vertical slice: the public, token-gated ISO/IEC 25010 rating survey a user opens from the
-    // emailed link. No sign-in — the opaque token in the URL identifies the invitation. The
-    // instrument itself is the fixed bilingual bank in SurveyContent; a link answers exactly once.
+    // Vertical slice: answering the ISO/IEC 25010 rating survey. Two ways in, both landing on the
+    // same instrument and the same one-per-person rule:
+    //   * /api/survey/{token} — anonymous, opened from the emailed link.
+    //   * /api/survey/mine    — signed in, opened from the bell notice the Super Admin pushed.
+    // The instrument is the fixed bilingual bank in SurveyContent. Submissions are only accepted
+    // while the Super Admin keeps the collection window open.
     public record SubmitSurveyRequest(
         string? RespondentName,
         string? Position,
@@ -25,6 +29,8 @@ namespace SENGENSystem.Server.Features.Survey
     {
         public static IEndpointRouteBuilder MapSurvey(this IEndpointRouteBuilder app)
         {
+            app.MapGet("/api/survey/mine", GetMineAsync).RequireAuthorization();
+            app.MapPost("/api/survey/mine", SubmitMineAsync).RequireAuthorization();
             app.MapGet("/api/survey/{token}", GetAsync).AllowAnonymous();
             app.MapPost("/api/survey/{token}", SubmitAsync).AllowAnonymous();
             return app;
@@ -51,17 +57,70 @@ namespace SENGENSystem.Server.Features.Survey
             commentsFil = SurveyContent.CommentsFil
         };
 
+        // ---- Emailed-link (anonymous) ----
+
         private static async Task<IResult> GetAsync(string token, AppDbContext db, CancellationToken ct)
         {
             var invitation = await FindByTokenAsync(db, token, ct);
-            if (invitation is null)
+            return invitation is null
+                ? Results.NotFound(new { message = "This survey link is invalid or has been withdrawn." })
+                : await OkInvitationAsync(db, invitation, ct);
+        }
+
+        private static async Task<IResult> SubmitAsync(
+            string token, SubmitSurveyRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var invitation = await FindByTokenAsync(db, token, ct);
+            return invitation is null
+                ? Results.NotFound(new { message = "This survey link is invalid or has been withdrawn." })
+                : await RecordAsync(invitation, request, db, audit, ct);
+        }
+
+        // ---- Signed-in (from the bell notice) ----
+
+        private static async Task<IResult> GetMineAsync(
+            ClaimsPrincipal principal, AppDbContext db, CancellationToken ct)
+        {
+            if (CurrentUserId(principal) is not { } userId)
             {
-                return Results.NotFound(new { message = "This survey link is invalid or has been withdrawn." });
+                return Results.Unauthorized();
             }
 
+            var invitation = await db.SurveyInvitations.FirstOrDefaultAsync(i => i.UserId == userId, ct);
+            return invitation is null
+                ? Results.NotFound(new
+                {
+                    message = "You haven't been invited to the evaluation survey yet. " +
+                              "Wala ka pang imbitasyon para sa pagsusuri."
+                })
+                : await OkInvitationAsync(db, invitation, ct);
+        }
+
+        private static async Task<IResult> SubmitMineAsync(
+            SubmitSurveyRequest request, ClaimsPrincipal principal, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            if (CurrentUserId(principal) is not { } userId)
+            {
+                return Results.Unauthorized();
+            }
+
+            var invitation = await db.SurveyInvitations.FirstOrDefaultAsync(i => i.UserId == userId, ct);
+            return invitation is null
+                ? Results.NotFound(new { message = "You haven't been invited to the evaluation survey yet." })
+                : await RecordAsync(invitation, request, db, audit, ct);
+        }
+
+        // ---- Shared behaviour ----
+
+        private static async Task<IResult> OkInvitationAsync(
+            AppDbContext db, SurveyInvitation invitation, CancellationToken ct)
+        {
+            var campaign = await SurveyAdminEndpoints.GetOrCreateCampaignAsync(db, ct);
             return Results.Ok(new
             {
                 completed = invitation.CompletedAtUtc is not null,
+                isOpen = campaign.IsOpen,
+                note = invitation.Note,
                 respondent = new
                 {
                     name = invitation.RecipientName,
@@ -72,17 +131,28 @@ namespace SENGENSystem.Server.Features.Survey
             });
         }
 
-        private static async Task<IResult> SubmitAsync(
-            string token, SubmitSurveyRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
+        private static async Task<IResult> RecordAsync(
+            SurveyInvitation invitation,
+            SubmitSurveyRequest request,
+            AppDbContext db,
+            AuditLog audit,
+            CancellationToken ct)
         {
-            var invitation = await FindByTokenAsync(db, token, ct);
-            if (invitation is null)
-            {
-                return Results.NotFound(new { message = "This survey link is invalid or has been withdrawn." });
-            }
             if (invitation.CompletedAtUtc is not null)
             {
                 return Results.Conflict(new { message = "This survey has already been answered. Thank you!" });
+            }
+
+            // Responses are collected only while the Super Admin keeps the window open — once they
+            // are satisfied with the number gathered, late submissions are turned away.
+            var campaign = await SurveyAdminEndpoints.GetOrCreateCampaignAsync(db, ct);
+            if (!campaign.IsOpen)
+            {
+                return Results.Conflict(new
+                {
+                    message = "The evaluation survey is now closed. Thank you for your interest! " +
+                              "Sarado na ang sagutan ng pagsusuri. Salamat!"
+                });
             }
 
             var errors = new Dictionary<string, string[]>();
@@ -144,5 +214,8 @@ namespace SENGENSystem.Server.Features.Survey
             var hash = OneTimeToken.Hash(token.Trim());
             return db.SurveyInvitations.FirstOrDefaultAsync(i => i.TokenHash == hash, ct);
         }
+
+        private static Guid? CurrentUserId(ClaimsPrincipal principal) =>
+            Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
     }
 }
