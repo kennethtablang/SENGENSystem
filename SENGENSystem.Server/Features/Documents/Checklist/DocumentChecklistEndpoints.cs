@@ -8,10 +8,26 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
     // Vertical slice: the Admission Officer's per-enrollee requirements checklist board
     // (FR-DOC-01..03). Lists every enrollee with per-document states and completion, and
     // records/updates each paper's submission status as an auditable action.
-    public record ChecklistDocumentDto(Guid Id, string RequirementCode, string Label, string Status)
+    /// <summary>
+    /// One checklist line. <paramref name="Statuses"/> is the set the officer may record against
+    /// this paper — the catalog decides whether a photocopy or a certificate of grades is the
+    /// third option, so the client never has to know which requirement is the transcript.
+    /// </summary>
+    public record ChecklistDocumentDto(
+        Guid Id,
+        string RequirementCode,
+        string Label,
+        string Status,
+        bool GatesAuthorization,
+        IReadOnlyList<string> Statuses)
     {
         public static ChecklistDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
-            new(d.Id, d.RequirementCode, catalog.Label(d.RequirementCode), d.Status.ToString());
+            new(d.Id,
+                d.RequirementCode,
+                catalog.Label(d.RequirementCode),
+                d.Status.ToString(),
+                catalog.GatesAuthorization(d.RequirementCode),
+                catalog.StatusesFor(d.RequirementCode).Select(s => s.ToString()).ToList());
     }
 
     public record ChecklistRowDto(
@@ -26,10 +42,13 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         bool IsComplete,
         int SubmittedCount,
         int TotalCount,
+        IReadOnlyList<string> MissingAuthorizationRequirements,
         IReadOnlyList<ChecklistDocumentDto> Documents)
     {
-        public static ChecklistRowDto From(StudentRegistration r, RequirementCatalog catalog) =>
-            new(
+        public static ChecklistRowDto From(StudentRegistration r, RequirementCatalog catalog)
+        {
+            var documents = DocumentChecklist.Applicable(r, catalog);
+            return new(
                 r.Id,
                 r.StudentNumber,
                 r.FullName,
@@ -38,13 +57,15 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 r.Status.ToString(),
                 r.Semester?.Name,
                 r.IsPreAuthorized,
-                DocumentChecklist.IsComplete(r.Documents),
-                DocumentChecklist.SubmittedCount(r.Documents),
-                r.Documents.Count,
-                r.Documents
+                DocumentChecklist.IsComplete(documents),
+                DocumentChecklist.SubmittedCount(documents),
+                documents.Count,
+                DocumentChecklist.MissingAuthorizationRequirements(documents, catalog),
+                documents
                     .OrderBy(d => catalog.Order(d.RequirementCode))
                     .Select(d => ChecklistDocumentDto.From(d, catalog))
                     .ToList());
+        }
     }
 
     public record UpdateDocumentStatusRequest(string? Status);
@@ -143,11 +164,25 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             }
 
             var registration = document.StudentRegistration;
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+
+            // Which third option this paper offers is the catalog's decision (a photocopy, or a
+            // certificate of grades standing in for it) — never both. Refuse the one that isn't on
+            // offer so a stale board or a hand-made request can't record an impossible state.
+            var allowed = catalog.StatusesFor(document.RequirementCode);
+            if (!allowed.Contains(status))
+            {
+                return Results.BadRequest(new
+                {
+                    message = $"{catalog.Label(document.RequirementCode)} cannot be recorded as " +
+                        $"{Label(status)} — it accepts {string.Join(", ", allowed.Select(Label))}."
+                });
+            }
+
             if (document.Status != status)
             {
                 var previous = document.Status;
                 document.Status = status;
-                var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
                 audit.Record(AuditAction.DocumentChecklistUpdated,
                     $"Set {catalog.Label(document.RequirementCode)} of {registration.StudentNumber} " +
                     $"from {previous} to {status}.",
@@ -155,14 +190,27 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 await db.SaveChangesAsync(cancellationToken);
             }
 
+            var applicable = DocumentChecklist.Applicable(registration, catalog);
             return Results.Ok(new
             {
                 documentId = document.Id,
                 status = document.Status.ToString(),
-                isComplete = DocumentChecklist.IsComplete(registration.Documents),
-                submittedCount = DocumentChecklist.SubmittedCount(registration.Documents),
-                totalCount = registration.Documents.Count
+                isComplete = DocumentChecklist.IsComplete(applicable),
+                submittedCount = DocumentChecklist.SubmittedCount(applicable),
+                totalCount = applicable.Count,
+                missingAuthorizationRequirements =
+                    DocumentChecklist.MissingAuthorizationRequirements(applicable, catalog)
             });
         }
+
+        /// <summary>Reader-friendly name for a status, for messages the officer sees.</summary>
+        private static string Label(DocumentStatus status) => status switch
+        {
+            DocumentStatus.NotSubmitted => "not submitted",
+            DocumentStatus.Submitted => "submitted (original)",
+            DocumentStatus.XeroxCopy => "xerox copy",
+            DocumentStatus.CertificateOfGrades => "certificate of grades",
+            _ => status.ToString()
+        };
     }
 }
