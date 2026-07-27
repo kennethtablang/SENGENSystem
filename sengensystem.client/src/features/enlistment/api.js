@@ -30,8 +30,14 @@ async function authRequest(url, { method = 'GET', body } = {}) {
 
 // ---- Student (FR-ENL-01/02/04) ----
 
-export function browseSections() {
-    return authRequest('/api/enlistment/sections');
+/**
+ * Published sections for the active term. By default the server narrows them to the subjects the
+ * signed-in student's program and year level still owe this term (FR-ENL-01/06); pass
+ * `{ all: true }` to see every published section instead. Browsing wider never widens what may be
+ * requested — the request leg re-checks the same list.
+ */
+export function browseSections({ all } = {}) {
+    return authRequest(`/api/enlistment/sections${all ? '?all=true' : ''}`);
 }
 
 export function requestSlot(sectionId) {
@@ -60,9 +66,35 @@ export function approveRequest(requestId) {
     return authRequest(`/api/enlistment/approvals/${requestId}/approve`, { method: 'POST' });
 }
 
+/**
+ * FR-ENL-08: decide many requests at once. Pass `requestIds` for a checkbox selection, or
+ * `allPending: true` to sweep the active term's queue — optionally narrowed to one student
+ * (`studentRegistrationId`) or one section (`sectionId`). Every request still goes through the
+ * same per-request checks; the response reports each outcome so skips can be shown with reasons.
+ */
+export function bulkApprove({ requestIds, allPending, studentRegistrationId, sectionId } = {}) {
+    return authRequest('/api/enlistment/approvals/bulk-approve', {
+        method: 'POST',
+        body: {
+            requestIds: requestIds ?? null,
+            allPending: !!allPending,
+            studentRegistrationId: studentRegistrationId ?? null,
+            sectionId: sectionId ?? null
+        }
+    });
+}
+
 export function rejectRequest(requestId, reason) {
     return authRequest(`/api/enlistment/approvals/${requestId}/reject`, {
         method: 'POST',
         body: { reason: reason || null }
+    });
+}
+
+// FR-ENL-03 manual override: raise a section's seat cap to complete a short section.
+export function overrideCapacity(sectionId, capacity, reason) {
+    return authRequest(`/api/enlistment/approvals/sections/${sectionId}/capacity`, {
+        method: 'POST',
+        body: { capacity, reason: reason || null }
     });
 }

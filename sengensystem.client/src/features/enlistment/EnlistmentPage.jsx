@@ -1,19 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { browseSections, requestSlot, myEnlistment, cancelRequest } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { hhmm } from '../scheduling/calendarUtils';
 import { formatPHT } from '../registration/options';
 import './enlistment.css';
 
 /* FR-ENL: the student's subject enlistment. Browse published sections with live seat
    availability (FR-ENL-01/02), request seats routed through Registrar approval (FR-ENL-04),
    and track/cancel pending requests. Requests are refused server-side when ineligible
-   (FR-ENL-05), the section is full (FR-ENL-03), or times overlap (FR-ENL-07). */
+   (FR-ENL-05), the section is full (FR-ENL-03), or times overlap (FR-ENL-07).
+
+   The page opens on the student's own curriculum, not the institution's catalog: the checklist
+   at the top is the subjects their program and year level still owe this term, and the section
+   cards below are narrowed to exactly those (FR-ENL-01/06). "Show every section" widens the
+   browse only — the server re-checks the same list when a seat is actually requested. */
 
 const requestChip = {
     Requested: 'chip chip-yellow',
     Approved: 'chip chip-blue',
     Rejected: 'chip chip-muted',
     Cancelled: 'chip chip-muted'
+};
+
+/* Where each subject on the checklist stands. NoSection is the one the student can do nothing
+   about — say so plainly rather than leaving them hunting for a card that isn't there. */
+const planStatus = {
+    Approved: { chip: 'chip chip-blue', label: 'Enrolled' },
+    Requested: { chip: 'chip chip-yellow', label: 'Awaiting approval' },
+    Open: { chip: 'chip chip-muted', label: 'Not yet requested' },
+    NoSection: { chip: 'chip chip-muted', label: 'No class published yet' }
 };
 
 function availabilityClass(available, capacity) {
@@ -29,10 +44,11 @@ function EnlistmentPage() {
     const [busyId, setBusyId] = useState(null);
     const [alert, setAlert] = useState(null);
     const [search, setSearch] = useState('');
+    const [showAll, setShowAll] = useState(false);
 
-    async function load() {
+    async function load(all = showAll) {
         try {
-            const [browse, my] = await Promise.all([browseSections(), myEnlistment()]);
+            const [browse, my] = await Promise.all([browseSections({ all }), myEnlistment()]);
             setData(browse);
             setMine(my);
         } catch (err) {
@@ -46,6 +62,13 @@ function EnlistmentPage() {
         const initial = setTimeout(load, 0);
         return () => clearTimeout(initial);
     }, []);
+
+    async function toggleShowAll() {
+        const next = !showAll;
+        setShowAll(next);
+        setLoading(true);
+        await load(next);
+    }
 
     const sections = useMemo(() => {
         if (!data) return [];
@@ -92,6 +115,8 @@ function EnlistmentPage() {
     if (loading) return <div className="enl-page"><p className="enl-empty">Loading published sections…</p></div>;
 
     const eligibility = data?.eligibility;
+    const plan = data?.plan;
+    const hasPlan = plan?.resolved && plan.subjects.length > 0;
 
     return (
         <div className="enl-page">
@@ -99,9 +124,20 @@ function EnlistmentPage() {
                 <div>
                     <h2>Subject enlistment</h2>
                     <p className="enl-sub">
-                        Published sections for
-                        {data?.semesterName ? <> <strong>{data.semesterName}</strong></> : ' the active semester'} with
-                        live seat availability. Seats are confirmed once the Registrar approves your request.
+                        {plan?.filtered ? (
+                            <>
+                                Your <strong>{plan.programCode} {plan.yearLevelLabel}</strong> subjects for
+                                {data?.semesterName ? <> <strong>{data.semesterName}</strong></> : ' the active semester'},
+                                with live seat availability. Seats are confirmed once the Registrar approves
+                                your request.
+                            </>
+                        ) : (
+                            <>
+                                Published sections for
+                                {data?.semesterName ? <> <strong>{data.semesterName}</strong></> : ' the active semester'} with
+                                live seat availability. Seats are confirmed once the Registrar approves your request.
+                            </>
+                        )}
                     </p>
                 </div>
                 <div className="enl-controls">
@@ -109,7 +145,7 @@ function EnlistmentPage() {
                         type="search" placeholder="Search subject or section…"
                         value={search} onChange={e => setSearch(e.target.value)}
                     />
-                    <button className="btn" type="button" onClick={load}>Refresh</button>
+                    <button className="btn" type="button" onClick={() => load()}>Refresh</button>
                 </div>
             </header>
 
@@ -120,6 +156,63 @@ function EnlistmentPage() {
                         {eligibility.blockers.map((b, i) => <li key={i}>{b}</li>)}
                     </ul>
                 </div>
+            )}
+
+            {plan?.notice && <div className="alert">{plan.notice}</div>}
+
+            {hasPlan && (
+                <section className="card enl-plan">
+                    <header className="enl-plan-head">
+                        <div>
+                            <h3>Subjects you need this term</h3>
+                            <p className="enl-plan-sub">
+                                {plan.programName || plan.programCode} · {plan.yearLevelLabel} · {plan.termLabel}
+                            </p>
+                        </div>
+                        <span className="chip chip-blue">
+                            {plan.subjectCount} {plan.subjectCount === 1 ? 'subject' : 'subjects'} · {plan.units} units
+                        </span>
+                    </header>
+                    <div className="enl-table-wrap">
+                        <table className="enl-table">
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th>Units</th>
+                                    <th>Classes</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {plan.subjects.map(s => {
+                                    const state = planStatus[s.status] ?? planStatus.Open;
+                                    return (
+                                        <tr key={s.subjectCode}>
+                                            <td>
+                                                <strong>{s.subjectCode}</strong>
+                                                <span className="enl-subject-title">{s.subjectTitle}</span>
+                                                {/* A subject carried from an earlier year is the one a student
+                                                    is most likely to think is a mistake. Label it. */}
+                                                {s.isBackSubject && (
+                                                    <span className="chip chip-muted enl-back-chip">
+                                                        Carried from year {s.yearLevel}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td>{s.units}</td>
+                                            <td>
+                                                {s.sectionCount === 0
+                                                    ? '—'
+                                                    : `${s.sectionCount} · ${s.seatsAvailable} seats left`}
+                                            </td>
+                                            <td><span className={state.chip}>{state.label}</span></td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             )}
 
             {alert && (
@@ -182,11 +275,29 @@ function EnlistmentPage() {
                 </section>
             )}
 
+            {plan?.resolved && (
+                <div className="enl-scope">
+                    <p className="enl-scope-text">
+                        {showAll
+                            ? `Showing all ${data.totalCount} published sections, including subjects outside your `
+                              + 'curriculum. You can only request a seat in your own subjects.'
+                            : `Showing the ${data.count} published `
+                              + `${data.count === 1 ? 'section' : 'sections'} for your subjects.`}
+                    </p>
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={toggleShowAll}>
+                        {showAll ? 'Show only my subjects' : 'Show every section'}
+                    </button>
+                </div>
+            )}
+
             {sections.length === 0 ? (
                 <p className="enl-empty">
-                    {data?.count === 0
-                        ? 'No published sections yet — schedules appear here once the Registrar publishes them.'
-                        : 'No sections match your search.'}
+                    {data?.count !== 0
+                        ? 'No sections match your search.'
+                        : data?.totalCount > 0 && plan?.filtered
+                            ? 'None of your subjects for this term have a published class yet. They appear here '
+                              + 'once the Registrar publishes the schedule.'
+                            : 'No published sections yet — schedules appear here once the Registrar publishes them.'}
                 </p>
             ) : (
                 <div className="enl-grid">
@@ -207,7 +318,7 @@ function EnlistmentPage() {
                             <ul className="enl-meetings">
                                 {s.meetings.map((m, i) => (
                                     <li key={i}>
-                                        <span className="enl-mono">{m.day.slice(0, 3)} {m.time}</span>
+                                        <span className="enl-mono">{m.day.slice(0, 3)} {hhmm(m.startMinutes)}–{hhmm(m.endMinutes)}</span>
                                         <span>{m.room}</span>
                                         <span className="enl-faculty">{m.faculty}</span>
                                     </li>

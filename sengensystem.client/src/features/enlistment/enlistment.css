@@ -58,6 +58,56 @@
   padding: 2rem 0;
 }
 
+/* ---------- What this student still has to take (FR-ENL-01/06) ---------- */
+
+/* Reuses the requests table wholesale — the two read as one idea (your subjects, your seats),
+   so they should look like one thing rather than two competing panels. */
+.enl-plan {
+  padding: 1rem 1.1rem 1.2rem;
+  margin-bottom: 1.4rem;
+}
+
+.enl-plan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.7rem;
+}
+
+.enl-plan-head h3 {
+  font-size: 1rem;
+  color: var(--text-1);
+}
+
+.enl-plan-sub {
+  color: var(--text-3);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
+.enl-back-chip {
+  margin-left: 0.45rem;
+  vertical-align: middle;
+}
+
+/* The line between the checklist and the cards: what the cards below are showing, and the way
+   out of it. Quiet by design — it is orientation, not an action the student owes anyone. */
+.enl-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.enl-scope-text {
+  color: var(--text-3);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
 /* ---------- My requests ---------- */
 
 .enl-mine {
@@ -231,6 +281,77 @@
   font-size: 0.82rem;
 }
 
+/* FR-ENL-03 manual cap override — inline editor on the Seats cell. */
+.enl-cap-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.enl-cap-form {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.enl-cap-form input[type='number'] {
+  width: 4.5rem;
+}
+
+.enl-cap-form input {
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
 .enl-cancel {
   font-size: 0.78rem;
+}
+
+/* ---- Bulk approval (FR-ENL-08) --------------------------------------------------------------
+   The queue is hundreds deep on day one; deciding one row at a time is the real bottleneck. The
+   selection bar only appears once something is selected, so the ordinary one-row flow is unchanged. */
+
+.enl-check-col {
+  width: 2.2rem;
+  text-align: center;
+}
+
+.enl-check-col input {
+  accent-color: var(--sti-blue);
+  cursor: pointer;
+}
+
+.reg-table tr.is-selected > td {
+  background: var(--surface-2, hsl(220 60% 97%));
+}
+
+.enl-bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--sti-blue);
+  border-radius: var(--radius);
+  background: var(--surface-2, hsl(220 60% 97%));
+  font-size: 0.84rem;
+}
+
+.enl-bulkbar > span:first-child {
+  margin-right: auto;
+}
+
+/* Skipped requests come back with a reason each — a batch that silently dropped three students
+   would be worse than no batch at all. */
+.enl-skipped {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
 }
