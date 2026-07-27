@@ -20,6 +20,26 @@ namespace SENGENSystem.Server.Features.Publishing
                 $"<p>You have <strong>{classCount}</strong> assigned class meeting{(classCount == 1 ? "" : "s")} this term. " +
                 $"Open <strong>My schedule</strong> in SEN-GEN to view your weekly timetable.</p>"));
 
+        /// <summary>
+        /// FR-PUB-04: a class that was already published has moved. Sent to the faculty member and
+        /// to every student holding a seat — the same people the original publication notice
+        /// reached, because they are the ones now holding a wrong time.
+        /// </summary>
+        public static (string Subject, string Body) ScheduleAmended(
+            string recipientName, string subjectCode, string subjectTitle, string cohort, string change) =>
+            ($"Schedule Change — {subjectCode}",
+             Wrap(
+                $"<h2>A published class has changed</h2>" +
+                $"<p>Hi {Escape(FirstNameOf(recipientName))},</p>" +
+                $"<p><strong>{Escape(subjectCode)}</strong>{(string.IsNullOrWhiteSpace(subjectTitle) ? string.Empty : $" — {Escape(subjectTitle)}")}" +
+                $"{(string.IsNullOrWhiteSpace(cohort) ? string.Empty : $" ({Escape(cohort)})")} " +
+                $"{Escape(change)}.</p>" +
+                $"<p>This class was already published, so please update any copy of your timetable. " +
+                $"Open <strong>My schedule</strong> in SEN-GEN for the current week.</p>"));
+
+        private static string FirstNameOf(string fullName) =>
+            string.IsNullOrWhiteSpace(fullName) ? "there" : fullName.Split(' ')[0];
+
         public static (string Subject, string Body) StudentSchedulePublished(StudentRegistration r, string semesterName) =>
             ($"Class Schedules Now Available — {semesterName}",
              Wrap(
