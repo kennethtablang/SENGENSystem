@@ -4,7 +4,7 @@ import StageModal from './StageModal';
 import './stage.css';
 
 /* The top-bar banner: which term is active and where it sits in the enrollment cycle.
-   Everyone sees it; the Registrar and School Admin get a button that opens the phase
+   Everyone sees it; the Academic Head and School Admin get a button that opens the phase
    control. Refreshes when any other mounted copy changes the stage. */
 
 export default function EnrollmentTicker() {

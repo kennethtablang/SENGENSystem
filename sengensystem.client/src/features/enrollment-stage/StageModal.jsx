@@ -5,7 +5,7 @@ import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import './stage.css';
 
-/* The enrollment-cycle control (Registrar / School Admin). Shows the term's phases as a
+/* The enrollment-cycle control (Academic Head / School Admin). Shows the term's phases as a
    stepper — done, current, upcoming — with one primary action to move to the next phase,
    and a picker for correcting a mis-set stage (including stepping back). */
 
