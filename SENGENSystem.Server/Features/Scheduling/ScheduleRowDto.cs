@@ -16,11 +16,17 @@ namespace SENGENSystem.Server.Features.Scheduling
         // lecture-laboratory subject produces one row of each, in different rooms.
         string Component,
         string Day,
+        // Pre-formatted 24-hour text, kept for callers (exports, emails) that need a string.
+        // Screens should format StartMinutes/EndMinutes themselves so the reader's 12/24-hour
+        // Settings preference is honoured — a server-baked string can't follow a device setting.
         string Time,
+        int StartMinutes,
+        int EndMinutes,
         string Faculty,
         bool IsPublished,
         bool IsManualOverride,
-        bool IsFinalized)
+        bool IsFinalized,
+        bool IsAmended)
     {
         public static ScheduleRowDto From(ScheduleAssignment a) =>
             new(
@@ -35,10 +41,13 @@ namespace SENGENSystem.Server.Features.Scheduling
                 ComponentOf(a).ToString(),
                 a.TimeSlot?.Day.ToString() ?? string.Empty,
                 a.TimeSlot is null ? string.Empty : $"{Format(a.TimeSlot.StartMinutes)}–{Format(a.TimeSlot.EndMinutes)}",
+                a.TimeSlot?.StartMinutes ?? 0,
+                a.TimeSlot?.EndMinutes ?? 0,
                 a.FacultyProfile?.User?.FullName ?? string.Empty,
                 a.IsPublished,
                 a.IsManualOverride,
-                a.IsFinalized);
+                a.IsFinalized,
+                a.IsAmended);
 
         private static string Format(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
 
