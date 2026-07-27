@@ -17,14 +17,35 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
         string? Description,
         bool IsActive,
         int SortOrder,
-        IReadOnlyList<string> Programs)
+        IReadOnlyList<string> Programs,
+        IReadOnlyList<string> StudentTypes,
+        bool IsRequiredForAuthorization,
+        bool AcceptsCertificateOfGrades)
     {
         public static RequirementDto From(AdmissionRequirement r) =>
             new(r.Id, r.Code, r.Name, r.Description, r.IsActive, r.SortOrder,
-                r.Programs.Select(p => p.Program.ToString()).OrderBy(p => p).ToList());
+                r.Programs.Select(p => p.Program.ToString()).OrderBy(p => p).ToList(),
+                StudentTypesOf(r),
+                r.IsRequiredForAuthorization,
+                r.AcceptsCertificateOfGrades);
+
+        private static List<string> StudentTypesOf(AdmissionRequirement r)
+        {
+            var types = new List<string>();
+            if (r.AppliesToNewStudents) types.Add(nameof(StudentType.NewStudent));
+            if (r.AppliesToTransferees) types.Add(nameof(StudentType.Transferee));
+            return types;
+        }
     }
 
-    public record SaveRequirementRequest(string? Name, string? Description, bool? IsActive, string[]? Programs);
+    public record SaveRequirementRequest(
+        string? Name,
+        string? Description,
+        bool? IsActive,
+        string[]? Programs,
+        string[]? StudentTypes,
+        bool? IsRequiredForAuthorization,
+        bool? AcceptsCertificateOfGrades);
 
     public static class RequirementsEndpoints
     {
@@ -54,7 +75,7 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
         private static async Task<IResult> CreateAsync(
             SaveRequirementRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
         {
-            if (!TryParse(request, out var name, out var programs, out var problem))
+            if (!TryParse(request, out var parsed, out var problem))
             {
                 return problem;
             }
@@ -62,17 +83,22 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
             var maxOrder = await db.AdmissionRequirements.Select(r => (int?)r.SortOrder).MaxAsync(ct) ?? 0;
             var requirement = new AdmissionRequirement
             {
-                Code = await GenerateCodeAsync(db, name, ct),
-                Name = name,
+                Code = await GenerateCodeAsync(db, parsed.Name, ct),
+                Name = parsed.Name,
                 Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
                 IsActive = request.IsActive ?? true,
                 SortOrder = maxOrder + 1,
-                Programs = programs.Select(p => new AdmissionRequirementProgram { Program = p }).ToList()
+                AppliesToNewStudents = parsed.NewStudents,
+                AppliesToTransferees = parsed.Transferees,
+                IsRequiredForAuthorization = request.IsRequiredForAuthorization ?? false,
+                AcceptsCertificateOfGrades = request.AcceptsCertificateOfGrades ?? false,
+                Programs = parsed.Programs.Select(p => new AdmissionRequirementProgram { Program = p }).ToList()
             };
 
             db.AdmissionRequirements.Add(requirement);
             audit.Record(AuditAction.RequirementCreated,
-                $"Added admission requirement \"{name}\" for {ProgramList(programs)}.",
+                $"Added admission requirement \"{parsed.Name}\" for {ProgramList(parsed.Programs)} " +
+                $"({StudentTypeList(parsed)}){(requirement.IsRequiredForAuthorization ? ", required for authorization" : string.Empty)}.",
                 "AdmissionRequirement", requirement.Id.ToString());
             await db.SaveChangesAsync(ct);
 
@@ -90,24 +116,30 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
                 return Results.NotFound(new { message = "Requirement not found." });
             }
 
-            if (!TryParse(request, out var name, out var programs, out var problem))
+            if (!TryParse(request, out var parsed, out var problem))
             {
                 return problem;
             }
 
-            requirement.Name = name;
+            requirement.Name = parsed.Name;
             requirement.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
             if (request.IsActive is { } active) requirement.IsActive = active;
+            requirement.AppliesToNewStudents = parsed.NewStudents;
+            requirement.AppliesToTransferees = parsed.Transferees;
+            if (request.IsRequiredForAuthorization is { } gating) requirement.IsRequiredForAuthorization = gating;
+            if (request.AcceptsCertificateOfGrades is { } cog) requirement.AcceptsCertificateOfGrades = cog;
 
             // Reconcile the program set.
             requirement.Programs.Clear();
-            foreach (var p in programs)
+            foreach (var p in parsed.Programs)
             {
                 requirement.Programs.Add(new AdmissionRequirementProgram { Program = p });
             }
 
             audit.Record(AuditAction.RequirementUpdated,
-                $"Updated admission requirement \"{name}\" — applies to {ProgramList(programs)}" +
+                $"Updated admission requirement \"{parsed.Name}\" — applies to {ProgramList(parsed.Programs)} " +
+                $"({StudentTypeList(parsed)})" +
+                $"{(requirement.IsRequiredForAuthorization ? ", required for authorization" : string.Empty)}" +
                 $"{(requirement.IsActive ? string.Empty : " (archived)")}.",
                 "AdmissionRequirement", requirement.Id.ToString());
             await db.SaveChangesAsync(ct);
@@ -139,11 +171,21 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
             return Results.Ok(new { archived = true });
         }
 
+        /// <summary>
+        /// A validated save request: the name, the programs the paper applies to, and the student
+        /// types that are asked for it. Omitting <c>StudentTypes</c> keeps the historical
+        /// "everyone" behaviour, so an older client cannot silently narrow a requirement.
+        /// </summary>
+        private sealed record ParsedRequirement(
+            string Name, List<ProgramTrack> Programs, bool NewStudents, bool Transferees);
+
         private static bool TryParse(
-            SaveRequirementRequest request, out string name, out List<ProgramTrack> programs, out IResult problem)
+            SaveRequirementRequest request, out ParsedRequirement parsed, out IResult problem)
         {
-            name = request.Name?.Trim() ?? string.Empty;
-            programs = new List<ProgramTrack>();
+            var name = request.Name?.Trim() ?? string.Empty;
+            var programs = new List<ProgramTrack>();
+            var newStudents = request.StudentTypes is null;
+            var transferees = request.StudentTypes is null;
             problem = Results.Empty;
 
             var errors = new Dictionary<string, string[]>();
@@ -170,6 +212,25 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
                 errors["programs"] = ["Choose at least one program this requirement applies to."];
             }
 
+            foreach (var raw in request.StudentTypes ?? [])
+            {
+                if (Enum.TryParse<StudentType>(raw, ignoreCase: true, out var t) && Enum.IsDefined(t))
+                {
+                    if (t == StudentType.Transferee) transferees = true; else newStudents = true;
+                }
+                else
+                {
+                    errors["studentTypes"] = ["One or more selected student types are invalid."];
+                    break;
+                }
+            }
+
+            if (!newStudents && !transferees && !errors.ContainsKey("studentTypes"))
+            {
+                errors["studentTypes"] = ["Choose at least one student type this requirement applies to."];
+            }
+
+            parsed = new ParsedRequirement(name, programs, newStudents, transferees);
             if (errors.Count > 0)
             {
                 problem = Results.ValidationProblem(errors);
@@ -196,5 +257,10 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
 
         private static string ProgramList(IEnumerable<ProgramTrack> programs) =>
             string.Join(", ", programs.Select(p => p.ToString()));
+
+        private static string StudentTypeList(ParsedRequirement parsed) =>
+            parsed.NewStudents && parsed.Transferees ? "all student types"
+            : parsed.Transferees ? "transferees only"
+            : "new students only";
     }
 }
