@@ -162,6 +162,10 @@ namespace SENGENSystem.Server.Features.Registration
         string Program,
         int YearLevel,
         string YearLevelLabel,
+        // What the student themselves confirmed when they filed, so the officer can see at a glance
+        // where their own answer differs from the record. Null for pre-confirmation requests.
+        int? DeclaredYearLevel,
+        string? DeclaredYearLevelLabel,
         string? SemesterName,
         string Status,
         string RequestedAtUtc,
@@ -179,6 +183,8 @@ namespace SENGENSystem.Server.Features.Registration
                 a.StudentRegistration?.Program.ToString() ?? string.Empty,
                 a.StudentRegistration?.YearLevel ?? 1,
                 YearLevelPolicy.Label(a.StudentRegistration?.YearLevel ?? 1),
+                a.DeclaredYearLevel,
+                a.DeclaredYearLevel is { } declared ? YearLevelPolicy.Label(declared) : null,
                 a.Semester?.Name,
                 a.Status.ToString(),
                 Iso.Utc(a.RequestedAtUtc)!,
