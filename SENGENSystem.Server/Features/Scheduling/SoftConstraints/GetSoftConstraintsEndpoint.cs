@@ -11,7 +11,15 @@ namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
     /// normalises every term to 0..1 before weighting, so raising one genuinely raises its pull.
     /// </summary>
     public record SoftConstraintWeightsRequest(
-        double? Preference, double? IdleGap, double? RoomFit, double? GapSaturationHours);
+        double? Preference,
+        double? IdleGap,
+        double? RoomFit,
+        double? GapSaturationHours,
+        /// <summary>
+        /// When the teaching day opens, in minutes from midnight — the earliest a generated class
+        /// may start (FR-SCHED-05). Omitted leaves the current setting alone.
+        /// </summary>
+        int? ClassStartMinutes = null);
 
     // Vertical slice: the inputs the CSP engine optimises its soft constraints against, surfaced
     // so the Academic Head sees the basis behind a generated schedule and can correct it before
@@ -52,6 +60,9 @@ namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
         // Widest sane idle-gap saturation, in hours — a whole long day.
         private const double MaxGapSaturationHours = 24.0;
 
+        // The latest the teaching day may be told to open — past this nothing could be placed.
+        private const int LatestClassStartMinutes = 18 * 60;
+
         /// <summary>
         /// PUT the soft-constraint weights the engine will use on the next generation. Values are
         /// relative importances clamped to 0..1 (the engine normalises before weighting), and the
@@ -76,6 +87,16 @@ namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
                 errors["preference"] = ["At least one weight must be greater than zero, otherwise there is nothing to optimise."];
             }
 
+            // On the half hour, and inside a plausible teaching day — a start time that isn't on a
+            // period boundary could silently exclude the whole grid.
+            var classStart = request.ClassStartMinutes;
+            if (classStart is { } start
+                && (start < 0 || start > LatestClassStartMinutes || start % 30 != 0))
+            {
+                errors["classStartMinutes"] =
+                    [$"Choose a class start time on the half hour, between 00:00 and {LatestClassStartMinutes / 60:D2}:00."];
+            }
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -86,11 +107,13 @@ namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
             settings.WeightIdleGap = idleGap;
             settings.WeightRoomFit = roomFit;
             settings.GapSaturationHours = gapSaturation;
+            if (classStart is { } value) settings.ClassDayStartMinutes = value;
             settings.UpdatedAtUtc = DateTime.UtcNow;
 
             audit.Record(AuditAction.SoftConstraintWeightsChanged,
-                $"Adjusted the scheduling soft-constraint weights — preference {preference:0.00}, " +
-                $"idle gap {idleGap:0.00}, room fit {roomFit:0.00}, gap saturation {gapSaturation:0.#}h.",
+                $"Adjusted the scheduling generation settings — preference {preference:0.00}, " +
+                $"idle gap {idleGap:0.00}, room fit {roomFit:0.00}, gap saturation {gapSaturation:0.#}h, " +
+                $"classes start {settings.ClassDayStartMinutes / 60:D2}:{settings.ClassDayStartMinutes % 60:D2}.",
                 "SystemSettings", SystemSettings.SingletonId.ToString());
             await db.SaveChangesAsync(ct);
 
@@ -112,7 +135,8 @@ namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
             preference = s.WeightPreference,
             idleGap = s.WeightIdleGap,
             roomFit = s.WeightRoomFit,
-            gapSaturationHours = s.GapSaturationHours
+            gapSaturationHours = s.GapSaturationHours,
+            classStartMinutes = s.ClassDayStartMinutes
         };
 
         private static async Task<IResult> HandleAsync(
@@ -188,12 +212,20 @@ namespace SENGENSystem.Server.Features.Scheduling.SoftConstraints
 
             var settings = await db.GetSettingsAsync(ct);
 
+            // How much of the allowable period grid the class start time still leaves the engine —
+            // so the panel can warn that the day opens too late *before* a run fails on it.
+            var allowableSlotCount = await db.TimeSlots.AsNoTracking().CountAsync(t => t.IsAllowable, ct);
+            var usableSlotCount = await db.TimeSlots.AsNoTracking()
+                .CountAsync(t => t.IsAllowable && t.StartMinutes >= settings.ClassDayStartMinutes, ct);
+
             return Results.Ok(new
             {
                 semesterId = semester.Id,
                 semesterName = semester.Name,
                 // The tunable weights the engine will use on the next generation (FR-SCHED-05).
                 weights = WeightsPayload(settings),
+                allowableSlotCount,
+                usableSlotCount,
                 facultyCount = loadRows.Count,
                 withPreferences = preferences.Count(p => p.Windows.Count > 0),
                 preferences,
