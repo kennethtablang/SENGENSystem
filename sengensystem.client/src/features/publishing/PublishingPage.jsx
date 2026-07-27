@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getFullSchedule, publishSchedule } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { hhmm } from '../scheduling/calendarUtils';
 import ScheduleTable from '../scheduling/ScheduleTable';
 import '../scheduling/scheduling.css';
 import './publishing.css';
@@ -39,7 +40,7 @@ function FlatTable({ rows, showDay = true }) {
                         {sorted.map(row => (
                             <tr key={row.assignmentId}>
                                 {showDay && <td>{row.day}</td>}
-                                <td className="sched-mono">{row.time}</td>
+                                <td className="sched-mono">{hhmm(row.startMinutes)}–{hhmm(row.endMinutes)}</td>
                                 <td className="sched-mono">{row.cohortKey}</td>
                                 <td>
                                     <strong>{row.subjectCode}</strong>
