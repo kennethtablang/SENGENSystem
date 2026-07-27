@@ -55,7 +55,10 @@ namespace SENGENSystem.Server.Features.Dashboard
                 .ToListAsync(cancellationToken);
 
             var requirementCatalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
-            var docsComplete = registrations.Count(r => DocumentChecklist.IsComplete(r.Documents));
+            // Papers a student's route into the school never calls for don't count against them.
+            var applicableDocuments = registrations.ToDictionary(
+                r => r.Id, r => DocumentChecklist.Applicable(r, requirementCatalog));
+            var docsComplete = registrations.Count(r => DocumentChecklist.IsComplete(applicableDocuments[r.Id]));
             var registration = new
             {
                 total = registrations.Count,
@@ -291,14 +294,16 @@ namespace SENGENSystem.Server.Features.Dashboard
             // ---- Requirement mix: per admission paper, how far the whole cohort has got.
             // Shows *which* document is holding clearance up, not just that something is.
             var documentMix = registrations
-                .SelectMany(r => r.Documents)
+                .SelectMany(r => applicableDocuments[r.Id])
                 .GroupBy(d => d.RequirementCode)
                 .Select(g => new
                 {
                     document = requirementCatalog.Label(g.Key),
                     order = requirementCatalog.Order(g.Key),
                     submitted = g.Count(d => d.Status == DocumentStatus.Submitted),
-                    xerox = g.Count(d => d.Status == DocumentStatus.XeroxCopy),
+                    // "Received, but not the original" — a photocopy, or a certificate of grades
+                    // standing in for a transcript. Both leave the original still to come.
+                    xerox = g.Count(d => d.Status is DocumentStatus.XeroxCopy or DocumentStatus.CertificateOfGrades),
                     missing = g.Count(d => d.Status == DocumentStatus.NotSubmitted),
                     total = g.Count()
                 })
