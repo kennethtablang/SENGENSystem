@@ -20,6 +20,16 @@ namespace SENGENSystem.Server.Domain
 
         public TermActivationStatus Status { get; set; } = TermActivationStatus.Pending;
 
+        /// <summary>
+        /// The year level the student themselves confirmed when they filed the request. Activation
+        /// is a two-step flow: the student first checks the year level and term they are coming
+        /// back into, then finalizes. Recording what they agreed to gives the Admission Officer the
+        /// student's own answer to compare against the derived one — it is evidence, not authority:
+        /// the officer's validation still settles <see cref="StudentRegistration.YearLevel"/>.
+        /// Null for requests filed before the confirmation step existed.
+        /// </summary>
+        public int? DeclaredYearLevel { get; set; }
+
         public DateTime RequestedAtUtc { get; set; } = DateTime.UtcNow;
 
         /// <summary>The Admission Officer who validated (or rejected) the request.</summary>

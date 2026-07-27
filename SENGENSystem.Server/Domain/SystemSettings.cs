@@ -53,6 +53,15 @@ namespace SENGENSystem.Server.Domain
         public bool EnlistmentOpen { get; set; } = true;
 
         /// <summary>
+        /// Institution-wide switch for returning-student term activation. When false the public
+        /// self-service lookup and request are both refused, so the school closes activation
+        /// between terms without touching any individual record. Mirrors
+        /// <see cref="EnlistmentOpen"/>, and is opened/closed by the same people who govern the
+        /// enrollment cycle — the Registrar and Academic Head as well as the two admin roles.
+        /// </summary>
+        public bool TermActivationOpen { get; set; } = true;
+
+        /// <summary>
         /// The most subject units a single student may hold across their requested/approved sections
         /// in a term (FR-ENL). 0 means no institutional ceiling — only per-section capacity applies.
         /// </summary>
