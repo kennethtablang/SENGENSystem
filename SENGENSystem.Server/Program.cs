@@ -260,9 +260,11 @@ namespace SENGENSystem.Server
 
             // Registration slice — digital SIS + term activation (FR-SIS, FR-DOC, FR-NOTIF)
             app.MapRegisterStudent();
+            app.MapLookupTermActivation();
             app.MapRequestTermActivation();
             app.MapListTermActivations();
             app.MapValidateTermActivation();
+            app.MapTermActivationControl();
             app.MapListRegistrations();
             app.MapGetRegistration();
             app.MapUpdateRegistration();
