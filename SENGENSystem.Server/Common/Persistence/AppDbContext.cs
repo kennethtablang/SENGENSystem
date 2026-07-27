@@ -211,6 +211,7 @@ namespace SENGENSystem.Server.Common.Persistence
                 settings.Property(s => s.GapSaturationHours).HasDefaultValue(8.0);
                 // Enrollment/enlistment + engine-budget parameters default to the previous behaviour.
                 settings.Property(s => s.EnlistmentOpen).HasDefaultValue(true);
+                settings.Property(s => s.TermActivationOpen).HasDefaultValue(true);
                 settings.Property(s => s.MaxEnlistmentUnitsPerStudent).HasDefaultValue(0);
                 settings.Property(s => s.MinSectionEnrollment).HasDefaultValue(15);
                 settings.Property(s => s.ScheduleTimeBudgetSeconds).HasDefaultValue(20);
