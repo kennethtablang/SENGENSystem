@@ -3,6 +3,7 @@ using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Registration;
 
 namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
 {
@@ -65,6 +66,24 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
             if (section is null)
             {
                 return Results.NotFound(new { message = "Section not found for the active semester." });
+            }
+
+            // FR-ENL-01/06: a seat may only be requested in a subject this student's own program and
+            // year level still owe for this term. The browser already hides everything else, so
+            // reaching here means a stale page or a hand-made request — either way the answer is the
+            // same, and it names the subject rather than just refusing. Falls open when no plan
+            // could be resolved (no curriculum for their program): a setup gap must not silently
+            // block every student in that program from enlisting at all.
+            var plan = await EnlistmentPlanner.ResolveAsync(db, registration, semester, cancellationToken);
+            if (plan.IsResolved && !plan.SubjectIds.Contains(section.SubjectId))
+            {
+                return Results.Json(new
+                {
+                    message = $"{section.Subject?.Code} is not one of your subjects this term. " +
+                              $"You are taking the {plan.ProgramCode} {YearLevelPolicy.Label(plan.YearLevel)} " +
+                              $"{plan.TermLabel} subjects — pick from those, or see the Registrar if your " +
+                              "year level looks wrong."
+                }, statusCode: StatusCodes.Status403Forbidden);
             }
 
             var sectionSlots = await PublishedSlotsAsync(db, [section.Id], cancellationToken);
