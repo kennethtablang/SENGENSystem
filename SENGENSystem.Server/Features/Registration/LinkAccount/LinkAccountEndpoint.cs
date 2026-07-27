@@ -31,6 +31,11 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
     public record LinkedRegistrationDto(
         Guid RegistrationId,
         string StudentNumber,
+        // The official student number issued by the student-records system and recorded here by the
+        // Admission Officer — the number on the student's ID, and the one they are asked for
+        // everywhere off this system. Null until it has been assigned; the registration number
+        // above is SEN-GEN's internal identifier and is not a substitute for it.
+        string? OfficialStudentNumber,
         string FullName,
         string Program,
         string StudentType,
@@ -66,6 +71,7 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
             return new(
                 r.Id,
                 r.StudentNumber,
+                r.OfficialStudentNumber,
                 r.FullName,
                 r.Program.ToString(),
                 r.StudentType.ToString(),
