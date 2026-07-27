@@ -53,6 +53,22 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
     // FR-ENL-03 manual override: raise a section's seat cap so a short section can be completed.
     public record OverrideCapacityRequest(int Capacity, string? Reason);
 
+    /// <summary>
+    /// FR-ENL-08 bulk decision. Either an explicit set of request ids (what the queue's checkboxes
+    /// send) or, with <paramref name="AllPending"/>, every pending request in the active term —
+    /// optionally narrowed to one student or one section, which is how the queue's "approve this
+    /// student's whole load" and "fill this section" shortcuts are expressed.
+    /// </summary>
+    public record BulkApproveRequest(
+        IReadOnlyList<Guid>? RequestIds,
+        bool AllPending = false,
+        Guid? StudentRegistrationId = null,
+        Guid? SectionId = null);
+
+    /// <summary>What happened to one request in a bulk run — approved, or skipped with the reason.</summary>
+    public record BulkApprovalOutcomeDto(
+        Guid RequestId, string StudentNumber, string SubjectCode, string SectionCode, bool Approved, string? Reason);
+
     public static class ApprovalsEndpoints
     {
         // Guard rail on the override so a typo can't create a 10,000-seat section.
@@ -67,6 +83,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             group.MapGet("", ListAsync);
             group.MapPost("{requestId:guid}/approve", ApproveAsync);
             group.MapPost("{requestId:guid}/reject", RejectAsync);
+            group.MapPost("bulk-approve", BulkApproveAsync);
 
             // Overriding the cap is a broader authority than approving (FR-ENL-03) — the Academic
             // Head and School Admin may raise it too, so this route carries its own role policy
@@ -145,12 +162,160 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             {
                 return Results.NotFound(new { message = "Request not found." });
             }
-            if (request.Status != SlotRequestStatus.Requested)
+
+            var outcome = await TryApproveAsync(request, principal, db, audit, notifier, cancellationToken);
+            if (!outcome.Approved)
             {
-                return Results.Conflict(new { message = $"This request is already {request.Status}." });
+                return Results.Conflict(new { message = outcome.Reason });
             }
 
-            var section = request.Section;
+            broadcaster.Announce("enlistment");
+            await SendApprovalEmailAsync(request, db, audit, email, cancellationToken);
+            return Results.Ok(ApprovalRowDto.From(request));
+        }
+
+        /// <summary>
+        /// FR-ENL-08: decide many requests in one action. The queue grows a hundred rows deep in the
+        /// first days of enlistment, and clicking Approve a hundred times is the bottleneck the
+        /// Registrar actually feels — but a bulk action must not become a blunt one. Every request
+        /// still goes through the <i>same</i> per-request checks as a single approval (overlap,
+        /// seat capacity, already-decided), and each one that cannot be approved is skipped with its
+        /// own reason rather than failing the batch. The response reports every outcome, so a run
+        /// that approved 47 of 50 says exactly which three didn't and why.
+        /// </summary>
+        private static async Task<IResult> BulkApproveAsync(
+            BulkApproveRequest body,
+            ClaimsPrincipal principal,
+            AppDbContext db,
+            AuditLog audit,
+            Notifier notifier,
+            Features.Reports.Live.ReportsBroadcaster broadcaster,
+            IEmailSender email,
+            CancellationToken cancellationToken)
+        {
+            var query = db.SlotRequests
+                .Include(r => r.StudentRegistration)
+                .Include(r => r.Section).ThenInclude(s => s!.Subject)
+                .Where(r => r.Status == SlotRequestStatus.Requested);
+
+            if (body.RequestIds is { Count: > 0 })
+            {
+                var ids = body.RequestIds.ToList();
+                query = query.Where(r => ids.Contains(r.Id));
+            }
+            else if (body.AllPending)
+            {
+                // Scope a sweep to the active term, the same way the queue itself is scoped, so
+                // "approve all pending" can never reach back into a previous semester.
+                if (await db.GetActiveSemesterIdAsync(cancellationToken) is { } activeSemesterId)
+                {
+                    query = query.Where(r => r.Section!.SemesterId == activeSemesterId);
+                }
+                if (body.StudentRegistrationId is { } studentId)
+                {
+                    query = query.Where(r => r.StudentRegistrationId == studentId);
+                }
+                if (body.SectionId is { } sectionId)
+                {
+                    query = query.Where(r => r.SectionId == sectionId);
+                }
+            }
+            else
+            {
+                return Results.BadRequest(new
+                {
+                    message = "Choose the requests to approve, or set allPending to sweep the queue."
+                });
+            }
+
+            var requests = await query
+                // Oldest first: when a section runs out of seats mid-sweep, the students who
+                // queued first are the ones who get them.
+                .OrderBy(r => r.RequestedAtUtc)
+                .Take(500)
+                .ToListAsync(cancellationToken);
+
+            if (requests.Count == 0)
+            {
+                return Results.Ok(new
+                {
+                    approvedCount = 0,
+                    skippedCount = 0,
+                    outcomes = Array.Empty<BulkApprovalOutcomeDto>()
+                });
+            }
+
+            var outcomes = new List<BulkApprovalOutcomeDto>(requests.Count);
+            var approved = new List<SlotRequest>();
+            foreach (var request in requests)
+            {
+                if (request.Section is null || request.StudentRegistration is null)
+                {
+                    outcomes.Add(new BulkApprovalOutcomeDto(
+                        request.Id, string.Empty, string.Empty, string.Empty, false,
+                        "The section or student record no longer exists."));
+                    continue;
+                }
+
+                var outcome = await TryApproveAsync(request, principal, db, audit, notifier, cancellationToken);
+                outcomes.Add(new BulkApprovalOutcomeDto(
+                    request.Id,
+                    request.StudentRegistration.StudentNumber,
+                    request.Section.Subject?.Code ?? string.Empty,
+                    request.Section.SectionCode,
+                    outcome.Approved,
+                    outcome.Reason));
+                if (outcome.Approved) approved.Add(request);
+            }
+
+            if (approved.Count > 0)
+            {
+                audit.Record(AuditAction.SlotApproved,
+                    $"Bulk-approved {approved.Count} seat request(s)" +
+                    (outcomes.Count > approved.Count
+                        ? $"; {outcomes.Count - approved.Count} skipped."
+                        : "."),
+                    "SlotRequest", string.Empty);
+                await db.SaveChangesAsync(cancellationToken);
+                broadcaster.Announce("enlistment");
+            }
+
+            // Emails are best-effort and come after every approval is committed, so a mail outage
+            // can never undo a decision that has already consumed a seat.
+            foreach (var request in approved)
+            {
+                await SendApprovalEmailAsync(request, db, audit, email, cancellationToken);
+            }
+
+            return Results.Ok(new
+            {
+                approvedCount = approved.Count,
+                skippedCount = outcomes.Count - approved.Count,
+                outcomes
+            });
+        }
+
+        /// <summary>
+        /// Approve one request: the overlap re-check, the status change, the seat consumption under
+        /// optimistic concurrency, the student's bell notice, and the section-full alert. Shared by
+        /// the single and bulk endpoints so a bulk approval is never a weaker check than a single
+        /// one. Returns the reason instead of throwing when the request cannot be approved; the
+        /// caller sends the email.
+        /// </summary>
+        private static async Task<(bool Approved, string? Reason)> TryApproveAsync(
+            SlotRequest request,
+            ClaimsPrincipal principal,
+            AppDbContext db,
+            AuditLog audit,
+            Notifier notifier,
+            CancellationToken cancellationToken)
+        {
+            if (request.Status != SlotRequestStatus.Requested)
+            {
+                return (false, $"This request is already {request.Status}.");
+            }
+
+            var section = request.Section!;
 
             // Re-check the overlap rule against the student's *approved* sections at decision
             // time (FR-ENL-07) — earlier approvals may have changed the picture.
@@ -173,10 +338,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                     .ToListAsync(cancellationToken);
                 if (candidateSlots.Any(c => mySlots.Any(m => m.OverlapsWith(c))))
                 {
-                    return Results.Conflict(new
-                    {
-                        message = "Approving this would give the student overlapping classes. Reject it instead."
-                    });
+                    return (false, "Approving this would give the student overlapping classes. Reject it instead.");
                 }
             }
 
@@ -184,10 +346,10 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             request.DecidedAtUtc = DateTime.UtcNow;
             request.DecidedByUserId = CurrentUserId(principal);
             audit.Record(AuditAction.SlotApproved,
-                $"Approved {request.StudentRegistration.StudentNumber}'s seat in " +
+                $"Approved {request.StudentRegistration!.StudentNumber}'s seat in " +
                 $"{section.Subject?.Code} ({section.SectionCode}).",
                 "SlotRequest", request.Id.ToString());
-            // Bell notice (linked accounts only) commits with the approval; email follows below.
+            // Bell notice (linked accounts only) commits with the approval; email follows later.
             if (request.StudentRegistration.UserId is { } approvedUserId)
             {
                 notifier.Notify(approvedUserId, NotificationKind.EnlistmentApproved,
@@ -201,10 +363,9 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             {
                 if (section.EnrolledCount >= section.Capacity)
                 {
-                    return Results.Conflict(new
-                    {
-                        message = $"Section {section.SectionCode} is full ({section.Capacity} seats). Reject the request instead."
-                    });
+                    // Undo the in-memory decision so a skipped request isn't left looking approved.
+                    RevertApproval(db, request);
+                    return (false, $"Section {section.SectionCode} is full ({section.Capacity} seats). Reject the request instead.");
                 }
                 section.EnrolledCount++;
                 try
@@ -219,14 +380,10 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                 }
                 catch (DbUpdateException)
                 {
-                    return Results.Conflict(new
-                    {
-                        message = $"Section {section.SectionCode} is full ({section.Capacity} seats). Reject the request instead."
-                    });
+                    RevertApproval(db, request);
+                    return (false, $"Section {section.SectionCode} is full ({section.Capacity} seats). Reject the request instead.");
                 }
             }
-
-            broadcaster.Announce("enlistment");
 
             // If that approval just filled the section, alert the decision-makers (Registrar, Academic
             // Head, School Admin) so they can open another section, raise the cap (FR-ENL-03), or move
@@ -243,14 +400,43 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                 await db.SaveChangesAsync(cancellationToken);
             }
 
-            // Decision email is best-effort: the approval is already committed (FR-ENL-04).
+            return (true, null);
+        }
+
+        /// <summary>
+        /// Roll a failed approval back to Requested. The seat was never committed, so only the
+        /// in-memory request (and the bell notice queued alongside it) has to be undone before the
+        /// next request in a bulk run is saved.
+        /// </summary>
+        private static void RevertApproval(AppDbContext db, SlotRequest request)
+        {
+            request.Status = SlotRequestStatus.Requested;
+            request.DecidedAtUtc = null;
+            request.DecidedByUserId = null;
+            foreach (var entry in db.ChangeTracker.Entries<Notification>()
+                .Where(e => e.State == EntityState.Added).ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+            foreach (var entry in db.ChangeTracker.Entries<AuditEntry>()
+                .Where(e => e.State == EntityState.Added).ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+        }
+
+        /// <summary>Best-effort approval confirmation — the decision is already committed (FR-ENL-04).</summary>
+        private static async Task SendApprovalEmailAsync(
+            SlotRequest request, AppDbContext db, AuditLog audit, IEmailSender email, CancellationToken cancellationToken)
+        {
+            var section = request.Section!;
             var (subject, body) = EnlistmentEmails.SlotApproved(
-                request.StudentRegistration,
+                request.StudentRegistration!,
                 section.Subject?.Code ?? string.Empty,
                 section.Subject?.Title ?? string.Empty,
                 section.SectionCode);
             var sent = await email.SendAsync(
-                request.StudentRegistration.Email, request.StudentRegistration.FullName,
+                request.StudentRegistration!.Email, request.StudentRegistration.FullName,
                 subject, body, cancellationToken);
             if (sent.Sent)
             {
@@ -259,8 +445,6 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                     "SlotRequest", request.Id.ToString());
                 await db.SaveChangesAsync(cancellationToken);
             }
-
-            return Results.Ok(ApprovalRowDto.From(request));
         }
 
         private static async Task<IResult> RejectAsync(
