@@ -2,7 +2,21 @@ import { useEffect, useState } from 'react';
 import { listTermActivations, validateTermActivation } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { formatPHT } from './options';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import './registration.css';
+
+const activationColumns = {
+    // Sorted and searched on the number the student actually identifies themselves by; the
+    // internal registration number is the fallback for anyone not yet issued one.
+    studentNumber: a => a.officialStudentNumber || a.registrationNumber,
+    studentName: a => a.lastName || a.studentName,
+    yearLevel: a => a.yearLevel,
+    program: a => a.program,
+    semesterName: a => a.semesterName,
+    requestedAtUtc: a => a.requestedAtUtc,
+    status: a => a.status
+};
 
 const statusChip = {
     Pending: 'chip chip-muted',
@@ -17,6 +31,10 @@ function TermActivationsPage() {
     const [filter, setFilter] = useState('Pending');
     const [busyId, setBusyId] = useState(null);
     const [reload, setReload] = useState(0);
+    const table = useTableControls(activations, {
+        columns: activationColumns,
+        initialSort: { key: 'requestedAtUtc', dir: 'desc' }
+    });
 
     useEffect(() => {
         let active = true;
@@ -40,8 +58,12 @@ function TermActivationsPage() {
         setError(null);
         try {
             const remarks = approve ? null : (window.prompt('Reason for rejection (optional):') ?? '');
-            await validateTermActivation(id, { approve, remarks });
-            notifySuccess(approve ? 'Term activation approved.' : 'Term activation rejected.');
+            // The server derives the year level (advance on a new school year, hold within one);
+            // omitting it here keeps that derivation authoritative rather than second-guessing it.
+            const result = await validateTermActivation(id, { approve, remarks });
+            notifySuccess(approve
+                ? `Term activation approved — enrolled as ${result.yearLevelLabel}.`
+                : 'Term activation rejected.');
             setReload(r => r + 1);
         } catch (err) {
             setError(err.message);
@@ -58,7 +80,8 @@ function TermActivationsPage() {
                     <h2>Term activations</h2>
                     <p className="reg-sub">
                         Validate returning students' requests to activate for the current term. Approving one
-                        emails the student a confirmation.
+                        emails the student a confirmation and settles the year level they come back into —
+                        a student moves up a year when the school year turns over, and stays put within it.
                     </p>
                 </div>
                 <label className="reg-filter">
@@ -80,21 +103,43 @@ function TermActivationsPage() {
                     <table className="reg-table">
                         <thead>
                             <tr>
-                                <th>Student no.</th>
-                                <th>Name</th>
-                                <th>Program</th>
-                                <th>Term</th>
-                                <th>Requested</th>
-                                <th>Status</th>
+                                <SortHeader label="Student no." sortKey="studentNumber" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Name" sortKey="studentName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Program" sortKey="program" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Year level" sortKey="yearLevel" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Term" sortKey="semesterName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Requested" sortKey="requestedAtUtc" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {activations.map(a => (
+                            {table.pageRows.map(a => (
                                 <tr key={a.id}>
-                                    <td className="reg-mono">{a.studentNumber}</td>
-                                    <td><strong>{a.studentName}</strong></td>
+                                    <td className="reg-mono">
+                                        {a.officialStudentNumber || a.registrationNumber}
+                                        {!a.officialStudentNumber && (
+                                            <span className="reg-when">Registration no. — student no. not yet issued</span>
+                                        )}
+                                    </td>
+                                    <td>
+                                        <strong>{a.lastName || a.studentName}</strong>
+                                        {a.lastName && <span className="reg-when">{a.studentName}</span>}
+                                    </td>
                                     <td>{a.program}</td>
+                                    <td>
+                                        {a.yearLevelLabel}
+                                        {/* What the student confirmed when they filed. Worth showing only
+                                            when it disagrees with the record — that is the request worth
+                                            a second look before approving. */}
+                                        {a.declaredYearLevel && a.declaredYearLevel !== a.yearLevel ? (
+                                            <span className="reg-when">
+                                                Student confirmed {a.declaredYearLevelLabel}
+                                            </span>
+                                        ) : a.status === 'Pending' && (
+                                            <span className="reg-when">Advances on approval</span>
+                                        )}
+                                    </td>
                                     <td>{a.semesterName}</td>
                                     <td className="reg-when">{formatPHT(a.requestedAtUtc)}</td>
                                     <td><span className={statusChip[a.status] || 'chip chip-muted'}>{a.status}</span></td>
@@ -116,6 +161,7 @@ function TermActivationsPage() {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
         </div>

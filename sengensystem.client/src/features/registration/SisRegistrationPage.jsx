@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import logo from '../../assets/SENGENlogo.png';
 import TermsModal from '../auth/TermsModal';
+import AddressPicker from './AddressPicker';
 import { registerStudent } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import {
@@ -31,7 +32,7 @@ function Select({ name, label, options, required, placeholder = 'Select…', for
             <label htmlFor={name}>{label}{required && ' *'}</label>
             <select id={name} value={form[name]} onChange={set(name)} required={required}>
                 <option value="" disabled>{placeholder}</option>
-                {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {options.map(o => <option key={o.value} value={o.value}>{o.label.toUpperCase()}</option>)}
             </select>
             {err(name) && <p className="field-error">{err(name)}</p>}
         </div>
@@ -90,7 +91,13 @@ function SisRegistrationPage() {
     const [result, setResult] = useState(null);
 
     const set = (field) => (e) => {
-        const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        // FR-AUTH-03: the SIS is filled entirely in CAPS. Uppercase typed text as it is entered
+        // (dates have no letters; <select> values are enum codes, so those are left untouched and
+        // only shown uppercase via CSS / their option labels).
+        if (typeof value === 'string' && e.target.tagName === 'INPUT') {
+            value = value.toUpperCase();
+        }
         setForm(prev => ({ ...prev, [field]: value }));
     };
 
@@ -130,12 +137,14 @@ function SisRegistrationPage() {
                         to <strong>{form.email}</strong>.
                     </p>
                     <div className="reg-number-card">
-                        <span>Your student number</span>
+                        <span>Your registration number</span>
                         <strong>{result.studentNumber}</strong>
                     </div>
                     <p className="reg-hint">
                         Keep this number safe — you'll use it for enrollment and, next term, for
-                        activation. The Registrar will review your submission and requirements.
+                        activation. This is your <strong>registration number</strong>, not your student
+                        number: your official student number is issued separately by the school, and the
+                        Admission Office will record it here once you're enrolled in that system.
                     </p>
                     <Link className="btn btn-primary" to="/login">Back to sign in</Link>
                 </article>
@@ -195,15 +204,7 @@ function SisRegistrationPage() {
 
                 <fieldset className="reg-section">
                     <legend>3 · Permanent address</legend>
-                    <Field name="addressLine" label="House / lot / unit no. & street" required {...bind} />
-                    <div className="field-row">
-                        <Field name="barangay" label="Building / subdivision / barangay" required {...bind} />
-                        <Field name="cityMunicipality" label="City / municipality" required {...bind} />
-                    </div>
-                    <div className="field-row">
-                        <Field name="province" label="Province" required {...bind} />
-                        <Field name="zipCode" label="Zip code" {...bind} />
-                    </div>
+                    <AddressPicker form={form} setForm={setForm} err={err} />
                 </fieldset>
 
                 <fieldset className="reg-section">

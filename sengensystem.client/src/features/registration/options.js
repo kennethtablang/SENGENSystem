@@ -67,11 +67,24 @@ export const documentTypes = [
     { value: 'Xray', label: 'X-ray' }
 ];
 
+// Every submission state a checklist line can carry. Which of them a *particular* paper offers is
+// the server's call (it depends on the requirement), and arrives on each checklist row as
+// `statuses` — the transcript takes a certificate of grades where other papers take a photocopy.
 export const documentStatusOptions = [
     { value: 'NotSubmitted', label: 'Not submitted' },
     { value: 'Submitted', label: 'Submitted (original)' },
-    { value: 'XeroxCopy', label: 'Xerox copy' }
+    { value: 'XeroxCopy', label: 'Xerox copy' },
+    { value: 'CertificateOfGrades', label: 'Certificate of grades' }
 ];
+
+const documentStatusLabelMap = Object.fromEntries(documentStatusOptions.map(o => [o.value, o.label]));
+export const documentStatusLabel = (value) => documentStatusLabelMap[value] ?? humanize(value);
+
+/** The options one checklist line may be set to, honouring the server's per-requirement list. */
+export function statusOptionsFor(statuses) {
+    if (!statuses?.length) return documentStatusOptions.filter(o => o.value !== 'CertificateOfGrades');
+    return statuses.map(value => ({ value, label: documentStatusLabel(value) }));
+}
 
 const documentLabelMap = Object.fromEntries(documentTypes.map(d => [d.value, d.label]));
 export const documentLabel = (value) => documentLabelMap[value] ?? value;

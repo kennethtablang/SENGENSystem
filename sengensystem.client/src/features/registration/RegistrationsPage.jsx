@@ -1,8 +1,20 @@
 import { useEffect, useState } from 'react';
 import { listRegistrations, getRegistration, updateRegistration } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
-import { documentTypes, documentStatusOptions, humanize, formatPHT } from './options';
+import { statusOptionsFor, humanize, formatPHT } from './options';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import './registration.css';
+
+const registrationColumns = {
+    studentNumber: r => r.studentNumber,
+    fullName: r => r.fullName,
+    program: r => r.program,
+    studentType: r => r.studentType,
+    documentsSubmitted: r => r.documentsSubmitted,
+    createdAtUtc: r => r.createdAtUtc,
+    status: r => r.status
+};
 
 const statusChip = {
     Submitted: 'chip chip-muted',
@@ -20,6 +32,10 @@ function RegistrationsPage() {
     const [reload, setReload] = useState(0);
     const [selected, setSelected] = useState(null); // full detail
     const [drawerBusy, setDrawerBusy] = useState(false);
+    const table = useTableControls(rows, {
+        columns: registrationColumns,
+        initialSort: { key: 'createdAtUtc', dir: 'desc' }
+    });
 
     useEffect(() => {
         let active = true;
@@ -50,10 +66,10 @@ function RegistrationsPage() {
         }
     }
 
-    function setDoc(docType, value) {
+    function setDoc(requirementCode, value) {
         setSelected(prev => ({
             ...prev,
-            documents: prev.documents.map(d => d.documentType === docType ? { ...d, status: value } : d)
+            documents: prev.documents.map(d => d.requirementCode === requirementCode ? { ...d, status: value } : d)
         }));
     }
 
@@ -63,7 +79,7 @@ function RegistrationsPage() {
         setError(null);
         try {
             const payload = {
-                documents: selected.documents.map(d => ({ documentType: d.documentType, status: d.status }))
+                documents: selected.documents.map(d => ({ requirementCode: d.requirementCode, status: d.status }))
             };
             if (nextStatus) payload.status = nextStatus;
             const updated = await updateRegistration(selected.id, payload);
@@ -117,17 +133,17 @@ function RegistrationsPage() {
                     <table className="reg-table">
                         <thead>
                             <tr>
-                                <th>Student no.</th>
-                                <th>Name</th>
-                                <th>Program</th>
-                                <th>Type</th>
-                                <th>Requirements</th>
-                                <th>Submitted</th>
-                                <th>Status</th>
+                                <SortHeader label="Student no." sortKey="studentNumber" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Name" sortKey="fullName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Program" sortKey="program" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Type" sortKey="studentType" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Requirements" sortKey="documentsSubmitted" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Submitted" sortKey="createdAtUtc" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(r => (
+                            {table.pageRows.map(r => (
                                 <tr key={r.id} className="reg-row" onClick={() => open(r.id)}>
                                     <td className="reg-mono">{r.studentNumber}</td>
                                     <td><strong>{r.fullName}</strong></td>
@@ -140,6 +156,7 @@ function RegistrationsPage() {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 
@@ -178,22 +195,25 @@ function RegistrationsPage() {
 
                             <section>
                                 <h4 className="reg-detail-title">Admission requirements</h4>
-                                <ul className="reg-doc-list">
-                                    {documentTypes.map(dt => {
-                                        const doc = selected.documents.find(d => d.documentType === dt.value);
-                                        return (
-                                            <li key={dt.value}>
-                                                <span className="reg-doc-label">{dt.label}</span>
+                                {selected.documents.length === 0 ? (
+                                    <p className="reg-empty">No requirements apply to this student's program.</p>
+                                ) : (
+                                    <ul className="reg-doc-list">
+                                        {selected.documents.map(doc => (
+                                            <li key={doc.requirementCode}>
+                                                <span className="reg-doc-label">{doc.label}</span>
                                                 <select
-                                                    value={doc?.status || 'NotSubmitted'}
-                                                    onChange={e => setDoc(dt.value, e.target.value)}
+                                                    value={doc.status}
+                                                    onChange={e => setDoc(doc.requirementCode, e.target.value)}
                                                 >
-                                                    {documentStatusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                    {statusOptionsFor(doc.statuses).map(o => (
+                                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                                    ))}
                                                 </select>
                                             </li>
-                                        );
-                                    })}
-                                </ul>
+                                        ))}
+                                    </ul>
+                                )}
                             </section>
                         </div>
 
