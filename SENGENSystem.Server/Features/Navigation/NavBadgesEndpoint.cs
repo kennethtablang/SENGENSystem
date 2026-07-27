@@ -9,7 +9,8 @@ namespace SENGENSystem.Server.Features.Navigation
     // its outstanding work at a glance (unread notices, pending approvals, registrations awaiting
     // confirmation, term activations awaiting validation). Every count is role-scoped — a role only
     // gets a number for a function it can actually open — so the payload never leaks other queues.
-    public record NavBadgesDto(int Notifications, int Approvals, int Registrations, int TermActivations);
+    public record NavBadgesDto(
+        int Notifications, int Approvals, int Registrations, int TermActivations, int Survey, int Evaluations);
 
     public static class NavBadgesEndpoint
     {
@@ -23,10 +24,23 @@ namespace SENGENSystem.Server.Features.Navigation
             ClaimsPrincipal principal, AppDbContext db, CancellationToken cancellationToken)
         {
             var notifications = 0;
+            var survey = 0;
             if (Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
             {
                 notifications = await db.Notifications.AsNoTracking()
                     .CountAsync(n => n.UserId == userId && !n.IsRead, cancellationToken);
+
+                // The evaluation survey is only worth pointing at while this user actually owes a
+                // response and collection is still open — the sidebar hides the entry otherwise.
+                var collectionOpen = await db.SurveyCampaigns.AsNoTracking()
+                    .Where(c => c.Id == SurveyCampaign.SingletonId)
+                    .Select(c => c.IsOpen)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (collectionOpen)
+                {
+                    survey = await db.SurveyInvitations.AsNoTracking()
+                        .CountAsync(i => i.UserId == userId && i.CompletedAtUtc == null, cancellationToken);
+                }
             }
 
             var isRegistrar = principal.IsInRole(nameof(UserRole.Registrar));
@@ -55,7 +69,20 @@ namespace SENGENSystem.Server.Features.Navigation
                         && (activeSemesterId == null || a.SemesterId == activeSemesterId), cancellationToken)
                 : 0;
 
-            return Results.Ok(new NavBadgesDto(notifications, approvals, registrations, termActivations));
+            // Transferees still waiting on a completed credit evaluation — they cannot enlist until
+            // it is signed off, so this is the queue that holds their whole term up (FR-EVAL).
+            var evaluations = isRegistrar || isAdmission || isAdmin
+                ? await db.StudentRegistrations.AsNoTracking()
+                    .CountAsync(r => r.StudentType == StudentType.Transferee
+                        && r.Status != RegistrationStatus.Rejected
+                        && (activeSemesterId == null || r.SemesterId == activeSemesterId)
+                        && !db.TransfereeEvaluations.Any(e =>
+                            e.StudentRegistrationId == r.Id
+                            && e.Status == TransfereeEvaluationStatus.Completed), cancellationToken)
+                : 0;
+
+            return Results.Ok(new NavBadgesDto(
+                notifications, approvals, registrations, termActivations, survey, evaluations));
         }
     }
 }
