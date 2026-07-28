@@ -11,7 +11,8 @@ const roleOptions = [
     { value: 'AdmissionOfficer', label: 'Admission Officer' },
     { value: 'Registrar', label: 'Registrar' },
     { value: 'AcademicHead', label: 'Academic Head' },
-    { value: 'SchoolAdmin', label: 'School Admin' }
+    { value: 'SchoolAdmin', label: 'School Admin' },
+    { value: 'SuperAdmin', label: 'Super Admin' }
 ];
 const roleLabel = (v) => roleOptions.find(r => r.value === v)?.label ?? v;
 
@@ -28,7 +29,9 @@ function formatPHT(iso) {
 
 const blankForm = { firstName: '', lastName: '', email: '', role: 'Student', password: '' };
 
-function UserModal({ mode, user, currentUserId, onClose, onChanged }) {
+function UserModal({ mode, user, currentUserId, actorRole, onClose, onChanged }) {
+    // Only a Super Admin may assign the Super Admin role (mirrors the server guard).
+    const assignableRoles = roleOptions.filter(r => r.value !== 'SuperAdmin' || actorRole === 'SuperAdmin');
     const isCreate = mode === 'create';
     const [u, setU] = useState(user);
     const [form, setForm] = useState(
@@ -146,7 +149,7 @@ function UserModal({ mode, user, currentUserId, onClose, onChanged }) {
                         <div className="field">
                             <label htmlFor="role">Role</label>
                             <select id="role" value={form.role} onChange={set('role')}>
-                                {roleOptions.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                                {assignableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                             </select>
                             {err('role') && <p className="field-error">{err('role')}</p>}
                         </div>
@@ -321,6 +324,7 @@ function UserManagementPage() {
                     mode={modal.mode}
                     user={modal.user}
                     currentUserId={currentUser?.id}
+                    actorRole={currentUser?.role}
                     onClose={() => setModal(null)}
                     onChanged={refresh}
                 />
