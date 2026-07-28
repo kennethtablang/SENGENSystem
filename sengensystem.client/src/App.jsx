@@ -7,6 +7,7 @@ import RegisterPage from './features/auth/RegisterPage';
 import ForgotPasswordPage from './features/auth/ForgotPasswordPage';
 import ResetPasswordPage from './features/auth/ResetPasswordPage';
 import ConfirmEmailPage from './features/auth/ConfirmEmailPage';
+import FirstLoginPasswordChange from './features/auth/FirstLoginPasswordChange';
 import DashboardPage from './features/dashboard/DashboardPage';
 import ProfilePage from './features/profile/ProfilePage';
 import GenerateSchedulePage from './features/scheduling/GenerateSchedulePage';
@@ -18,6 +19,11 @@ import SisRegistrationPage from './features/registration/SisRegistrationPage';
 import TermActivationPage from './features/registration/TermActivationPage';
 import RegistrationsPage from './features/registration/RegistrationsPage';
 import TermActivationsPage from './features/registration/TermActivationsPage';
+import TermActivationControlPage from './features/registration/TermActivationControlPage';
+import AssignStudentNumberPage from './features/registration/AssignStudentNumberPage';
+import TransfereeEvaluationPage from './features/evaluation/TransfereeEvaluationPage';
+import ProspectusPage from './features/evaluation/ProspectusPage';
+import MySubjectsPage from './features/evaluation/MySubjectsPage';
 import UserManagementPage from './features/users/UserManagementPage';
 import ParametersPage from './features/parameters/ParametersPage';
 import SchoolYearsPage from './features/academic/SchoolYearsPage';
@@ -37,6 +43,9 @@ import ReportsPage from './features/reports/ReportsPage';
 import FacultyLoadReportsPage from './features/reports/FacultyLoadReportsPage';
 import RoomUtilizationPage from './features/analytics/RoomUtilizationPage';
 import NotificationsPage from './features/notifications/NotificationsPage';
+import SurveyPage from './features/survey/SurveyPage';
+import SurveyAdminPage from './features/survey/SurveyAdminPage';
+import SurveyRecipientsPage from './features/survey/SurveyRecipientsPage';
 import SettingsPage from './features/settings/SettingsPage';
 import HelpPage from './features/help/HelpPage';
 import AppLayout from './features/shell/AppLayout';
@@ -48,16 +57,23 @@ import './App.css';
 // Routes with a real page; everything else in the nav falls back to ComingSoon.
 const builtRoutes = new Set([
     '/', '/profile', '/schedule', '/scheduling/generate', '/scheduling/review', '/scheduling/board', '/audit',
-    '/registrations', '/term-activations', '/users', '/parameters',
+    '/registrations', '/term-activations', '/term-activation-control',
+    '/assign-student-number', '/users', '/parameters',
+    '/evaluate-transferee', '/prospectus', '/my-subjects',
     '/school-years', '/semesters', '/buildings', '/rooms', '/class-sections', '/subjects', '/faculty-load',
     '/publishing', '/documents', '/pre-authorization', '/enlistment', '/approvals', '/pre-enrollment', '/reports',
-    '/settings', '/help', '/notifications', '/reports/faculty-load', '/analytics/room-utilization'
+    '/settings', '/help', '/notifications', '/reports/faculty-load', '/analytics/room-utilization',
+    '/survey-admin', '/survey-recipients', '/survey'
 ]);
 
 function RequireAuth({ children }) {
     const { user, loading } = useAuth();
     if (loading) return <p style={{ padding: '2rem' }}>Loading…</p>;
-    return user ? children : <Navigate to="/login" replace />;
+    if (!user) return <Navigate to="/login" replace />;
+    // A student on a system-generated temporary password must set their own before reaching
+    // anything else (mirrors the server's MustChangePassword flag).
+    if (user.mustChangePassword) return <FirstLoginPasswordChange />;
+    return children;
 }
 
 function RedirectIfAuthed({ children }) {
@@ -84,6 +100,9 @@ function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/confirm-email" element={<ConfirmEmailPage />} />
 
+            {/* Public token-gated ISO 25010 rating survey (emailed link lands here) */}
+            <Route path="/survey/:token" element={<SurveyPage />} />
+
             <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
@@ -94,7 +113,18 @@ function App() {
                 <Route path="/audit" element={<AuditTrailPage />} />
                 <Route path="/registrations" element={<RegistrationsPage />} />
                 <Route path="/term-activations" element={<TermActivationsPage />} />
+                <Route path="/term-activation-control" element={<TermActivationControlPage />} />
+                <Route path="/assign-student-number" element={<AssignStudentNumberPage />} />
+                {/* FR-EVAL: the Registrar rules on a transferee's credits — the gate before enlistment */}
+                <Route path="/evaluate-transferee" element={<TransfereeEvaluationPage />} />
+                {/* FR-RPT-05: printable subject listings, for staff and for the student themselves */}
+                <Route path="/prospectus" element={<ProspectusPage />} />
+                <Route path="/my-subjects" element={<MySubjectsPage />} />
                 <Route path="/users" element={<UserManagementPage />} />
+                <Route path="/survey-admin" element={<SurveyAdminPage />} />
+                <Route path="/survey-recipients" element={<SurveyRecipientsPage />} />
+                {/* Signed-in participation: the bell notice the Super Admin pushed lands here */}
+                <Route path="/survey" element={<SurveyPage />} />
                 <Route path="/parameters" element={<ParametersPage />} />
                 <Route path="/school-years" element={<SchoolYearsPage />} />
                 <Route path="/semesters" element={<SemestersPage />} />

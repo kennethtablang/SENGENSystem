@@ -741,9 +741,86 @@ select option {
   --amber-text: #ffd75e;
 }
 
-/* Compact density shrinks the rem base, tightening type and spacing app-wide. */
+/* Base type size (Settings → Appearance). Small/large shift the rem base app-wide. */
+:root[data-font='small'] {
+  font-size: 14.5px;
+}
+
+:root[data-font='large'] {
+  font-size: 17.5px;
+}
+
+/* Compact density shrinks the rem base, tightening type and spacing app-wide.
+   Placed after data-font so a compact layout always reads tighter than the chosen size. */
 :root[data-density='compact'] {
   font-size: 14px;
+}
+
+/* Accent hue (Settings → Appearance): re-point the interactive/highlight blue. The solid
+   brand blue (--sti-blue-solid) is intentionally left alone so the wordmark stays STI. */
+:root[data-accent='teal'] {
+  --sti-blue: #0d9488;
+  --sti-blue-bright: #14b8a6;
+  --sti-blue-dim: rgba(13, 148, 136, 0.14);
+}
+
+:root[data-accent='violet'] {
+  --sti-blue: #6d54d6;
+  --sti-blue-bright: #8b74f0;
+  --sti-blue-dim: rgba(109, 84, 214, 0.15);
+}
+
+:root[data-accent='crimson'] {
+  --sti-blue: #d33b62;
+  --sti-blue-bright: #e85c80;
+  --sti-blue-dim: rgba(211, 59, 98, 0.14);
+}
+
+:root[data-accent='teal'] { --sti-blue-dim-2: rgba(13, 148, 136, 0.26); }
+:root[data-accent='violet'] { --sti-blue-dim-2: rgba(109, 84, 214, 0.26); }
+:root[data-accent='crimson'] { --sti-blue-dim-2: rgba(211, 59, 98, 0.26); }
+
+/* Square corners (Settings → Appearance): flatten the radius tokens app-wide. */
+:root[data-corners='square'] {
+  --radius: 4px;
+  --radius-sm: 2px;
+  --radius-lg: 6px;
+}
+
+/* High contrast (Settings → Appearance): firmer lines and stronger secondary text. */
+:root[data-contrast='high'] {
+  --line: var(--line-strong);
+  --text-2: var(--text-1);
+  --text-3: var(--text-2);
+}
+
+/* Reduce transparency (Settings → Appearance): make translucent surfaces opaque. */
+:root[data-transparency='off'] .card,
+:root[data-transparency='off'] .modal,
+:root[data-transparency='off'] .notif-drop,
+:root[data-transparency='off'] .user-menu-drop,
+:root[data-transparency='off'] .shell-search-results {
+  backdrop-filter: none !important;
+  background: var(--surface) !important;
+}
+
+/* Zebra striping (Settings → Appearance): tint alternating data-table rows. */
+:root[data-stripes='on'] table tbody tr:nth-child(even) > * {
+  background: var(--bg-wash);
+}
+
+/* Sticky table headers (Settings → Appearance): keep column labels while scrolling. */
+:root[data-sticky='on'] table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+/* Bold focus ring (Settings → Appearance): a heavier keyboard-focus outline. */
+:root[data-focus='bold'] :focus-visible {
+  outline-width: 3px;
+  outline-offset: 3px;
 }
 
 /* Settings-page opt-out mirrors the prefers-reduced-motion media query below. */
