@@ -1,4 +1,5 @@
 import { getToken } from '../auth/api';
+import { pageParams } from '../shell/useServerTable';
 
 async function parseError(response) {
     let payload = null;
@@ -21,11 +22,10 @@ function authHeaders(json) {
 }
 
 // FR-AUTH-07: School Admin account management.
-export async function listUsers({ role, status, search } = {}) {
-    const params = new URLSearchParams();
+export async function listUsers({ role, status, ...page } = {}) {
+    const params = pageParams(page);
     if (role && role !== 'All') params.set('role', role);
     if (status && status !== 'All') params.set('status', status);
-    if (search) params.set('search', search);
     const qs = params.toString() ? `?${params}` : '';
     const response = await fetch(`/api/users${qs}`, { headers: authHeaders() });
     if (!response.ok) throw await parseError(response);

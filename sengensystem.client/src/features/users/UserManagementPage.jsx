@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../auth/useAuth';
 import { listUsers, createUser, updateUser, setUserActive, resetUserPassword } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { useServerTable } from '../shell/useServerTable';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import './users.css';
 
 const roleOptions = [
@@ -221,6 +223,7 @@ function UserModal({ mode, user, currentUserId, actorRole, onClose, onChanged })
 function UserManagementPage() {
     const { user: currentUser } = useAuth();
     const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [role, setRole] = useState('All');
@@ -230,14 +233,26 @@ function UserManagementPage() {
     const [reload, setReload] = useState(0);
     const [modal, setModal] = useState(null); // { mode, user }
 
+    // Everything — filter, search, sort, page — is decided by the server. Sorting in the browser
+    // would only order the page it was given, so the column header would look like it worked while
+    // ranking 25 accounts out of however many exist.
+    const table = useServerTable({
+        rows,
+        total,
+        initialSort: { key: 'fullName', dir: 'asc' },
+        search: appliedSearch
+    });
+
     useEffect(() => {
         let active = true;
         (async () => {
             setLoading(true);
             setError(null);
             try {
-                const data = await listUsers({ role, status: statusFilter, search: appliedSearch });
-                if (active) setRows(data.users);
+                const data = await listUsers({ role, status: statusFilter, ...table.query });
+                if (!active) return;
+                setRows(data.users);
+                setTotal(data.total);
             } catch (err) {
                 if (active) setError(err.message);
             } finally {
@@ -245,7 +260,8 @@ function UserManagementPage() {
             }
         })();
         return () => { active = false; };
-    }, [role, statusFilter, appliedSearch, reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [role, statusFilter, table.queryKey, reload]);
 
     const refresh = () => setReload(r => r + 1);
 
@@ -293,15 +309,15 @@ function UserManagementPage() {
                     <table className="users-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Email</th>
-                                <th>Role</th>
-                                <th>Status</th>
-                                <th>Created</th>
+                                <SortHeader label="Name" sortKey="fullName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Email" sortKey="email" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Role" sortKey="role" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Created" sortKey="createdAtUtc" sort={table.sort} onSort={table.toggleSort} />
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(u => (
+                            {table.pageRows.map(u => (
                                 <tr key={u.id} className="users-row" onClick={() => setModal({ mode: 'edit', user: u })}>
                                     <td><strong>{u.fullName}</strong></td>
                                     <td>{u.email}</td>
@@ -316,6 +332,7 @@ function UserManagementPage() {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 
