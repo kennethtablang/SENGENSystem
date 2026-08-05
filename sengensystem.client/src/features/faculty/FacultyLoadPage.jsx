@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { listFacultyLoad } from './api';
 import FacultyAssignModal from './FacultyAssignModal';
 import FacultyPreferencesModal from './FacultyPreferencesModal';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import './faculty.css';
 
 export default function FacultyLoadPage() {
@@ -12,7 +14,23 @@ export default function FacultyLoadPage() {
     const [error, setError] = useState(null);
     const [modal, setModal] = useState(null); // a faculty row
     const [prefsFor, setPrefsFor] = useState(null); // a faculty row (preferences editor)
+    const [search, setSearch] = useState('');
     const [reload] = useState(0);
+
+    // Sorting by load is the point of this table — it is how the Academic Head finds who is
+    // over their ceiling and who has room left before allocating another subject.
+    const table = useTableControls(faculty, {
+        columns: {
+            name: f => f.name,
+            programCode: f => f.programCode,
+            assignedCount: f => f.assignedCount,
+            // Sort by how full they are, not raw units: 18 of 18 is a fuller load than 20 of 30.
+            load: f => (f.maxLoadUnits > 0 ? f.assignedUnits / f.maxLoadUnits : 0)
+        },
+        initialSort: { key: 'name', dir: 'asc' },
+        search,
+        searchFields: [f => f.name, f => f.programCode]
+    });
 
     useEffect(() => {
         let active = true;
@@ -45,6 +63,7 @@ export default function FacultyLoadPage() {
                         assigned units is checked against their teaching-load ceiling.
                     </p>
                 </div>
+                <TableSearch value={search} onChange={setSearch} placeholder="Filter faculty or department…" />
                 <label className="fl-semester">
                     <span>Semester</span>
                     <select value={semesterId} onChange={e => setSemesterId(e.target.value)} disabled={semesters.length === 0}>
@@ -60,22 +79,26 @@ export default function FacultyLoadPage() {
 
             {loading ? (
                 <p className="fl-empty">Loading…</p>
-            ) : faculty.length === 0 ? (
-                <p className="fl-empty">No faculty members found. Add Faculty Member accounts first.</p>
+            ) : table.total === 0 ? (
+                <p className="fl-empty">
+                    {search
+                        ? 'No faculty members match your filter.'
+                        : 'No faculty members found. Add Faculty Member accounts first.'}
+                </p>
             ) : (
                 <div className="card fl-table-wrap">
                     <table className="fl-table">
                         <thead>
                             <tr>
-                                <th>Faculty member</th>
-                                <th>Department</th>
-                                <th>Classes</th>
-                                <th className="fl-load-col">Load</th>
+                                <SortHeader label="Faculty member" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Department" sortKey="programCode" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Classes" sortKey="assignedCount" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Load" sortKey="load" sort={table.sort} onSort={table.toggleSort} className="fl-load-col" />
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {faculty.map(f => {
+                            {table.pageRows.map(f => {
                                 const pct = f.maxLoadUnits > 0 ? Math.min(100, Math.round((f.assignedUnits / f.maxLoadUnits) * 100)) : 0;
                                 const over = f.assignedUnits > f.maxLoadUnits;
                                 return (
@@ -106,6 +129,7 @@ export default function FacultyLoadPage() {
                             })}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 
