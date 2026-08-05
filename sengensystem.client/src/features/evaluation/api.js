@@ -1,4 +1,5 @@
 import { getToken } from '../auth/api';
+import { pageParams } from '../shell/useServerTable';
 
 // FR-EVAL: the Registrar's transferee credit evaluation, and the printable subject listings
 // (FR-RPT-05) that read off it — the prospectus, the evaluation sheet, and a student's
@@ -37,10 +38,9 @@ async function request(url, options = {}) {
     return response.status === 204 ? null : response.json();
 }
 
-export function listEvaluations({ status, search } = {}) {
-    const params = new URLSearchParams();
+export function listEvaluations({ status, ...page } = {}) {
+    const params = pageParams(page);
     if (status && status !== 'All') params.set('status', status);
-    if (search) params.set('search', search);
     const qs = params.toString() ? `?${params}` : '';
     return request(`/api/transferee-evaluations${qs}`);
 }

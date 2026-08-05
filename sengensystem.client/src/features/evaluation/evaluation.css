@@ -1,8 +1,11 @@
 /* Transferee credit evaluation (FR-EVAL) and the printable subject listings (FR-RPT-05). */
 
+/* The sheet is a wide, dense list, so it overrides the 34rem default — max-width, not width,
+   or the global .modal cap wins and the sheet is squeezed into a narrow column. The height stays
+   short of the viewport (svh, so mobile browser chrome is accounted for) to read as centered. */
 .eval-modal {
-  width: min(56rem, calc(100vw - 2rem));
-  max-height: calc(100vh - 4rem);
+  max-width: 56rem;
+  max-height: min(85svh, 46rem);
 }
 
 .eval-meta {

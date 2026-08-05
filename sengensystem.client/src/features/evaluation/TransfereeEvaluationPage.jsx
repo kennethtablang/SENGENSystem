@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
     listEvaluations, getEvaluation, saveEvaluation, completeEvaluation, reopenEvaluation,
     downloadEvaluationSheet
@@ -6,7 +7,7 @@ import {
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import { humanize, formatPHT } from '../registration/options';
-import { useTableControls } from '../shell/useTableControls';
+import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import '../registration/registration.css';
 import './evaluation.css';
@@ -32,20 +33,16 @@ const statusLabel = {
     Completed: 'Completed'
 };
 
-const queueColumns = {
-    studentNumber: r => r.officialStudentNumber || r.registrationNumber,
-    fullName: r => r.fullName,
-    program: r => r.program,
-    status: r => (r.status === 'Completed' ? 2 : r.status === 'InProgress' ? 1 : 0),
-    creditedUnits: r => r.creditedUnits,
-    yearLevel: r => r.yearLevel
-};
+/* Sorting moved to the server (TransfereeEvaluationEndpoints) along with the paging — see
+   useServerTable. `status` and `creditedUnits` are computed from the evaluation's items rather
+   than stored on the registration, so they sort through a subquery there. */
 
 const YEAR_CHOICES = [1, 2, 3, 4];
 const yearLabel = (n) => (['1st year', '2nd year', '3rd year', '4th year'][n - 1] ?? `Year ${n}`);
 
 export default function TransfereeEvaluationPage() {
     const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
     const [counts, setCounts] = useState({ pendingCount: 0, completedCount: 0 });
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('All');
@@ -55,9 +52,11 @@ export default function TransfereeEvaluationPage() {
     const [alert, setAlert] = useState(null);
     const [openId, setOpenId] = useState(null);
 
-    const table = useTableControls(rows, {
-        columns: queueColumns,
-        initialSort: { key: 'fullName', dir: 'asc' }
+    const table = useServerTable({
+        rows,
+        total,
+        initialSort: { key: 'fullName', dir: 'asc' },
+        search: appliedSearch
     });
 
     useEffect(() => {
@@ -65,9 +64,12 @@ export default function TransfereeEvaluationPage() {
         (async () => {
             setLoading(true);
             try {
-                const data = await listEvaluations({ status: filter, search: appliedSearch });
+                const data = await listEvaluations({ status: filter, ...table.query });
                 if (!active) return;
                 setRows(data.evaluations);
+                setTotal(data.total);
+                // Counted server-side over the whole queue and independent of the status chip, so
+                // the two figures stay a statement about the term's outstanding work.
                 setCounts({ pendingCount: data.pendingCount, completedCount: data.completedCount });
             } catch (err) {
                 if (active) setAlert({ kind: 'error', text: err.message });
@@ -76,7 +78,8 @@ export default function TransfereeEvaluationPage() {
             }
         })();
         return () => { active = false; };
-    }, [filter, appliedSearch, reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filter, table.queryKey, reload]);
 
     const refreshQueue = useCallback(() => setReload(v => v + 1), []);
 
@@ -399,7 +402,10 @@ function EvaluationSheet({ registrationId, onClose, onChanged, onAlert }) {
         }
     }
 
-    return (
+    /* Rendered into <body>: the page root carries a filling `rise` transform animation, which makes
+       it a containing block, and a fixed overlay nested inside it would be pinned to the page box
+       instead of the viewport — off-centre, with only the page area dimmed. */
+    return createPortal(
         <div className="modal-overlay" onClick={() => !busy && onClose()} role="presentation">
             <div
                 className="modal eval-modal"
@@ -603,6 +609,7 @@ function EvaluationSheet({ registrationId, onClose, onChanged, onAlert }) {
                     ))}
                 </footer>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
