@@ -1,4 +1,5 @@
 import { getToken } from '../auth/api';
+import { pageParams } from '../shell/useServerTable';
 
 async function parseError(response) {
     let payload = null;
@@ -30,10 +31,9 @@ async function authRequest(url, { method = 'GET', body } = {}) {
 
 // ---- Staff (Admission Officer / Registrar): checklist board (FR-DOC-01..03) ----
 
-export function listChecklists({ completion, search } = {}) {
-    const params = new URLSearchParams();
+export function listChecklists({ completion, ...page } = {}) {
+    const params = pageParams(page);
     if (completion && completion !== 'All') params.set('completion', completion);
-    if (search) params.set('search', search);
     const qs = params.toString() ? `?${params}` : '';
     return authRequest(`/api/documents${qs}`);
 }

@@ -5,23 +5,11 @@ import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import { confirmsHeavy } from '../settings/prefs';
 import { statusOptionsFor, documentStatusLabel, humanize } from '../registration/options';
-import { useTableControls } from '../shell/useTableControls';
+import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import RequirementsModal from './RequirementsModal';
 import '../registration/registration.css';
 import './documents.css';
-
-const checklistColumns = {
-    studentNumber: r => r.studentNumber,
-    fullName: r => r.fullName,
-    program: r => r.program,
-    studentType: r => r.studentType,
-    submittedCount: r => r.submittedCount,
-    registrationStatus: r => r.registrationStatus,
-    isComplete: r => (r.isComplete ? 1 : 0),
-    // Students still holding back their own clearance sort to the top of an ascending sort.
-    clearance: r => (r.missingAuthorizationRequirements?.length ?? 0) === 0 ? 1 : 0
-};
 
 /* FR-DOC: the digital admission-requirements checklist.
    Staff (Admission Officer / Registrar / School Admin) see the per-enrollee board and record
@@ -170,6 +158,7 @@ function StudentChecklist() {
 
 function StaffBoard() {
     const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
     const [completeCount, setCompleteCount] = useState(0);
     const [reminderTargetCount, setReminderTargetCount] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -181,9 +170,11 @@ function StaffBoard() {
     const [alert, setAlert] = useState(null);
     const [remindBusy, setRemindBusy] = useState(false);
     const [manageOpen, setManageOpen] = useState(false);
-    const table = useTableControls(rows, {
-        columns: checklistColumns,
-        initialSort: { key: 'fullName', dir: 'asc' }
+    const table = useServerTable({
+        rows,
+        total,
+        initialSort: { key: 'fullName', dir: 'asc' },
+        search: appliedSearch
     });
 
     useEffect(() => {
@@ -191,9 +182,12 @@ function StaffBoard() {
         (async () => {
             setLoading(true);
             try {
-                const data = await listChecklists({ completion, search: appliedSearch });
+                const data = await listChecklists({ completion, ...table.query });
                 if (!active) return;
                 setRows(data.checklists);
+                setTotal(data.total);
+                // Both counted server-side across the whole board, so the headline figures do not
+                // shrink to "on this page" now that the board is paged.
                 setCompleteCount(data.completeCount);
                 setReminderTargetCount(data.reminderTargetCount ?? 0);
             } catch (err) {
@@ -203,7 +197,8 @@ function StaffBoard() {
             }
         })();
         return () => { active = false; };
-    }, [completion, appliedSearch, reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [completion, table.queryKey, reload]);
 
     async function setDocStatus(row, doc, status) {
         setAlert(null);
