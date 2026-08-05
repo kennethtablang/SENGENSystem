@@ -3,6 +3,8 @@ import { getFullSchedule, publishSchedule } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { hhmm } from '../scheduling/calendarUtils';
 import ScheduleTable from '../scheduling/ScheduleTable';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import '../scheduling/scheduling.css';
 import './publishing.css';
 
@@ -14,30 +16,43 @@ import './publishing.css';
 const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 function FlatTable({ rows, showDay = true }) {
+    // Opens in timetable order — day, then time, then block — which is how a published schedule is
+    // read; any column can be taken over from there (all the rooms one faculty member is in, every
+    // class in one room) without losing the default.
+    const table = useTableControls(rows, {
+        columns: {
+            day: r => dayOrder.indexOf(r.day),
+            time: r => r.startMinutes,
+            cohortKey: r => r.cohortKey,
+            subjectCode: r => r.subjectCode,
+            sectionCode: r => r.sectionCode,
+            room: r => r.room,
+            faculty: r => r.faculty
+        },
+        initialSort: { key: 'day', dir: 'asc' },
+        initialPageSize: 50
+    });
+
     if (rows.length === 0) {
         return <p className="sched-empty">No published classes match this view yet.</p>;
     }
-    const sorted = rows.slice().sort((a, b) =>
-        (dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day)) ||
-        a.time.localeCompare(b.time) ||
-        a.cohortKey.localeCompare(b.cohortKey));
     return (
         <section className="card sched-group">
             <div className="sched-table-wrap">
                 <table className="sched-table">
                     <thead>
                         <tr>
-                            {showDay && <th>Day</th>}
-                            <th>Time</th>
-                            <th>Block</th>
-                            <th>Subject</th>
-                            <th>Section</th>
-                            <th>Room</th>
-                            <th>Faculty</th>
+                            {showDay && <SortHeader label="Day" sortKey="day" sort={table.sort} onSort={table.toggleSort} />}
+                            <SortHeader label="Time" sortKey="time" sort={table.sort} onSort={table.toggleSort} />
+                            <SortHeader label="Block" sortKey="cohortKey" sort={table.sort} onSort={table.toggleSort} />
+                            <SortHeader label="Subject" sortKey="subjectCode" sort={table.sort} onSort={table.toggleSort} />
+                            <SortHeader label="Section" sortKey="sectionCode" sort={table.sort} onSort={table.toggleSort} />
+                            <SortHeader label="Room" sortKey="room" sort={table.sort} onSort={table.toggleSort} />
+                            <SortHeader label="Faculty" sortKey="faculty" sort={table.sort} onSort={table.toggleSort} />
                         </tr>
                     </thead>
                     <tbody>
-                        {sorted.map(row => (
+                        {table.pageRows.map(row => (
                             <tr key={row.assignmentId}>
                                 {showDay && <td>{row.day}</td>}
                                 <td className="sched-mono">{hhmm(row.startMinutes)}–{hhmm(row.endMinutes)}</td>
@@ -54,6 +69,7 @@ function FlatTable({ rows, showDay = true }) {
                     </tbody>
                 </table>
             </div>
+            <Pagination {...table} />
         </section>
     );
 }
