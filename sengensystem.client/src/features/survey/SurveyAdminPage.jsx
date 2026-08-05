@@ -2,6 +2,8 @@ import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import { listInvitations, getResults, getCollection, setCollection, exportResults, remindInvitations } from './api';
 import './survey.css';
 
@@ -342,37 +344,7 @@ function SurveyAdminPage() {
             ) : tab === 'responses' ? (
                 <section className="card param-card">
                     <h3>Respondents</h3>
-                    {results.responses.length === 0 ? (
-                        <p className="setup-empty">No responses yet.</p>
-                    ) : (
-                        <div className="setup-table-wrap">
-                            <table className="setup-table">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th><th>Role</th><th>Email</th><th>Position</th><th>Dept</th>
-                                        <th>Age</th><th>Sex</th><th>Years</th><th>Mean</th><th>Interpretation</th><th>Submitted</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {results.responses.map((r, idx) => (
-                                        <tr key={idx}>
-                                            <td><strong>{r.respondentName}</strong></td>
-                                            <td className="setup-muted">{r.respondentRole}</td>
-                                            <td className="setup-muted">{r.respondentEmail}</td>
-                                            <td className="setup-muted">{r.position || '—'}</td>
-                                            <td className="setup-muted">{r.department || '—'}</td>
-                                            <td className="setup-muted">{r.age ?? '—'}</td>
-                                            <td className="setup-muted">{r.sex || '—'}</td>
-                                            <td className="setup-muted">{r.yearsUsing || '—'}</td>
-                                            <td><span className="chip chip-blue">{r.average}</span></td>
-                                            <td><Interpretation value={r.interpretation} /></td>
-                                            <td className="setup-muted">{fmt(r.submittedAtUtc)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+                    <RespondentsTable responses={results.responses} />
                 </section>
             ) : (
                 <section className="card param-card">
@@ -382,34 +354,154 @@ function SurveyAdminPage() {
                             No invitations sent yet. <Link to="/survey-recipients">Choose recipients</Link> to get started.
                         </p>
                     ) : (
-                        <div className="setup-table-wrap">
-                            <table className="setup-table">
-                                <thead>
-                                    <tr><th>Name</th><th>Role</th><th>Email</th><th>Sent</th><th>Notified</th><th>Nudges</th><th>Status</th></tr>
-                                </thead>
-                                <tbody>
-                                    {invitations.invitations.map(i => (
-                                        <tr key={i.id}>
-                                            <td><strong>{i.name}</strong></td>
-                                            <td className="setup-muted">{i.role}</td>
-                                            <td className="setup-muted">{i.email}</td>
-                                            <td className="setup-muted">{fmt(i.sentAtUtc)}</td>
-                                            <td className="setup-muted">{fmt(i.notifiedAtUtc)}</td>
-                                            <td className="setup-muted">{i.reminderCount || '—'}</td>
-                                            <td>
-                                                {i.completedAtUtc
-                                                    ? <span className="chip chip-blue">Answered · {fmt(i.completedAtUtc)}</span>
-                                                    : <span className="chip chip-yellow">Pending</span>}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                        <InvitationsTable rows={invitations.invitations} />
                     )}
                 </section>
             )}
         </div>
+    );
+}
+
+/* Every individual response, with its ISO 25010 mean. Sorted by mean it becomes the list of who
+   rated the system lowest — which is where the comments worth reading are. */
+function RespondentsTable({ responses }) {
+    const [search, setSearch] = useState('');
+    const table = useTableControls(responses, {
+        columns: {
+            respondentName: r => r.respondentName,
+            respondentRole: r => r.respondentRole,
+            respondentEmail: r => r.respondentEmail,
+            position: r => r.position,
+            department: r => r.department,
+            age: r => r.age,
+            sex: r => r.sex,
+            yearsUsing: r => r.yearsUsing,
+            average: r => r.average,
+            submittedAtUtc: r => r.submittedAtUtc
+        },
+        initialSort: { key: 'submittedAtUtc', dir: 'desc' },
+        search,
+        searchFields: [r => r.respondentName, r => r.respondentRole, r => r.respondentEmail,
+            r => r.position, r => r.department]
+    });
+
+    if (responses.length === 0) {
+        return <p className="setup-empty">No responses yet.</p>;
+    }
+
+    return (
+        <>
+            <div className="table-toolbar">
+                <TableSearch value={search} onChange={setSearch} placeholder="Filter respondent…" />
+            </div>
+            {table.total === 0 ? (
+                <p className="setup-empty">No respondents match your filter.</p>
+            ) : (
+                <div className="setup-table-wrap">
+                    <table className="setup-table">
+                        <thead>
+                            <tr>
+                                <SortHeader label="Name" sortKey="respondentName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Role" sortKey="respondentRole" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Email" sortKey="respondentEmail" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Position" sortKey="position" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Dept" sortKey="department" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Age" sortKey="age" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Sex" sortKey="sex" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Years" sortKey="yearsUsing" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Mean" sortKey="average" sort={table.sort} onSort={table.toggleSort} />
+                                <th>Interpretation</th>
+                                <SortHeader label="Submitted" sortKey="submittedAtUtc" sort={table.sort} onSort={table.toggleSort} />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table.pageRows.map((r, idx) => (
+                                <tr key={idx}>
+                                    <td><strong>{r.respondentName}</strong></td>
+                                    <td className="setup-muted">{r.respondentRole}</td>
+                                    <td className="setup-muted">{r.respondentEmail}</td>
+                                    <td className="setup-muted">{r.position || '—'}</td>
+                                    <td className="setup-muted">{r.department || '—'}</td>
+                                    <td className="setup-muted">{r.age ?? '—'}</td>
+                                    <td className="setup-muted">{r.sex || '—'}</td>
+                                    <td className="setup-muted">{r.yearsUsing || '—'}</td>
+                                    <td><span className="chip chip-blue">{r.average}</span></td>
+                                    <td><Interpretation value={r.interpretation} /></td>
+                                    <td className="setup-muted">{fmt(r.submittedAtUtc)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <Pagination {...table} />
+                </div>
+            )}
+        </>
+    );
+}
+
+/* The invitation roster: who was asked, when, and whether they have answered. Sorting by status is
+   how the Super Admin finds who still needs a nudge. */
+function InvitationsTable({ rows }) {
+    const [search, setSearch] = useState('');
+    const table = useTableControls(rows, {
+        columns: {
+            name: i => i.name,
+            role: i => i.role,
+            email: i => i.email,
+            sentAtUtc: i => i.sentAtUtc,
+            notifiedAtUtc: i => i.notifiedAtUtc,
+            reminderCount: i => i.reminderCount ?? 0,
+            // Outstanding first — those are the ones there is something to do about.
+            status: i => (i.completedAtUtc ? 1 : 0)
+        },
+        initialSort: { key: 'name', dir: 'asc' },
+        search,
+        searchFields: [i => i.name, i => i.role, i => i.email]
+    });
+
+    return (
+        <>
+            <div className="table-toolbar">
+                <TableSearch value={search} onChange={setSearch} placeholder="Filter name, role, or email…" />
+            </div>
+            {table.total === 0 ? (
+                <p className="setup-empty">No invitations match your filter.</p>
+            ) : (
+                <div className="setup-table-wrap">
+                    <table className="setup-table">
+                        <thead>
+                            <tr>
+                                <SortHeader label="Name" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Role" sortKey="role" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Email" sortKey="email" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Sent" sortKey="sentAtUtc" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Notified" sortKey="notifiedAtUtc" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Nudges" sortKey="reminderCount" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table.pageRows.map(i => (
+                                <tr key={i.id}>
+                                    <td><strong>{i.name}</strong></td>
+                                    <td className="setup-muted">{i.role}</td>
+                                    <td className="setup-muted">{i.email}</td>
+                                    <td className="setup-muted">{fmt(i.sentAtUtc)}</td>
+                                    <td className="setup-muted">{fmt(i.notifiedAtUtc)}</td>
+                                    <td className="setup-muted">{i.reminderCount || '—'}</td>
+                                    <td>
+                                        {i.completedAtUtc
+                                            ? <span className="chip chip-blue">Answered · {fmt(i.completedAtUtc)}</span>
+                                            : <span className="chip chip-yellow">Pending</span>}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <Pagination {...table} />
+                </div>
+            )}
+        </>
     );
 }
 
