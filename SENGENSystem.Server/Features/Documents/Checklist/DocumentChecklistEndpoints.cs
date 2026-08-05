@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
+using SENGENSystem.Server.Common.Paging;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 
@@ -86,6 +87,10 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         private static async Task<IResult> ListAsync(
             string? completion,
             string? search,
+            int? page,
+            int? pageSize,
+            string? sort,
+            string? dir,
             AppDbContext db,
             CancellationToken cancellationToken)
         {
@@ -94,6 +99,15 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 .Include(r => r.Semester)
                 .Include(r => r.Documents)
                 .AsQueryable();
+
+            // Scoped to the current term so the board doesn't carry every past term's enrollees
+            // forward when the semester rolls over — a search deliberately widens to every term so
+            // a past student can still be looked up. Same rule as the registration queue.
+            if (string.IsNullOrWhiteSpace(search)
+                && await db.GetActiveSemesterIdAsync(cancellationToken) is { } activeSemesterId)
+            {
+                query = query.Where(r => r.SemesterId == activeSemesterId);
+            }
 
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -104,40 +118,92 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                     || r.FirstName.Contains(term));
             }
 
-            var items = await query
-                .OrderByDescending(r => r.CreatedAtUtc)
-                .Take(500)
-                .ToListAsync(cancellationToken);
+            // The board before the completion chip narrows it. The headline tally is counted against
+            // this, so switching the view to "Incomplete" cannot make the board report that nobody
+            // is complete.
+            var baseQuery = query;
 
-            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
-
-            // Completion is derived from the document rows, so filter in memory.
-            var rows = items.Select(r => ChecklistRowDto.From(r, catalog));
+            // The completion filter has to happen in SQL now that the list is paged. It used to run
+            // in memory over the fetched rows, which paging would have turned into "filter this
+            // page" — page 1 of an incomplete-only view would show whichever of the first 25
+            // enrollees happened to be incomplete, and the total would count both kinds.
+            //
+            // "Complete" here is "no paper still unsubmitted". The displayed figure counts only the
+            // papers that apply to the enrollee's program and student type (DocumentChecklist.Applicable,
+            // which needs the catalog and cannot run in SQL); those agree for every checklist seeded
+            // since applicability existed, and the AddRequirementApplicabilityAndClassStart migration
+            // deleted the inapplicable historical rows precisely so they would.
             if (string.Equals(completion, "complete", StringComparison.OrdinalIgnoreCase))
             {
-                rows = rows.Where(r => r.IsComplete);
+                query = query.Where(r => !r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted));
             }
             else if (string.Equals(completion, "incomplete", StringComparison.OrdinalIgnoreCase))
             {
-                rows = rows.Where(r => !r.IsComplete);
+                query = query.Where(r => r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted));
             }
 
-            var list = rows.ToList();
+            // Which papers gate clearance for enlistment — needed by the "Clearance" sort below.
+            // Fetched once (a handful of rows) so the ordering itself can still be done in SQL.
+            var gatingCodes = await db.AdmissionRequirements.AsNoTracking()
+                .Where(a => a.IsActive && a.IsRequiredForAuthorization)
+                .Select(a => a.Code)
+                .ToListAsync(cancellationToken);
+
+            var desc = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
+            var ordered = (sort?.ToLowerInvariant()) switch
+            {
+                // Enrollees still holding back their own clearance sort to the top ascending —
+                // the same rule the column displays.
+                "clearance" => desc
+                    ? query.OrderByDescending(r => !r.Documents.Any(d =>
+                        gatingCodes.Contains(d.RequirementCode) && d.Status == DocumentStatus.NotSubmitted))
+                    : query.OrderBy(r => !r.Documents.Any(d =>
+                        gatingCodes.Contains(d.RequirementCode) && d.Status == DocumentStatus.NotSubmitted)),
+                "studentnumber" => desc
+                    ? query.OrderByDescending(r => r.StudentNumber) : query.OrderBy(r => r.StudentNumber),
+                "fullname" => desc
+                    ? query.OrderByDescending(r => r.LastName).ThenByDescending(r => r.FirstName)
+                    : query.OrderBy(r => r.LastName).ThenBy(r => r.FirstName),
+                "program" => desc ? query.OrderByDescending(r => r.Program) : query.OrderBy(r => r.Program),
+                "studenttype" => desc
+                    ? query.OrderByDescending(r => r.StudentType) : query.OrderBy(r => r.StudentType),
+                "submittedcount" => desc
+                    ? query.OrderByDescending(r => r.Documents.Count(d => d.Status != DocumentStatus.NotSubmitted))
+                    : query.OrderBy(r => r.Documents.Count(d => d.Status != DocumentStatus.NotSubmitted)),
+                "registrationstatus" => desc
+                    ? query.OrderByDescending(r => r.Status) : query.OrderBy(r => r.Status),
+                "iscomplete" => desc
+                    ? query.OrderByDescending(r => r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted))
+                    : query.OrderBy(r => r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted)),
+                _ => query.OrderByDescending(r => r.CreatedAtUtc)
+            };
+
+            var paged = await ordered.ThenBy(r => r.Id)
+                .ToPagedAsync(PageSpec.From(page, pageSize), cancellationToken);
+
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+            var list = paged.Items.Select(r => ChecklistRowDto.From(r, catalog)).ToList();
+
+            // Counted in SQL across the whole board — not this page, and not the current view.
+            var completeCount = await baseQuery
+                .CountAsync(r => !r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted), cancellationToken);
 
             // How many enrollees a "Send reminders" sweep would actually email — every non-rejected
-            // registration with at least one unsubmitted paper, independent of the current filter or
-            // search — so the confirmation can state a true count (mirrors SendRemindersEndpoint).
+            // registration in the current term with at least one unsubmitted paper, independent of
+            // the current filter or search — so the confirmation can state a true count (mirrors
+            // SendRemindersEndpoint, which is scoped the same way: a reminder blast must never reach
+            // a student whose term is already over).
+            var reminderSemesterId = await db.GetActiveSemesterIdAsync(cancellationToken);
             var reminderTargetCount = await db.StudentRegistrations.AsNoTracking()
                 .CountAsync(r => r.Status != RegistrationStatus.Rejected
+                    && (reminderSemesterId == null || r.SemesterId == reminderSemesterId)
                     && r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted), cancellationToken);
 
-            return Results.Ok(new
-            {
-                count = list.Count,
-                completeCount = list.Count(r => r.IsComplete),
-                reminderTargetCount,
-                checklists = list
-            });
+            var body = new Paged<ChecklistRowDto>(list, paged.Total, paged.Page, paged.PageSize)
+                .ToResponse("checklists");
+            body["completeCount"] = completeCount;
+            body["reminderTargetCount"] = reminderTargetCount;
+            return Results.Ok(body);
         }
 
         private static async Task<IResult> UpdateStatusAsync(
