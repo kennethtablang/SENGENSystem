@@ -6,6 +6,8 @@ import { subscribeToReports } from './live';
 import { LiveChip } from './ReportsPage';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { saveBlob, filenameFromDisposition } from '../shell/download';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import '../registration/registration.css';
 import './reports.css';
 
@@ -105,6 +107,22 @@ function FacultyLoadReportsPage() {
     const qsSem = `semesterId=${encodeURIComponent(semesterId)}`;
     const rows = data?.faculty ?? [];
 
+    // Standing and units are the columns this report exists to be sorted by — "who is overloaded"
+    // is one click rather than a read-through.
+    const table = useTableControls(rows, {
+        columns: {
+            name: f => f.name,
+            employeeId: f => f.employeeId,
+            programCode: f => f.programCode,
+            totalUnits: f => f.totalUnits,
+            totalSubjects: f => f.totalSubjects,
+            scheduledHours: f => f.scheduledHours,
+            // Overloaded first — the rows that need acting on lead the list.
+            standing: f => (f.standing === 'Overloaded' ? 0 : f.standing === 'Unassigned' ? 2 : 1)
+        },
+        initialSort: { key: 'name', dir: 'asc' }
+    });
+
     return (
         <div className="reg-page">
             <header className="reg-head">
@@ -190,18 +208,18 @@ function FacultyLoadReportsPage() {
                     <table className="reg-table">
                         <thead>
                             <tr>
-                                <th>Faculty</th>
-                                <th>Employee ID</th>
-                                <th>Program</th>
-                                <th>Total units</th>
-                                <th>Total subjects</th>
-                                <th>Scheduled h/week</th>
-                                <th>Standing</th>
+                                <SortHeader label="Faculty" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Employee ID" sortKey="employeeId" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Program" sortKey="programCode" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Total units" sortKey="totalUnits" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Total subjects" sortKey="totalSubjects" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Scheduled h/week" sortKey="scheduledHours" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Standing" sortKey="standing" sort={table.sort} onSort={table.toggleSort} />
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(f => {
+                            {table.pageRows.map(f => {
                                 const over = f.totalUnits > f.maxUnits;
                                 const pct = f.maxUnits === 0 ? 0 : Math.min(100, Math.round(100 * f.totalUnits / f.maxUnits));
                                 return (
@@ -268,6 +286,7 @@ function FacultyLoadReportsPage() {
                             })}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 

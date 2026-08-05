@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getToken } from '../auth/api';
 import { useAuth } from '../auth/useAuth';
@@ -7,6 +7,8 @@ import { subscribeToReports } from './live';
 import { downloadSemesterExport, downloadSystemParametersExport } from './exportApi';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { saveBlob } from '../shell/download';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import '../registration/registration.css';
 import './reports.css';
 
@@ -32,6 +34,68 @@ export function LiveChip({ state, updatedAt }) {
                 <small>· updated {updatedAt.toLocaleTimeString()}</small>
             )}
         </span>
+    );
+}
+
+/* The report grid. Reports come back as headers + rows of opaque cells, so the controls work by
+   column index: every column is sortable (numeric where the values are numbers, text otherwise)
+   and the filter matches across the whole row. Generic on purpose — one component serves every
+   report the endpoint can produce. */
+function ReportTable({ headers, rows }) {
+    const [search, setSearch] = useState('');
+
+    // A column index per header, so useTableControls can address them by name.
+    const columns = useMemo(() => Object.fromEntries(
+        headers.map((h, i) => [String(i), row => {
+            const cell = row[i];
+            const asNumber = typeof cell === 'number' ? cell : Number(cell);
+            return cell !== '' && cell != null && !Number.isNaN(asNumber) ? asNumber : String(cell ?? '');
+        }])
+    ), [headers]);
+
+    const table = useTableControls(rows, {
+        columns,
+        initialPageSize: 50,
+        search,
+        searchFields: [row => row.join(' ')]
+    });
+
+    return (
+        <div className="card reg-table-wrap">
+            <div className="table-toolbar">
+                <TableSearch value={search} onChange={setSearch} placeholder="Filter rows…" />
+            </div>
+            {table.total === 0 ? (
+                <p className="reg-empty">No rows match your filter.</p>
+            ) : (
+                <>
+                    <table className="reg-table">
+                        <thead>
+                            <tr>
+                                {headers.map((h, i) => (
+                                    <SortHeader
+                                        key={h} label={h} sortKey={String(i)}
+                                        sort={table.sort} onSort={table.toggleSort}
+                                    />
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table.pageRows.map((row, i) => (
+                                <tr key={i}>
+                                    {row.map((cell, j) => (
+                                        <td key={j} style={{ whiteSpace: j === row.length - 1 ? 'normal' : undefined }}>
+                                            {String(cell)}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <Pagination {...table} />
+                </>
+            )}
+        </div>
     );
 }
 
@@ -217,24 +281,7 @@ function ReportsPage() {
             ) : data.rows.length === 0 ? (
                 <p className="reg-empty">No rows for this semester.</p>
             ) : (
-                <div className="card reg-table-wrap">
-                    <table className="reg-table">
-                        <thead>
-                            <tr>{data.headers.map(h => <th key={h}>{h}</th>)}</tr>
-                        </thead>
-                        <tbody>
-                            {data.rows.map((row, i) => (
-                                <tr key={i}>
-                                    {row.map((cell, j) => (
-                                        <td key={j} style={{ whiteSpace: j === row.length - 1 ? 'normal' : undefined }}>
-                                            {String(cell)}
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <ReportTable headers={data.headers} rows={data.rows} />
             )}
 
             <p style={{ marginTop: '0.9rem', fontSize: '0.8rem', color: 'var(--text-3)' }}>
