@@ -3,6 +3,7 @@ import { listCurricula, listSubjects } from './api';
 import CurriculumModal from './CurriculumModal';
 import SubjectModal from './SubjectModal';
 import ArchivedModal from './ArchivedModal';
+import { TableSearch } from '../shell/tableControls';
 import './curriculum.css';
 
 const TERM_LABEL = { FirstSemester: 'First Semester', SecondSemester: 'Second Semester' };
@@ -13,6 +14,7 @@ export default function SubjectsCurriculumPage() {
     const [allSchoolYears, setAllSchoolYears] = useState([]);
     const [selectedId, setSelectedId] = useState(null);
     const [subjects, setSubjects] = useState([]);
+    const [search, setSearch] = useState('');
     const [loadingC, setLoadingC] = useState(true);
     const [loadingS, setLoadingS] = useState(false);
     const [error, setError] = useState(null);
@@ -78,7 +80,17 @@ export default function SubjectsCurriculumPage() {
     // Show every subject of the selected curriculum, archived ones included but clearly tagged —
     // a cohort can deliberately stay on a retired curriculum, so its (archived) subjects must stay
     // visible here, not only in the archive drawer.
-    const visibleSubjects = useMemo(() => subjects, [subjects]);
+    // Filtering only. The catalog is deliberately read in curriculum order — year, then term, then
+    // code — because that order IS the information: it is the sequence a student takes them in.
+    // Sorting or paging it would take that away, so the filter narrows in place instead.
+    const visibleSubjects = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return subjects;
+        return subjects.filter(s =>
+            [s.code, s.title, s.deliveryLabel, s.labRoomKindLabel, `year ${s.yearLevel}`]
+                .some(v => v && String(v).toLowerCase().includes(q))
+            || s.prerequisites.some(p => p.code.toLowerCase().includes(q)));
+    }, [subjects, search]);
 
     // Group subjects by year level, then by term (First/Second Semester), for the curriculum sheet.
     const groups = useMemo(() => {
@@ -166,6 +178,7 @@ export default function SubjectsCurriculumPage() {
                                 </div>
                             </div>
                             <div className="curr-main-actions">
+                                <TableSearch value={search} onChange={setSearch} placeholder="Filter subject…" />
                                 {archivedCount > 0 && (
                                     <button
                                         type="button"
@@ -186,8 +199,12 @@ export default function SubjectsCurriculumPage() {
 
                         {loadingS ? (
                             <p className="curr-subj-empty">Loading subjects…</p>
-                        ) : subjects.length === 0 ? (
-                            <p className="curr-subj-empty">No subjects in this curriculum yet. Add the first one.</p>
+                        ) : visibleSubjects.length === 0 ? (
+                            <p className="curr-subj-empty">
+                                {search
+                                    ? 'No subjects match your filter.'
+                                    : 'No subjects in this curriculum yet. Add the first one.'}
+                            </p>
                         ) : (
                             <div className="curr-groups">
                                 {groups.map(g => (
