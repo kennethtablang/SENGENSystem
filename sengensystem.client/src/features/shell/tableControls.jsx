@@ -1,7 +1,24 @@
 import { PAGE_SIZES } from './useTableControls';
+import './tables.css';
 
-/* Presentational pieces that pair with useTableControls: a sortable column header and the
-   pagination bar (page-size selector + prev/next + range label). */
+/* Presentational pieces that pair with useTableControls: a search box, a sortable column header,
+   and the pagination bar (page-size selector + prev/next + range label). */
+
+/* The table filter. A plain search input, but a shared one — every table filters the same way and
+   says the same thing, so the control is learned once instead of per page. */
+export function TableSearch({ value, onChange, placeholder = 'Filter…', label }) {
+    return (
+        <label className="table-search">
+            {label && <span className="table-search-label">{label}</span>}
+            <input
+                type="search"
+                value={value}
+                placeholder={placeholder}
+                onChange={e => onChange(e.target.value)}
+            />
+        </label>
+    );
+}
 
 export function SortHeader({ label, sortKey, sort, onSort, className }) {
     const active = sort?.key === sortKey;

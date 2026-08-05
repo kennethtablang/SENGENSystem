@@ -1,0 +1,137 @@
+/* Shared data-table controls — search, sortable headers, pagination.
+
+   Imported by tableControls.jsx, so any page that uses the controls gets the styling with them
+   and no feature stylesheet has to carry a copy. Layout only: every colour is a design token from
+   index.css, so tables follow the light/dark theme like the rest of the app.
+
+   These deliberately style the control classes rather than any one table class (.reg-table,
+   .setup-table, .enl-table …) — the controls are the same control wherever they appear. */
+
+/* ---------- Filter ---------- */
+
+.table-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.table-search-label {
+  white-space: nowrap;
+}
+
+.table-search input {
+  min-width: 12rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-1);
+  font: inherit;
+}
+
+.table-search input:focus-visible {
+  outline: 2px solid var(--sti-blue);
+  outline-offset: 1px;
+}
+
+/* A header strip for pages that pair a filter with other controls. */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+}
+
+.table-toolbar-spacer {
+  flex: 1;
+}
+
+/* ---------- Sortable headers ---------- */
+
+/* The button fills the cell, so the whole header is the hit target rather than just its text. */
+th.th-sort {
+  padding: 0;
+}
+
+.th-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.th-sort-btn:hover {
+  color: var(--text-1);
+}
+
+.th-sort-arrow {
+  font-size: 0.62rem;
+  line-height: 1;
+  color: var(--text-3);
+  transition: color 0.15s ease;
+}
+
+.th-sort.is-active .th-sort-arrow {
+  color: var(--sti-blue);
+}
+
+.th-sort.is-active .th-sort-btn {
+  color: var(--text-1);
+}
+
+/* ---------- Pagination ---------- */
+
+.table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 0.9rem;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.table-pager-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.table-pager-size select {
+  padding: 0.35rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-1);
+  font: inherit;
+}
+
+.table-pager-range {
+  flex: 1;
+  text-align: center;
+  min-width: 8rem;
+}
+
+.table-pager-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.table-pager-page {
+  white-space: nowrap;
+  color: var(--text-2);
+}
