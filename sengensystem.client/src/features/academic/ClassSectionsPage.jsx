@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmDelete } from '../shell/confirm';
+import { TableSearch } from '../shell/tableControls';
 import { listClassSections, createClassSection, updateClassSection, deleteClassSection } from './api';
 import './academic.css';
 
@@ -142,6 +143,7 @@ function ClassSectionModal({ record, semesters, programs, curricula, defaultSeme
 
 export default function ClassSectionsPage() {
     const [rows, setRows] = useState([]);
+    const [search, setSearch] = useState('');
     const [semesters, setSemesters] = useState([]);
     const [semesterId, setSemesterId] = useState('');
     const [programs, setPrograms] = useState([]);
@@ -181,11 +183,22 @@ export default function ClassSectionsPage() {
         () => new Map(programs.map(p => [p.code, p.name])),
         [programs]);
 
+    // Text filter across the flat list, applied before grouping so a course card disappears
+    // entirely once nothing in it matches.
+    const visible = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return rows;
+        return rows.filter(c =>
+            [c.programCode, c.sectionName, c.displayName, c.curriculumLabel, `year ${c.yearLevel}`]
+                .some(v => v && String(v).toLowerCase().includes(q)));
+    }, [rows, search]);
+
     // Separate the flat list into one card per course so a mixed listing is easy to scan; the
-    // sections stay listed within each card, sorted by year then section.
+    // sections stay listed within each card, sorted by year then section — the reading order for a
+    // cohort list, which is why this view groups rather than offering free sorting and paging.
     const grouped = useMemo(() => {
         const byProgram = new Map();
-        for (const c of rows) {
+        for (const c of visible) {
             if (!byProgram.has(c.programCode)) byProgram.set(c.programCode, []);
             byProgram.get(c.programCode).push(c);
         }
@@ -194,7 +207,7 @@ export default function ClassSectionsPage() {
                 || a.sectionName.localeCompare(b.sectionName, undefined, { numeric: true }));
         }
         return [...byProgram.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    }, [rows]);
+    }, [visible]);
 
     return (
         <div className="setup-page">
@@ -207,6 +220,7 @@ export default function ClassSectionsPage() {
                     </p>
                 </div>
                 <div className="setup-controls">
+                    <TableSearch value={search} onChange={setSearch} placeholder="Filter class or curriculum…" />
                     <label className="setup-filter">
                         <span>Semester</span>
                         <select value={semesterId} onChange={e => setSemesterId(e.target.value)}
@@ -241,8 +255,12 @@ export default function ClassSectionsPage() {
                 <p className="setup-empty">No semesters yet. Create a semester under Academic setup first.</p>
             ) : programs.length === 0 ? (
                 <p className="setup-empty">No programs yet. Create a curriculum under Subjects &amp; curriculum first.</p>
-            ) : rows.length === 0 ? (
-                <p className="setup-empty">No classes{programFilter !== 'All' ? ' for this course' : ''} this semester.</p>
+            ) : visible.length === 0 ? (
+                <p className="setup-empty">
+                    {search
+                        ? 'No classes match your filter.'
+                        : `No classes${programFilter !== 'All' ? ' for this course' : ''} this semester.`}
+                </p>
             ) : (
                 <div className="cs-cards">
                     {grouped.map(([code, list]) => (

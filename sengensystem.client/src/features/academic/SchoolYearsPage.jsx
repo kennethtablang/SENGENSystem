@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmDelete } from '../shell/confirm';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import {
     listSchoolYears, createSchoolYear, updateSchoolYear, deleteSchoolYear, activateSchoolYear
 } from './api';
@@ -105,6 +107,7 @@ function SchoolYearModal({ record, onClose, onChanged }) {
 
 export default function SchoolYearsPage() {
     const [rows, setRows] = useState([]);
+    const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [reload, setReload] = useState(0);
@@ -123,6 +126,19 @@ export default function SchoolYearsPage() {
 
     const refresh = () => setReload(r => r + 1);
 
+    const table = useTableControls(rows, {
+        columns: {
+            name: y => y.name,
+            startDate: y => y.startDate,
+            endDate: y => y.endDate,
+            semesterCount: y => y.semesterCount,
+            status: y => (y.isActive ? 0 : 1)
+        },
+        initialSort: { key: 'startDate', dir: 'desc' },
+        search,
+        searchFields: [y => y.name]
+    });
+
     return (
         <div className="setup-page">
             <header className="setup-head">
@@ -134,6 +150,7 @@ export default function SchoolYearsPage() {
                     </p>
                 </div>
                 <div className="setup-controls">
+                    <TableSearch value={search} onChange={setSearch} placeholder="Filter school year…" />
                     <button className="btn btn-primary btn-sm" type="button" onClick={() => setModal({})}>
                         New school year
                     </button>
@@ -144,22 +161,24 @@ export default function SchoolYearsPage() {
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>
-            ) : rows.length === 0 ? (
-                <p className="setup-empty">No school years yet.</p>
+            ) : table.total === 0 ? (
+                <p className="setup-empty">
+                    {search ? 'No school years match your filter.' : 'No school years yet.'}
+                </p>
             ) : (
                 <div className="card setup-table-wrap">
                     <table className="setup-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Start</th>
-                                <th>End</th>
-                                <th>Semesters</th>
-                                <th>Status</th>
+                                <SortHeader label="Name" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Start" sortKey="startDate" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="End" sortKey="endDate" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Semesters" sortKey="semesterCount" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(y => (
+                            {table.pageRows.map(y => (
                                 <tr key={y.id} className="setup-row" onClick={() => setModal(y)}>
                                     <td><strong>{y.name}</strong></td>
                                     <td className="setup-muted">{fmtDate(y.startDate)}</td>
@@ -174,6 +193,7 @@ export default function SchoolYearsPage() {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 

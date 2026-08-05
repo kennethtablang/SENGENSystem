@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmDelete } from '../shell/confirm';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import { listRooms, createRoom, updateRoom, deleteRoom, listBuildings } from './api';
 import './academic.css';
 
@@ -110,6 +112,7 @@ function RoomModal({ record, buildings, defaultBuildingId, onClose, onChanged })
 
 export default function RoomsPage() {
     const [rows, setRows] = useState([]);
+    const [search, setSearch] = useState('');
     const [buildings, setBuildings] = useState([]);
     const [buildingFilter, setBuildingFilter] = useState('All');
     const [loading, setLoading] = useState(true);
@@ -141,6 +144,19 @@ export default function RoomsPage() {
 
     const refresh = () => setReload(r => r + 1);
 
+    // Building is a server-side filter; the text box, sorting, and paging work over the result.
+    const table = useTableControls(rows, {
+        columns: {
+            name: r => r.name,
+            buildingName: r => r.buildingName,
+            capacity: r => r.capacity,
+            kindLabel: r => r.kindLabel
+        },
+        initialSort: { key: 'name', dir: 'asc' },
+        search,
+        searchFields: [r => r.name, r => r.buildingName, r => r.kindLabel]
+    });
+
     return (
         <div className="setup-page">
             <header className="setup-head">
@@ -152,6 +168,7 @@ export default function RoomsPage() {
                     </p>
                 </div>
                 <div className="setup-controls">
+                    <TableSearch value={search} onChange={setSearch} placeholder="Filter room or building…" />
                     <label className="setup-filter">
                         <span>Building</span>
                         <select value={buildingFilter} onChange={e => setBuildingFilter(e.target.value)}>
@@ -172,21 +189,25 @@ export default function RoomsPage() {
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>
-            ) : rows.length === 0 ? (
-                <p className="setup-empty">No rooms{buildingFilter !== 'All' ? ' in this building' : ' yet'}.</p>
+            ) : table.total === 0 ? (
+                <p className="setup-empty">
+                    {search
+                        ? 'No rooms match your filter.'
+                        : `No rooms${buildingFilter !== 'All' ? ' in this building' : ' yet'}.`}
+                </p>
             ) : (
                 <div className="card setup-table-wrap">
                     <table className="setup-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Building</th>
-                                <th>Capacity</th>
-                                <th>Type</th>
+                                <SortHeader label="Name" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Building" sortKey="buildingName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Capacity" sortKey="capacity" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Type" sortKey="kindLabel" sort={table.sort} onSort={table.toggleSort} />
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(r => (
+                            {table.pageRows.map(r => (
                                 <tr key={r.id} className="setup-row" onClick={() => setModal(r)}>
                                     <td><strong>{r.name}</strong></td>
                                     <td className="setup-muted">{r.buildingName || '—'}</td>
@@ -200,6 +221,7 @@ export default function RoomsPage() {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 

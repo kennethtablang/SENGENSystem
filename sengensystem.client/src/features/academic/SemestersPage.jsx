@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction, confirmDelete } from '../shell/confirm';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import {
     listSemesters, createSemester, updateSemester, deleteSemester, activateSemester,
     archiveSemester, unarchiveSemester, listSchoolYears
@@ -168,6 +170,7 @@ function SemesterModal({ record, schoolYears, defaultYearId, onClose, onChanged 
 
 export default function SemestersPage() {
     const [rows, setRows] = useState([]);
+    const [search, setSearch] = useState('');
     const [schoolYears, setSchoolYears] = useState([]);
     const [yearFilter, setYearFilter] = useState('All');
     const [loading, setLoading] = useState(true);
@@ -199,6 +202,21 @@ export default function SemestersPage() {
 
     const refresh = () => setReload(r => r + 1);
 
+    const table = useTableControls(rows, {
+        columns: {
+            name: s => s.name,
+            schoolYearName: s => s.schoolYearName,
+            startDate: s => s.startDate,
+            endDate: s => s.endDate,
+            // Active first, then the ordinary terms, then the frozen ones — the order the
+            // Registrar reads the list in.
+            status: s => (s.isActive ? 0 : s.isArchived ? 2 : 1)
+        },
+        initialSort: { key: 'startDate', dir: 'desc' },
+        search,
+        searchFields: [s => s.name, s => s.schoolYearName]
+    });
+
     return (
         <div className="setup-page">
             <header className="setup-head">
@@ -210,6 +228,7 @@ export default function SemestersPage() {
                     </p>
                 </div>
                 <div className="setup-controls">
+                    <TableSearch value={search} onChange={setSearch} placeholder="Filter semester…" />
                     <label className="setup-filter">
                         <span>School year</span>
                         <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}>
@@ -230,22 +249,26 @@ export default function SemestersPage() {
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>
-            ) : rows.length === 0 ? (
-                <p className="setup-empty">No semesters{yearFilter !== 'All' ? ' for this school year' : ' yet'}.</p>
+            ) : table.total === 0 ? (
+                <p className="setup-empty">
+                    {search
+                        ? 'No semesters match your filter.'
+                        : `No semesters${yearFilter !== 'All' ? ' for this school year' : ' yet'}.`}
+                </p>
             ) : (
                 <div className="card setup-table-wrap">
                     <table className="setup-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>School year</th>
-                                <th>Start</th>
-                                <th>End</th>
-                                <th>Status</th>
+                                <SortHeader label="Name" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="School year" sortKey="schoolYearName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Start" sortKey="startDate" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="End" sortKey="endDate" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(s => (
+                            {table.pageRows.map(s => (
                                 <tr key={s.id} className="setup-row" onClick={() => setModal(s)}>
                                     <td><strong>{s.name}</strong></td>
                                     <td className="setup-muted">{s.schoolYearName || '—'}</td>
@@ -262,6 +285,7 @@ export default function SemestersPage() {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 

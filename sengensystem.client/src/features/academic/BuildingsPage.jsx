@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import SetupModal from './SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmDelete } from '../shell/confirm';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import { listBuildings, createBuilding, updateBuilding, deleteBuilding } from './api';
 import './academic.css';
 
@@ -74,6 +76,7 @@ function BuildingModal({ record, onClose, onChanged }) {
 
 export default function BuildingsPage() {
     const [rows, setRows] = useState([]);
+    const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [reload, setReload] = useState(0);
@@ -92,6 +95,13 @@ export default function BuildingsPage() {
 
     const refresh = () => setReload(r => r + 1);
 
+    const table = useTableControls(rows, {
+        columns: { name: b => b.name, code: b => b.code, roomCount: b => b.roomCount },
+        initialSort: { key: 'name', dir: 'asc' },
+        search,
+        searchFields: [b => b.name, b => b.code]
+    });
+
     return (
         <div className="setup-page">
             <header className="setup-head">
@@ -100,6 +110,7 @@ export default function BuildingsPage() {
                     <p className="setup-sub">Manage campus buildings. Each building groups the rooms it contains.</p>
                 </div>
                 <div className="setup-controls">
+                    <TableSearch value={search} onChange={setSearch} placeholder="Filter name or code…" />
                     <button className="btn btn-primary btn-sm" type="button" onClick={() => setModal({})}>
                         New building
                     </button>
@@ -110,20 +121,22 @@ export default function BuildingsPage() {
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>
-            ) : rows.length === 0 ? (
-                <p className="setup-empty">No buildings yet.</p>
+            ) : table.total === 0 ? (
+                <p className="setup-empty">
+                    {search ? 'No buildings match your filter.' : 'No buildings yet.'}
+                </p>
             ) : (
                 <div className="card setup-table-wrap">
                     <table className="setup-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Code</th>
-                                <th>Rooms</th>
+                                <SortHeader label="Name" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Code" sortKey="code" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Rooms" sortKey="roomCount" sort={table.sort} onSort={table.toggleSort} />
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(b => (
+                            {table.pageRows.map(b => (
                                 <tr key={b.id} className="setup-row" onClick={() => setModal(b)}>
                                     <td><strong>{b.name}</strong></td>
                                     <td className="setup-muted">{b.code || '—'}</td>
@@ -132,6 +145,7 @@ export default function BuildingsPage() {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
 
