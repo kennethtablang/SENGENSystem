@@ -3,6 +3,8 @@ import SetupModal from '../academic/SetupModal';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmDelete } from '../shell/confirm';
 import { hhmm } from '../scheduling/calendarUtils';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import {
     getParameters, setSectionCapacityCap, updateSettings,
     createTimeSlot, updateTimeSlot, deleteTimeSlot,
@@ -393,6 +395,60 @@ function LoadLimitRow({ faculty, onChanged }) {
 
 // ---------------- Page ----------------
 
+/* The faculty ceilings table. Its own component so the table controls are a plain unconditional
+   hook, and so the ceilings list — the longest thing on this page — filters, sorts, and pages like
+   every other table in the system. */
+function LoadLimitsTable({ faculty, onChanged }) {
+    const [search, setSearch] = useState('');
+    const table = useTableControls(faculty, {
+        columns: {
+            name: f => f.name,
+            employeeId: f => f.employeeId,
+            programCode: f => f.programCode,
+            assignedUnits: f => f.assignedUnits,
+            maxLoadUnits: f => f.maxLoadUnits
+        },
+        initialSort: { key: 'name', dir: 'asc' },
+        search,
+        searchFields: [f => f.name, f => f.employeeId, f => f.programCode]
+    });
+
+    if (faculty.length === 0) {
+        return <p className="setup-empty">No faculty profiles yet.</p>;
+    }
+
+    return (
+        <>
+            <div className="table-toolbar">
+                <TableSearch value={search} onChange={setSearch} placeholder="Filter faculty…" />
+            </div>
+            {table.total === 0 ? (
+                <p className="setup-empty">No faculty match your filter.</p>
+            ) : (
+                <div className="setup-table-wrap">
+                    <table className="setup-table">
+                        <thead>
+                            <tr>
+                                <SortHeader label="Faculty" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Employee ID" sortKey="employeeId" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Program" sortKey="programCode" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Assigned" sortKey="assignedUnits" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Ceiling (units)" sortKey="maxLoadUnits" sort={table.sort} onSort={table.toggleSort} />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table.pageRows.map(f => (
+                                <LoadLimitRow key={`${f.id}-${f.maxLoadUnits}`} faculty={f} onChanged={onChanged} />
+                            ))}
+                        </tbody>
+                    </table>
+                    <Pagination {...table} />
+                </div>
+            )}
+        </>
+    );
+}
+
 export default function ParametersPage() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -497,28 +553,7 @@ export default function ParametersPage() {
                     </div>
                 </header>
 
-                {data.faculty.length === 0 ? (
-                    <p className="setup-empty">No faculty profiles yet.</p>
-                ) : (
-                    <div className="setup-table-wrap">
-                        <table className="setup-table">
-                            <thead>
-                                <tr>
-                                    <th>Faculty</th>
-                                    <th>Employee ID</th>
-                                    <th>Program</th>
-                                    <th>Assigned</th>
-                                    <th>Ceiling (units)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {data.faculty.map(f => (
-                                    <LoadLimitRow key={`${f.id}-${f.maxLoadUnits}`} faculty={f} onChanged={refresh} />
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                <LoadLimitsTable faculty={data.faculty} onChanged={refresh} />
             </section>
 
             {modal && (
