@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { listApprovals, approveRequest, bulkApprove, rejectRequest, overrideCapacity } from './api';
+import { listApprovals, approveRequest, bulkApprove, rejectRequest, dropSeat, overrideCapacity } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import { confirmsHeavy } from '../settings/prefs';
 import { formatPHT } from '../registration/options';
+import { useServerTable } from '../shell/useServerTable';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import '../registration/registration.css';
 import './enlistment.css';
 
@@ -21,11 +23,13 @@ const statusChip = {
     Requested: 'chip chip-yellow',
     Approved: 'chip chip-blue',
     Rejected: 'chip chip-muted',
-    Cancelled: 'chip chip-muted'
+    Cancelled: 'chip chip-muted',
+    Dropped: 'chip chip-muted'
 };
 
 function ApprovalsPage() {
     const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
     const [pendingCount, setPendingCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState('Requested');
@@ -34,6 +38,9 @@ function ApprovalsPage() {
     const [reload, setReload] = useState(0);
     const [busyId, setBusyId] = useState(null);
     const [rejecting, setRejecting] = useState(null); // { requestId, reason }
+    // Releasing a seat already granted — the undo that a rejection cannot be, because rejection
+    // only applies to a request still pending.
+    const [dropping, setDropping] = useState(null); // { requestId, reason }
     const [capEditing, setCapEditing] = useState(null); // { sectionId, sectionCode, capacity, reason }
     const [capBusy, setCapBusy] = useState(false);
     const [alert, setAlert] = useState(null);
@@ -41,11 +48,27 @@ function ApprovalsPage() {
     const [selected, setSelected] = useState(() => new Set());
     const [bulkBusy, setBulkBusy] = useState(false);
 
-    // Only pending rows can be decided, so only they are selectable.
+    // The server decides the filter, order, and page; `rows` is one page of the queue.
+    const table = useServerTable({
+        rows,
+        total,
+        // Oldest request first: an approval queue is worked in the order people joined it.
+        initialSort: { key: 'requestedAtUtc', dir: 'asc' },
+        search: appliedSearch
+    });
+
+    /* Only pending rows can be decided, so only they are selectable — and a selection now lives
+       for as long as the page it was made on. It used to survive paging, because every page came
+       from one already-fetched list; a page is a fetch now, and carrying ids the table can no
+       longer show would mean a "3 selected" count with nothing on screen to match it. Deciding the
+       whole backlog at once is what "Approve all pending" is for, and that runs server-side across
+       every page of the queue. */
     const pendingRows = useMemo(() => rows.filter(r => r.status === 'Requested'), [rows]);
+    const pagePendingRows = pendingRows;
     const selectedPending = useMemo(
         () => pendingRows.filter(r => selected.has(r.requestId)), [pendingRows, selected]);
-    const allSelected = pendingRows.length > 0 && selectedPending.length === pendingRows.length;
+    const allSelected = pagePendingRows.length > 0
+        && pagePendingRows.every(r => selected.has(r.requestId));
 
     function toggleRow(requestId) {
         setSelected(prev => {
@@ -56,7 +79,14 @@ function ApprovalsPage() {
     }
 
     function toggleAll() {
-        setSelected(allSelected ? new Set() : new Set(pendingRows.map(r => r.requestId)));
+        setSelected(prev => {
+            const next = new Set(prev);
+            for (const r of pagePendingRows) {
+                if (allSelected) next.delete(r.requestId);
+                else next.add(r.requestId);
+            }
+            return next;
+        });
     }
 
     /** Runs a batch and reports it honestly: how many went through, and why the rest didn't. */
@@ -131,11 +161,14 @@ function ApprovalsPage() {
         (async () => {
             setLoading(true);
             try {
-                const data = await listApprovals({ status, search: appliedSearch });
+                const data = await listApprovals({ status, ...table.query });
                 if (!active) return;
                 setRows(data.requests);
+                setTotal(data.total);
+                // Counted server-side over the whole queue, so this stays the real backlog rather
+                // than however many pending rows landed on this page.
                 setPendingCount(data.pendingCount);
-                // A fresh page of results invalidates a selection made against the old one.
+                // A fresh set of rows invalidates a selection made against the old one.
                 setSelected(new Set());
             } catch (err) {
                 if (active) setAlert({ kind: 'error', text: err.message });
@@ -144,7 +177,8 @@ function ApprovalsPage() {
             }
         })();
         return () => { active = false; };
-    }, [status, appliedSearch, reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [status, table.queryKey, reload]);
 
     async function approve(row) {
         setBusyId(row.requestId);
@@ -173,6 +207,28 @@ function ApprovalsPage() {
             setAlert({ kind: 'success', text: `Rejected the request of ${res.studentName} for ${res.subjectCode}.` });
             notifySuccess(`Rejected the request of ${res.studentName} for ${res.subjectCode}.`);
             setRejecting(null);
+            setReload(v => v + 1);
+        } catch (err) {
+            setAlert({ kind: 'error', text: err.message });
+            notifyError(err.message);
+        } finally {
+            setBusyId(null);
+        }
+    }
+
+    // Give an approved seat back to its section (FR-ENL-04). The seat returns to the section's
+    // enrolled count, so the row's Enrolled figure — and every report built on it — moves too.
+    async function drop() {
+        if (!dropping) return;
+        setBusyId(dropping.requestId);
+        setAlert(null);
+        try {
+            const res = await dropSeat(dropping.requestId, dropping.reason);
+            const text = `Released ${res.studentName}'s seat in ${res.subjectCode} (${res.sectionCode}) — ` +
+                `${res.enrolled}/${res.capacity} seats now taken.`;
+            setAlert({ kind: 'success', text });
+            notifySuccess(text);
+            setDropping(null);
             setReload(v => v + 1);
         } catch (err) {
             setAlert({ kind: 'error', text: err.message });
@@ -226,7 +282,7 @@ function ApprovalsPage() {
                     <label className="reg-filter">
                         <span>Status</span>
                         <select value={status} onChange={e => setStatus(e.target.value)}>
-                            {['Requested', 'Approved', 'Rejected', 'Cancelled', 'All'].map(s =>
+                            {['Requested', 'Approved', 'Rejected', 'Cancelled', 'Dropped', 'All'].map(s =>
                                 <option key={s} value={s}>{s}</option>)}
                         </select>
                     </label>
@@ -284,21 +340,21 @@ function ApprovalsPage() {
                                         type="checkbox"
                                         aria-label="Select every pending request on this page"
                                         checked={allSelected}
-                                        disabled={pendingRows.length === 0 || bulkBusy}
+                                        disabled={pagePendingRows.length === 0 || bulkBusy}
                                         onChange={toggleAll}
                                     />
                                 </th>
-                                <th>Student</th>
-                                <th>Subject</th>
-                                <th>Section</th>
-                                <th>Seats</th>
-                                <th>Requested</th>
-                                <th>Status</th>
+                                <SortHeader label="Student" sortKey="studentName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Subject" sortKey="subjectCode" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Section" sortKey="sectionCode" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Seats" sortKey="seats" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Requested" sortKey="requestedAtUtc" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(row => (
+                            {table.pageRows.map(row => (
                                 <tr key={row.requestId} className={selected.has(row.requestId) ? 'is-selected' : undefined}>
                                     <td className="enl-check-col">
                                         {row.status === 'Requested' && (
@@ -406,11 +462,37 @@ function ApprovalsPage() {
                                                 </div>
                                             )
                                         )}
+                                        {row.status === 'Approved' && (
+                                            dropping?.requestId === row.requestId ? (
+                                                <div className="enl-reject-form">
+                                                    <input
+                                                        type="text" placeholder="Reason (optional)"
+                                                        value={dropping.reason}
+                                                        onChange={e => setDropping({ ...dropping, reason: e.target.value })}
+                                                        autoFocus
+                                                    />
+                                                    <button className="btn btn-primary" type="button" disabled={busyId === row.requestId} onClick={drop}>
+                                                        Confirm release
+                                                    </button>
+                                                    <button className="btn" type="button" onClick={() => setDropping(null)}>Back</button>
+                                                </div>
+                                            ) : (
+                                                <div className="enl-actions">
+                                                    <button
+                                                        className="btn" type="button"
+                                                        disabled={busyId === row.requestId}
+                                                        title="Release this seat back to the section"
+                                                        onClick={() => setDropping({ requestId: row.requestId, reason: '' })}
+                                                    >Release seat</button>
+                                                </div>
+                                            )
+                                        )}
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
         </div>

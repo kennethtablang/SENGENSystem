@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { browseSections, requestSlot, myEnlistment, cancelRequest } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmAction } from '../shell/confirm';
 import { hhmm } from '../scheduling/calendarUtils';
 import { formatPHT } from '../registration/options';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import './enlistment.css';
 
 /* FR-ENL: the student's subject enlistment. Browse published sections with live seat
@@ -19,7 +22,8 @@ const requestChip = {
     Requested: 'chip chip-yellow',
     Approved: 'chip chip-blue',
     Rejected: 'chip chip-muted',
-    Cancelled: 'chip chip-muted'
+    Cancelled: 'chip chip-muted',
+    Dropped: 'chip chip-muted'
 };
 
 /* Where each subject on the checklist stands. NoSection is the one the student can do nothing
@@ -96,13 +100,30 @@ function EnlistmentPage() {
         }
     }
 
-    async function cancel(row) {
+    /* Withdraw from a section. One call covers both cases — a request still awaiting approval is
+       cancelled, an approved one is dropped and its seat goes back to the section — but they are
+       not the same act. Giving up a class you already hold asks first, because the seat may be the
+       last one and someone else can take it the moment it is free. */
+    async function withdraw(row) {
+        const wasApproved = row.status === 'Approved';
+        if (wasApproved && !(await confirmAction({
+            title: `Drop ${row.subjectCode}?`,
+            message: `Your seat in ${row.sectionCode} goes straight back to the section, and someone `
+                + 'else may take it. You can request it again while enlistment is open — if the '
+                + 'section fills up first, you would have to pick another one.',
+            confirmLabel: 'Drop the class',
+            danger: true
+        }))) return;
+
         setBusyId(row.requestId);
         setAlert(null);
         try {
             await cancelRequest(row.requestId);
-            setAlert({ kind: 'success', text: `Cancelled your request for ${row.subjectCode} (${row.sectionCode}).` });
-            notifySuccess(`Cancelled your request for ${row.subjectCode} (${row.sectionCode}).`);
+            const text = wasApproved
+                ? `Dropped ${row.subjectCode} (${row.sectionCode}). The seat is back in the section.`
+                : `Cancelled your request for ${row.subjectCode} (${row.sectionCode}).`;
+            setAlert({ kind: 'success', text });
+            notifySuccess(text);
             await load();
         } catch (err) {
             setAlert({ kind: 'error', text: err.message });
@@ -111,6 +132,32 @@ function EnlistmentPage() {
             setBusyId(null);
         }
     }
+
+    // Both student tables are short — a term's subjects, a term's requests — so they sort but keep
+    // a page size well above what either ever holds. Declared before the loading return so the
+    // hooks stay unconditional.
+    const planTable = useTableControls(data?.plan?.subjects, {
+        columns: {
+            subjectCode: s => s.subjectCode,
+            units: s => s.units,
+            sectionCount: s => s.sectionCount,
+            status: s => s.status
+        },
+        initialSort: { key: 'subjectCode', dir: 'asc' },
+        initialPageSize: 50
+    });
+
+    const mineTable = useTableControls(mine?.requests, {
+        columns: {
+            subjectCode: r => r.subjectCode,
+            sectionCode: r => r.sectionCode,
+            units: r => r.units,
+            requestedAtUtc: r => r.requestedAtUtc,
+            status: r => r.status
+        },
+        initialSort: { key: 'requestedAtUtc', dir: 'desc' },
+        initialPageSize: 50
+    });
 
     if (loading) return <div className="enl-page"><p className="enl-empty">Loading published sections…</p></div>;
 
@@ -177,14 +224,14 @@ function EnlistmentPage() {
                         <table className="enl-table">
                             <thead>
                                 <tr>
-                                    <th>Subject</th>
-                                    <th>Units</th>
-                                    <th>Classes</th>
-                                    <th>Status</th>
+                                    <SortHeader label="Subject" sortKey="subjectCode" sort={planTable.sort} onSort={planTable.toggleSort} />
+                                    <SortHeader label="Units" sortKey="units" sort={planTable.sort} onSort={planTable.toggleSort} />
+                                    <SortHeader label="Classes" sortKey="sectionCount" sort={planTable.sort} onSort={planTable.toggleSort} />
+                                    <SortHeader label="Status" sortKey="status" sort={planTable.sort} onSort={planTable.toggleSort} />
                                 </tr>
                             </thead>
                             <tbody>
-                                {plan.subjects.map(s => {
+                                {planTable.pageRows.map(s => {
                                     const state = planStatus[s.status] ?? planStatus.Open;
                                     return (
                                         <tr key={s.subjectCode}>
@@ -211,6 +258,7 @@ function EnlistmentPage() {
                                 })}
                             </tbody>
                         </table>
+                        <Pagination {...planTable} />
                     </div>
                 </section>
             )}
@@ -234,16 +282,16 @@ function EnlistmentPage() {
                         <table className="enl-table">
                             <thead>
                                 <tr>
-                                    <th>Subject</th>
-                                    <th>Section</th>
-                                    <th>Units</th>
-                                    <th>Requested</th>
-                                    <th>Status</th>
+                                    <SortHeader label="Subject" sortKey="subjectCode" sort={mineTable.sort} onSort={mineTable.toggleSort} />
+                                    <SortHeader label="Section" sortKey="sectionCode" sort={mineTable.sort} onSort={mineTable.toggleSort} />
+                                    <SortHeader label="Units" sortKey="units" sort={mineTable.sort} onSort={mineTable.toggleSort} />
+                                    <SortHeader label="Requested" sortKey="requestedAtUtc" sort={mineTable.sort} onSort={mineTable.toggleSort} />
+                                    <SortHeader label="Status" sortKey="status" sort={mineTable.sort} onSort={mineTable.toggleSort} />
                                     <th></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {mine.requests.map(row => (
+                                {mineTable.pageRows.map(row => (
                                     <tr key={row.requestId}>
                                         <td>
                                             <strong>{row.subjectCode}</strong>
@@ -263,14 +311,25 @@ function EnlistmentPage() {
                                                 <button
                                                     className="btn enl-cancel" type="button"
                                                     disabled={busyId === row.requestId}
-                                                    onClick={() => cancel(row)}
+                                                    onClick={() => withdraw(row)}
                                                 >Cancel</button>
+                                            )}
+                                            {/* withdraw() asks for confirmation itself before an
+                                                approved seat is given up. */}
+                                            {row.status === 'Approved' && (
+                                                <button
+                                                    className="btn enl-cancel" type="button"
+                                                    disabled={busyId === row.requestId}
+                                                    title="Give this seat back to the section"
+                                                    onClick={() => withdraw(row)}
+                                                >Drop</button>
                                             )}
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
+                        <Pagination {...mineTable} />
                     </div>
                 </section>
             )}
