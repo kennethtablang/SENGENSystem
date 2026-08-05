@@ -508,9 +508,11 @@ namespace SENGENSystem.Server.Common.Persistence
             {
                 request.Property(r => r.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
                 request.Property(r => r.RejectionReason).HasMaxLength(500);
+                request.Property(r => r.DropReason).HasMaxLength(500);
                 request.HasIndex(r => r.Status);
-                // One live (requested/approved) seat request per student per section; rejected
-                // or cancelled attempts do not block a retry.
+                // One live (requested/approved) seat request per student per section; rejected,
+                // cancelled, or dropped attempts do not block a retry — a student who gives a seat
+                // back must be able to ask for it again.
                 request.HasIndex(r => new { r.StudentRegistrationId, r.SectionId })
                     .IsUnique()
                     .HasFilter("[Status] IN ('Requested','Approved')");

@@ -847,6 +847,13 @@ namespace SENGENSystem.Server.Common.Persistence
                 Name = "AY 2026-2027 — First Semester",
                 Term = SemesterTerm.FirstSemester,
                 IsActive = true,
+                // The stage has to match what the rest of this seed actually builds: registrations,
+                // a published timetable, and live slot requests — a term in the middle of
+                // enlistment, not one still in back-office preparation. It defaulted to Preparation
+                // while nothing read the stage; now that it gates registration and slot selection
+                // (EnrollmentCyclePolicy), an untruthful stage would lock the seeded students out
+                // of the very flow the seed exists to demonstrate.
+                EnrollmentStage = EnrollmentStage.Enlistment,
                 StartDate = new DateOnly(2026, 8, 10),
                 EndDate = new DateOnly(2026, 12, 18),
                 SchoolYearId = schoolYear.Id
