@@ -149,6 +149,12 @@ namespace SENGENSystem.Server.Domain
 
         // A student's year level was set — automatically on registration/activation, or by
         // hand when staff corrected the derivation (FR-SIS)
-        YearLevelAssigned = 72
+        YearLevelAssigned = 72,
+
+        // Enlistment reversals (FR-ENL-04). Kept apart from SlotRequested so the trail can answer
+        // "did they take the seat back?" — which it could not while a cancellation was recorded as
+        // a request. SlotDropped is the only action that returns a seat to a section.
+        SlotCancelled = 73,
+        SlotDropped = 74
     }
 }

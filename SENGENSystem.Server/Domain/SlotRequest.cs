@@ -27,5 +27,17 @@ namespace SENGENSystem.Server.Domain
         public Guid? DecidedByUserId { get; set; }
 
         public string? RejectionReason { get; set; }
+
+        /// <summary>
+        /// When an <see cref="SlotRequestStatus.Approved"/> seat was given back. Kept separate from
+        /// <see cref="DecidedAtUtc"/> so a drop never overwrites the record of the approval it
+        /// reverses — the trail has to show both that the seat was granted and that it was returned.
+        /// </summary>
+        public DateTime? DroppedAtUtc { get; set; }
+
+        /// <summary>Who dropped it — the student themselves, or the staff member who corrected it.</summary>
+        public Guid? DroppedByUserId { get; set; }
+
+        public string? DropReason { get; set; }
     }
 }
