@@ -652,3 +652,10 @@
   color: var(--text-1);
   font: inherit;
 }
+
+/* Row count beside the schedule filter — says whether you are looking at everything or a subset. */
+.sched-filter-count {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
