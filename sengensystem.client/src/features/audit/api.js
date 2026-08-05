@@ -1,4 +1,5 @@
 import { getToken } from '../auth/api';
+import { pageParams } from '../shell/useServerTable';
 
 async function parseError(response) {
     let payload = null;
@@ -14,8 +15,11 @@ async function parseError(response) {
 }
 
 // FR-AUD-01: the School Admin reads the accountability log (newest first).
-export async function getAuditTrail() {
-    const response = await fetch('/api/audit', {
+export async function getAuditTrail({ action, ...page } = {}) {
+    const params = pageParams(page);
+    if (action && action !== 'All') params.set('action', action);
+    const qs = params.toString() ? `?${params}` : '';
+    const response = await fetch(`/api/audit${qs}`, {
         headers: { Authorization: `Bearer ${getToken()}` }
     });
     if (!response.ok) throw await parseError(response);
