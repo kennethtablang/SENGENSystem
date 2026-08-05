@@ -2,21 +2,14 @@ import { useEffect, useState } from 'react';
 import { listTermActivations, validateTermActivation } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { formatPHT } from './options';
-import { useTableControls } from '../shell/useTableControls';
+import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import './registration.css';
 
-const activationColumns = {
-    // Sorted and searched on the number the student actually identifies themselves by; the
-    // internal registration number is the fallback for anyone not yet issued one.
-    studentNumber: a => a.officialStudentNumber || a.registrationNumber,
-    studentName: a => a.lastName || a.studentName,
-    yearLevel: a => a.yearLevel,
-    program: a => a.program,
-    semesterName: a => a.semesterName,
-    requestedAtUtc: a => a.requestedAtUtc,
-    status: a => a.status
-};
+/* The sortable columns now live on the server (ListTermActivationsEndpoint) — including the rule
+   this list used to encode, that the student is sorted on the number they actually identify
+   themselves by, with the internal registration number as the fallback for anyone not yet issued
+   one. Sorting here would only have ordered the page it was handed. */
 
 const statusChip = {
     Pending: 'chip chip-muted',
@@ -26,13 +19,15 @@ const statusChip = {
 
 function TermActivationsPage() {
     const [activations, setActivations] = useState([]);
+    const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [filter, setFilter] = useState('Pending');
     const [busyId, setBusyId] = useState(null);
     const [reload, setReload] = useState(0);
-    const table = useTableControls(activations, {
-        columns: activationColumns,
+    const table = useServerTable({
+        rows: activations,
+        total,
         initialSort: { key: 'requestedAtUtc', dir: 'desc' }
     });
 
@@ -42,8 +37,10 @@ function TermActivationsPage() {
             setLoading(true);
             setError(null);
             try {
-                const data = await listTermActivations(filter);
-                if (active) setActivations(data.activations);
+                const data = await listTermActivations({ status: filter, ...table.query });
+                if (!active) return;
+                setActivations(data.activations);
+                setTotal(data.total);
             } catch (err) {
                 if (active) setError(err.message);
             } finally {
@@ -51,7 +48,8 @@ function TermActivationsPage() {
             }
         })();
         return () => { active = false; };
-    }, [filter, reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filter, table.queryKey, reload]);
 
     async function act(id, approve) {
         setBusyId(id);

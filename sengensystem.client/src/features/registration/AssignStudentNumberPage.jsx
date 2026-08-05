@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { listAssignableRegistrations, assignStudentNumber } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { formatPHT, humanize } from './options';
+import { useServerTable } from '../shell/useServerTable';
+import { SortHeader, Pagination } from '../shell/tableControls';
 import './registration.css';
 
 // Admission Officer records the official student number — issued by the separate student-records
@@ -18,6 +20,7 @@ const views = [
 
 function AssignStudentNumberPage() {
     const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
     const [counts, setCounts] = useState({ numberedCount: 0, pendingCount: 0, totalCount: 0 });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -28,15 +31,25 @@ function AssignStudentNumberPage() {
     const [drafts, setDrafts] = useState({});
     const [busyId, setBusyId] = useState(null);
 
+    // View, search, sort, and page are all decided server-side. Drafts are keyed by registration
+    // id, so an in-progress entry survives sorting and paging untouched.
+    const table = useServerTable({
+        rows,
+        total,
+        initialSort: { key: 'registrationNumber', dir: 'asc' },
+        search: query
+    });
+
     useEffect(() => {
         let active = true;
         (async () => {
             setLoading(true);
             setError(null);
             try {
-                const data = await listAssignableRegistrations({ search: query, status: view });
+                const data = await listAssignableRegistrations({ status: view, ...table.query });
                 if (!active) return;
                 setRows(data.registrations);
+                setTotal(data.total);
                 setCounts({
                     numberedCount: data.numberedCount ?? 0,
                     pendingCount: data.pendingCount ?? 0,
@@ -52,7 +65,8 @@ function AssignStudentNumberPage() {
             }
         })();
         return () => { active = false; };
-    }, [query, view]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [view, table.queryKey]);
 
     function submitSearch(e) {
         e.preventDefault();
@@ -124,7 +138,7 @@ function AssignStudentNumberPage() {
 
             {loading ? (
                 <p className="reg-empty">Loading…</p>
-            ) : rows.length === 0 ? (
+            ) : table.total === 0 ? (
                 <p className="reg-empty">
                     {query ? 'No registrations match your search.'
                         : view === 'numbered' ? 'No registration has a student number on file yet.'
@@ -136,17 +150,17 @@ function AssignStudentNumberPage() {
                     <table className="reg-table">
                         <thead>
                             <tr>
-                                <th>Registration no.</th>
-                                <th>Name</th>
-                                <th>Program</th>
-                                <th>SIS status</th>
-                                <th>Numbering</th>
+                                <SortHeader label="Registration no." sortKey="registrationNumber" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Name" sortKey="fullName" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Program" sortKey="program" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="SIS status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Numbering" sortKey="numbering" sort={table.sort} onSort={table.toggleSort} />
                                 <th>Student number</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(r => {
+                            {table.pageRows.map(r => {
                                 const draft = drafts[r.id] ?? '';
                                 const unchanged = draft.trim() === (r.officialStudentNumber ?? '');
                                 return (
@@ -191,6 +205,7 @@ function AssignStudentNumberPage() {
                             })}
                         </tbody>
                     </table>
+                    <Pagination {...table} />
                 </div>
             )}
         </div>

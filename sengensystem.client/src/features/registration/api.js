@@ -1,4 +1,5 @@
 import { getToken } from '../auth/api';
+import { pageParams } from '../shell/useServerTable';
 
 async function parseError(response) {
     let payload = null;
@@ -76,8 +77,10 @@ export async function setTermActivationControl(open) {
 
 // ---- Admission Officer ----
 
-export async function listTermActivations(status) {
-    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+export async function listTermActivations({ status, ...page } = {}) {
+    const params = pageParams(page);
+    if (status) params.set('status', status);
+    const qs = params.toString() ? `?${params}` : '';
     const response = await fetch(`/api/registration/term-activation${qs}`, { headers: authHeaders() });
     if (!response.ok) throw await parseError(response);
     return response.json();
@@ -95,9 +98,8 @@ export async function validateTermActivation(id, data) {
 
 // Admission Officer records the official student number (issued by a separate system).
 // `status` chooses the view: 'pending' (still to number, the default), 'numbered', or 'all'.
-export async function listAssignableRegistrations({ search, status } = {}) {
-    const params = new URLSearchParams();
-    if (search) params.set('search', search);
+export async function listAssignableRegistrations({ status, ...page } = {}) {
+    const params = pageParams(page);
     if (status) params.set('status', status);
     const qs = params.toString() ? `?${params}` : '';
     const response = await fetch(`/api/registration/student-number${qs}`, { headers: authHeaders() });
@@ -117,10 +119,11 @@ export async function assignStudentNumber(id, studentNumber) {
 
 // ---- Registrar ----
 
-export async function listRegistrations({ status, search } = {}) {
-    const params = new URLSearchParams();
+/* Paged, filtered, and sorted by the server (see useServerTable). Spread the hook's `query` in:
+   listRegistrations({ status, ...table.query }). */
+export async function listRegistrations({ status, ...page } = {}) {
+    const params = pageParams(page);
     if (status && status !== 'All') params.set('status', status);
-    if (search) params.set('search', search);
     const qs = params.toString() ? `?${params}` : '';
     const response = await fetch(`/api/registration${qs}`, { headers: authHeaders() });
     if (!response.ok) throw await parseError(response);

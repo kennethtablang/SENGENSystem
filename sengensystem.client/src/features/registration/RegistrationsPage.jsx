@@ -2,19 +2,9 @@ import { useEffect, useState } from 'react';
 import { listRegistrations, getRegistration, updateRegistration } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { statusOptionsFor, humanize, formatPHT } from './options';
-import { useTableControls } from '../shell/useTableControls';
+import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import './registration.css';
-
-const registrationColumns = {
-    studentNumber: r => r.studentNumber,
-    fullName: r => r.fullName,
-    program: r => r.program,
-    studentType: r => r.studentType,
-    documentsSubmitted: r => r.documentsSubmitted,
-    createdAtUtc: r => r.createdAtUtc,
-    status: r => r.status
-};
 
 const statusChip = {
     Submitted: 'chip chip-muted',
@@ -23,7 +13,10 @@ const statusChip = {
 };
 
 function RegistrationsPage() {
+    // The server now owns the filtering, sorting, and paging, so the page holds one page of rows
+    // and the total rather than "everything up to 500" — see useServerTable.
     const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [status, setStatus] = useState('All');
@@ -32,9 +25,11 @@ function RegistrationsPage() {
     const [reload, setReload] = useState(0);
     const [selected, setSelected] = useState(null); // full detail
     const [drawerBusy, setDrawerBusy] = useState(false);
-    const table = useTableControls(rows, {
-        columns: registrationColumns,
-        initialSort: { key: 'createdAtUtc', dir: 'desc' }
+    const table = useServerTable({
+        rows,
+        total,
+        initialSort: { key: 'createdAtUtc', dir: 'desc' },
+        search: appliedSearch
     });
 
     useEffect(() => {
@@ -43,8 +38,10 @@ function RegistrationsPage() {
             setLoading(true);
             setError(null);
             try {
-                const data = await listRegistrations({ status, search: appliedSearch });
-                if (active) setRows(data.registrations);
+                const data = await listRegistrations({ status, ...table.query });
+                if (!active) return;
+                setRows(data.registrations);
+                setTotal(data.total);
             } catch (err) {
                 if (active) setError(err.message);
             } finally {
@@ -52,7 +49,10 @@ function RegistrationsPage() {
             }
         })();
         return () => { active = false; };
-    }, [status, appliedSearch, reload]);
+    // table.queryKey is a string of page/size/sort/search — depending on table.query itself would
+    // refetch every render, since it is a fresh object each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [status, table.queryKey, reload]);
 
     async function open(id) {
         setDrawerBusy(true);
