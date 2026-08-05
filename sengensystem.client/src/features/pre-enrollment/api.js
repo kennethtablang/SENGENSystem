@@ -1,4 +1,5 @@
 import { getToken } from '../auth/api';
+import { pageParams } from '../shell/useServerTable';
 
 async function parseError(response) {
     let payload = null;
@@ -30,8 +31,10 @@ async function authRequest(url, { method = 'GET', body } = {}) {
 
 // FR-PRE-02/04: Admission Officer pre-authorization for online slot selection.
 
-export function listPreAuthorizations(search) {
-    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+export function listPreAuthorizations({ filter, ...page } = {}) {
+    const params = pageParams(page);
+    if (filter && filter !== 'All') params.set('filter', filter);
+    const qs = params.toString() ? `?${params}` : '';
     return authRequest(`/api/pre-authorization${qs}`);
 }
 

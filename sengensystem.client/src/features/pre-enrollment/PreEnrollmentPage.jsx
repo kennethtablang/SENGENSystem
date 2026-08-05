@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import { getToken } from '../auth/api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { saveBlob } from '../shell/download';
+import { useTableControls } from '../shell/useTableControls';
+import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import '../registration/registration.css';
 
 /* FR-PRE-01/03: the Registrar imports prospective student lists from .xlsx. The server runs
@@ -13,6 +15,65 @@ const outcomeChip = {
     Skipped: 'chip chip-yellow',
     Failed: 'chip chip-muted'
 };
+
+/* The import outcome, row by row. A workbook can carry hundreds of rows and what the Registrar
+   actually wants is the failures — so it sorts by outcome (errors first) and filters, rather than
+   making them scroll a wall of successes to find the three that did not land. */
+function ImportReportTable({ rows }) {
+    const [search, setSearch] = useState('');
+    const table = useTableControls(rows, {
+        columns: {
+            row: r => r.row,
+            name: r => r.name,
+            studentNumber: r => r.studentNumber,
+            // Anything that is not an outright success sorts to the top.
+            outcome: r => (r.errors.length > 0 ? 0 : 1),
+            details: r => r.errors.join(' ')
+        },
+        initialSort: { key: 'row', dir: 'asc' },
+        search,
+        searchFields: [r => r.name, r => r.studentNumber, r => r.outcome, r => r.errors.join(' ')]
+    });
+
+    return (
+        <div className="card reg-table-wrap">
+            <div className="table-toolbar">
+                <TableSearch value={search} onChange={setSearch} placeholder="Filter name, number, or error…" />
+            </div>
+            {table.total === 0 ? (
+                <p className="reg-empty">No imported rows match your filter.</p>
+            ) : (
+                <>
+                    <table className="reg-table">
+                        <thead>
+                            <tr>
+                                <SortHeader label="Row" sortKey="row" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Name" sortKey="name" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Student no." sortKey="studentNumber" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Outcome" sortKey="outcome" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Details" sortKey="details" sort={table.sort} onSort={table.toggleSort} />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table.pageRows.map(row => (
+                                <tr key={row.row}>
+                                    <td className="reg-mono">{row.row}</td>
+                                    <td><strong>{row.name || '—'}</strong></td>
+                                    <td className="reg-mono">{row.studentNumber || '—'}</td>
+                                    <td><span className={outcomeChip[row.outcome] || 'chip chip-muted'}>{row.outcome}</span></td>
+                                    <td style={{ whiteSpace: 'normal' }}>
+                                        {row.errors.length === 0 ? '—' : row.errors.join(' ')}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <Pagination {...table} />
+                </>
+            )}
+        </div>
+    );
+}
 
 function PreEnrollmentPage() {
     const [file, setFile] = useState(null);
@@ -99,34 +160,7 @@ function PreEnrollmentPage() {
                 </div>
             </form>
 
-            {report && (
-                <div className="card reg-table-wrap">
-                    <table className="reg-table">
-                        <thead>
-                            <tr>
-                                <th>Row</th>
-                                <th>Name</th>
-                                <th>Student no.</th>
-                                <th>Outcome</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {report.rows.map(row => (
-                                <tr key={row.row}>
-                                    <td className="reg-mono">{row.row}</td>
-                                    <td><strong>{row.name || '—'}</strong></td>
-                                    <td className="reg-mono">{row.studentNumber || '—'}</td>
-                                    <td><span className={outcomeChip[row.outcome] || 'chip chip-muted'}>{row.outcome}</span></td>
-                                    <td style={{ whiteSpace: 'normal' }}>
-                                        {row.errors.length === 0 ? '—' : row.errors.join(' ')}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+            {report && <ImportReportTable rows={report.rows} />}
         </div>
     );
 }

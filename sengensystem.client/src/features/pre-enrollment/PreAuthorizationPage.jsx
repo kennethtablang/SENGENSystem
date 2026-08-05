@@ -1,21 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { listPreAuthorizations, grantPreAuthorization, revokePreAuthorization } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { humanize, formatPHT } from '../registration/options';
-import { useTableControls } from '../shell/useTableControls';
+import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import '../registration/registration.css';
-
-const preAuthColumns = {
-    studentNumber: r => r.studentNumber,
-    fullName: r => r.fullName,
-    program: r => r.program,
-    studentType: r => r.studentType,
-    registrationStatus: r => r.registrationStatus,
-    submittedCount: r => r.submittedCount,
-    hasLinkedAccount: r => (r.hasLinkedAccount ? 1 : 0),
-    authorization: r => (r.isPreAuthorized ? 2 : eligibility(r) === 'Eligible' ? 1 : 0)
-};
 
 /* FR-PRE-02/04: the Admission Officer clears incoming and returning students for online
    subject slot selection. The server enforces the gate — a Registrar-confirmed SIS AND the
@@ -45,6 +34,7 @@ function blockers(row) {
 
 function PreAuthorizationPage() {
     const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
     const [counts, setCounts] = useState({ authorizedCount: 0, eligibleCount: 0 });
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('All');
@@ -54,14 +44,27 @@ function PreAuthorizationPage() {
     const [busyId, setBusyId] = useState(null);
     const [alert, setAlert] = useState(null);
 
+    // The eligibility chip is a server-side filter now. Applied in the browser it would narrow
+    // whichever page had been fetched, so "Eligible" would show only the eligible students who
+    // happened to land on page 1 — and the pager would still count the others.
+    const table = useServerTable({
+        rows,
+        total,
+        initialSort: { key: 'fullName', dir: 'asc' },
+        search: appliedSearch
+    });
+
     useEffect(() => {
         let active = true;
         (async () => {
             setLoading(true);
             try {
-                const data = await listPreAuthorizations(appliedSearch);
+                const data = await listPreAuthorizations({ filter, ...table.query });
                 if (!active) return;
                 setRows(data.students);
+                setTotal(data.total);
+                // Counted server-side across the whole queue, independent of the chip, so the
+                // summary stays a statement about the term rather than about the current view.
                 setCounts({ authorizedCount: data.authorizedCount, eligibleCount: data.eligibleCount });
             } catch (err) {
                 if (active) setAlert({ kind: 'error', text: err.message });
@@ -70,15 +73,8 @@ function PreAuthorizationPage() {
             }
         })();
         return () => { active = false; };
-    }, [appliedSearch, reload]);
-
-    const visible = useMemo(
-        () => filter === 'All' ? rows : rows.filter(r => eligibility(r) === filter),
-        [rows, filter]);
-    const table = useTableControls(visible, {
-        columns: preAuthColumns,
-        initialSort: { key: 'fullName', dir: 'asc' }
-    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filter, table.queryKey, reload]);
 
     async function grant(row) {
         setBusyId(row.registrationId);
@@ -153,7 +149,7 @@ function PreAuthorizationPage() {
 
             {loading ? (
                 <p className="reg-empty">Loading…</p>
-            ) : visible.length === 0 ? (
+            ) : rows.length === 0 ? (
                 <p className="reg-empty">No students match this view.</p>
             ) : (
                 <div className="card reg-table-wrap">
