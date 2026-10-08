@@ -38,7 +38,8 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         string? evaluatedBy,
         DateTime? evaluatedAt,
         List<EvaluationPdfRow> rows,
-        DateTime generatedAt) : IDocument
+        DateTime generatedAt,
+        string institution) : IDocument
     {
         private static readonly Color Ink = Color.FromHex("#111111");
         private static readonly Color Muted = Color.FromHex("#5b6c99");
@@ -81,7 +82,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         private void Header(IContainer container) =>
             container.Column(column =>
             {
-                column.Item().Text("STI COLLEGE ALAMINOS").FontSize(13).Bold().FontColor(Brand);
+                column.Item().Text(institution.ToUpperInvariant()).FontSize(13).Bold().FontColor(Brand);
                 column.Item().Text("Transferee Credit Evaluation").FontSize(10).FontColor(Muted);
 
                 column.Item().PaddingTop(6).Border(1).BorderColor(Line).Padding(6).Column(box =>

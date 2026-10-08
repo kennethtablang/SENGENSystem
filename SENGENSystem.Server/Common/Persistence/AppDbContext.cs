@@ -213,6 +213,9 @@ namespace SENGENSystem.Server.Common.Persistence
                 settings.Property(s => s.WeightIdleGap).HasDefaultValue(0.35);
                 settings.Property(s => s.WeightRoomFit).HasDefaultValue(0.25);
                 settings.Property(s => s.GapSaturationHours).HasDefaultValue(8.0);
+                settings.Property(s => s.InstitutionName)
+                    .HasMaxLength(SENGENSystem.Server.Domain.SystemSettings.InstitutionNameMaxLength)
+                    .HasDefaultValue(SENGENSystem.Server.Domain.SystemSettings.DefaultInstitutionName);
                 // Enrollment/enlistment + engine-budget parameters default to the previous behaviour.
                 settings.Property(s => s.EnlistmentOpen).HasDefaultValue(true);
                 settings.Property(s => s.TermActivationOpen).HasDefaultValue(true);

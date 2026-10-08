@@ -33,7 +33,11 @@ namespace SENGENSystem.Server.Features.Registration.Manage
             }
 
             var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
-            return Results.Ok(StudentRegistrationDto.From(registration, catalog));
+            var duplicates = await LikelyDuplicates.FindAsync(db, [registration.Id], cancellationToken);
+            return Results.Ok(StudentRegistrationDto.From(registration, catalog) with
+            {
+                LikelyDuplicates = duplicates.GetValueOrDefault(registration.Id) ?? []
+            });
         }
     }
 }

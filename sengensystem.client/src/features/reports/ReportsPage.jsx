@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiFetch } from '../shell/apiClient';
+import { apiFetch, apiDownload } from '../shell/apiClient';
 import { useAuth } from '../auth/useAuth';
 import { getDashboardMetrics } from '../dashboard/api';
 import { subscribeToReports } from './live';
 import { downloadSemesterExport, downloadSystemParametersExport } from './exportApi';
 import { notifySuccess, notifyError } from '../shell/notify';
-import { saveBlob } from '../shell/download';
 import { useTableControls } from '../shell/useTableControls';
 import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import '../registration/registration.css';
@@ -163,11 +162,9 @@ function ReportsPage() {
     async function exportXlsx() {
         setError(null);
         try {
-            const response = await apiFetch(
+            await apiDownload(
                 `/api/reports/${active}?semesterId=${encodeURIComponent(semesterId)}&format=xlsx`,
-                { raw: true });
-            const blob = await response.blob();
-            saveBlob(blob, `sengen-${active}.xlsx`);
+                `sengen-${active}.xlsx`);
             notifySuccess(`Exported ${reports.find(r => r.key === active)?.title ?? active} to Excel.`);
         } catch (err) {
             setError(err.message);

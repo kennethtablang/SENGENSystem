@@ -93,3 +93,14 @@ export function overrideCapacity(sectionId, capacity, reason) {
         body: { capacity, reason: reason || null }
     });
 }
+
+// F-08 follow-up: sections whose stored seat count disagrees with their live approved requests.
+export function seatCountMismatches() {
+    return authRequest('/api/enlistment/seat-counts/mismatches');
+}
+
+// Correct one section's seat count to the number of live approved requests. Explicit, never
+// automatic — a mismatch means something the seat lifecycle did not record.
+export function reconcileSeatCount(sectionId) {
+    return authRequest(`/api/enlistment/seat-counts/${sectionId}/reconcile`, { method: 'POST' });
+}

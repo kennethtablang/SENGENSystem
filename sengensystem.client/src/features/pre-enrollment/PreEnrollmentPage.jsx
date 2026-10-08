@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
-import { importPreEnrollment, fetchPreEnrollmentTemplate } from './api';
+import { importPreEnrollment, downloadPreEnrollmentTemplate } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
-import { saveBlob } from '../shell/download';
 import { useTableControls } from '../shell/useTableControls';
 import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import '../registration/registration.css';
@@ -108,8 +107,7 @@ function PreEnrollmentPage() {
     async function downloadTemplate() {
         setAlert(null);
         try {
-            const blob = await fetchPreEnrollmentTemplate();
-            saveBlob(blob, 'sengen-preenrollment-template.xlsx');
+            await downloadPreEnrollmentTemplate();
         } catch (err) {
             setAlert({ kind: 'error', text: err.message });
             notifyError(err.message);

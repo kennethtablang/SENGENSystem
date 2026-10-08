@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using SENGENSystem.Server.Common.Persistence;
@@ -45,6 +46,21 @@ namespace SENGENSystem.Server.Common.Auditing
             var role = principal?.FindFirstValue(ClaimTypes.Role) ?? "Unknown";
 
             Add(action, summary, actorId, name, role, entityType, entityId);
+        }
+
+        /// <summary>
+        /// Drops entries staged since the last save. For optimistic-concurrency retry loops that
+        /// record inside the loop: a lost attempt's entry is still tracked, so without this the
+        /// retry that succeeds commits both — the same action audited twice, with the losing
+        /// attempt's stale figures in one of them.
+        /// </summary>
+        public void DiscardUnsaved()
+        {
+            foreach (var staged in _db.ChangeTracker.Entries<AuditEntry>()
+                         .Where(e => e.State == EntityState.Added).ToList())
+            {
+                staged.State = EntityState.Detached;
+            }
         }
 
         /// <summary>

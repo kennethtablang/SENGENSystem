@@ -12,8 +12,8 @@ const steps = [
     },
     {
         icon: 'file',
-        title: 'Submit documents',
-        text: 'Form 137, PSA birth certificate, and certificate of good moral character. The Admission Office tracks each item on your checklist and sends reminders for anything missing.'
+        title: 'Hand in & track documents',
+        text: 'Bring Form 137, your PSA birth certificate, and a certificate of good moral character to the Admission Office in person — nothing is uploaded online. Staff record each paper as it arrives, so you can track your checklist here and get reminders for anything still missing.'
     },
     {
         icon: 'check',

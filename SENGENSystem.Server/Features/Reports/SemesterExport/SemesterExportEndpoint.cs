@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
@@ -135,8 +136,8 @@ namespace SENGENSystem.Server.Features.Reports.SemesterExport
                     a.Section?.Subject?.Title ?? string.Empty,
                     a.Section?.SectionCode ?? string.Empty,
                     a.TimeSlot!.Day.ToString(),
-                    Hhmm(a.TimeSlot.StartMinutes),
-                    Hhmm(a.TimeSlot.EndMinutes),
+                    ClockText.Hhmm(a.TimeSlot.StartMinutes),
+                    ClockText.Hhmm(a.TimeSlot.EndMinutes),
                     a.Room?.Name ?? string.Empty,
                     a.FacultyProfile?.User?.FullName ?? "(unassigned)",
                     a.IsPublished ? "Published" : "Draft"
@@ -149,6 +150,5 @@ namespace SENGENSystem.Server.Features.Reports.SemesterExport
                 rows.Count(a => a.IsPublished));
         }
 
-        private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
     }
 }

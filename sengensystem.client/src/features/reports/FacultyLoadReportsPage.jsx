@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiFetch } from '../shell/apiClient';
+import { apiFetch, apiDownload } from '../shell/apiClient';
 import { getDashboardMetrics } from '../dashboard/api';
 import { subscribeToReports } from './live';
 import { LiveChip } from './ReportsPage';
 import { notifySuccess, notifyError } from '../shell/notify';
-import { saveBlob, filenameFromDisposition } from '../shell/download';
 import { useTableControls } from '../shell/useTableControls';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import '../registration/registration.css';
@@ -15,15 +14,6 @@ import './reports.css';
    name or employee ID, and download individual, consolidated, grid,
    or bulk (.zip) workbooks for workload balance and institutional compliance. */
 
-/* `raw: true` because these endpoints name the file in Content-Disposition, which beats the
-   caller's fallback — but the request goes through the shared client, so an expired session raises
-   a 401 rather than saving an error page as a .xlsx. */
-async function downloadFile(url, fallbackName) {
-    const response = await apiFetch(url, { raw: true });
-    const blob = await response.blob();
-    const name = filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackName);
-    saveBlob(blob, name);
-}
 
 function FacultyLoadReportsPage() {
     const [semesters, setSemesters] = useState([]);
@@ -82,14 +72,21 @@ function FacultyLoadReportsPage() {
         };
     }, [semesterId, search, refreshTick]);
 
+    // The running download's controller, so the bulk .zip — the one that can take a while — can be
+    // cancelled rather than waited out. apiDownload also stops it on its own after a timeout.
+    const downloadController = useRef(null);
+
     async function download(key, url, fallbackName, doneMessage) {
+        const controller = new AbortController();
+        downloadController.current = controller;
         setBusy(key);
         try {
-            await downloadFile(url, fallbackName);
+            await apiDownload(url, fallbackName, { signal: controller.signal });
             notifySuccess(doneMessage);
         } catch (err) {
-            notifyError(err.message);
+            if (!err.cancelled) notifyError(err.message);
         } finally {
+            downloadController.current = null;
             setBusy(null);
         }
     }
@@ -187,6 +184,12 @@ function FacultyLoadReportsPage() {
                     {busy === 'grids' && <span className="spinner" aria-hidden="true" />}
                     Grid schedules
                 </button>
+                {busy !== null && (
+                    <button type="button" className="btn btn-ghost"
+                        onClick={() => downloadController.current?.abort()}>
+                        Cancel download
+                    </button>
+                )}
             </div>
 
             {!data ? (

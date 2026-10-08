@@ -46,7 +46,14 @@ export const navGroups = [
                 label: 'Document requirements',
                 icon: 'file',
                 roles: ['Student', 'AdmissionOfficer', 'Registrar'],
-                desc: 'Form 137, birth certificate, and good moral certificate — submission status per enrollee.'
+                desc: 'Form 137, birth certificate, and good moral certificate — track what the Admission Office has received.'
+            },
+            {
+                to: '/my-registration',
+                label: 'My SIS',
+                icon: 'idcard',
+                roles: ['Student'],
+                desc: 'Your Student Information Sheet — correct a typo yourself until the Registrar confirms it.'
             },
             {
                 to: '/registrations',

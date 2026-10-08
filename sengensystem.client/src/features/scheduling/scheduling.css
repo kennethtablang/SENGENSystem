@@ -30,6 +30,26 @@
   white-space: nowrap;
 }
 
+/* Optional "reproduce arrangement #___" beside Generate (FR-SCHED-08). */
+.sched-seed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.sched-seed input {
+  width: 7.5rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  font: inherit;
+  color: var(--text-1);
+  background: var(--surface);
+}
+
 .sched-sub {
   color: var(--text-3);
   font-size: 0.88rem;

@@ -7,6 +7,7 @@ import { formatPHT } from '../registration/options';
 import { useTableControls } from '../shell/useTableControls';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import './enlistment.css';
+import EnrollmentChip from './EnrollmentChip';
 
 /* FR-ENL: the student's subject enlistment. Browse published sections with live seat
    availability (FR-ENL-01/02), request seats routed through Registrar approval (FR-ENL-04),
@@ -278,6 +279,7 @@ function EnlistmentPage() {
                     <header className="enl-mine-head">
                         <h3>My requests</h3>
                         <span className="chip chip-blue">{mine.approvedUnits} units approved</span>
+                        <EnrollmentChip completion={mine.completion} />
                     </header>
                     <div className="enl-table-wrap">
                         <table className="enl-table">

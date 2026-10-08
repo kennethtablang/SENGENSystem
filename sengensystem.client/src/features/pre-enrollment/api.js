@@ -1,4 +1,4 @@
-import { apiFetch } from '../shell/apiClient';
+import { apiFetch, apiDownload } from '../shell/apiClient';
 import { pageParams } from '../shell/useServerTable';
 
 /* Every call here goes through the shared client — one place for the auth header, the
@@ -35,7 +35,6 @@ export function importPreEnrollment(file) {
     return apiFetch('/api/pre-enrollment/import', { method: 'POST', body: form });
 }
 
-export async function fetchPreEnrollmentTemplate() {
-    const response = await apiFetch('/api/pre-enrollment/template', { raw: true });
-    return response.blob();
+export function downloadPreEnrollmentTemplate() {
+    return apiDownload('/api/pre-enrollment/template', 'sengen-preenrollment-template.xlsx');
 }

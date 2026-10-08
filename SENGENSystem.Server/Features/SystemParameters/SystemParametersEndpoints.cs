@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Persistence;
@@ -20,7 +21,8 @@ namespace SENGENSystem.Server.Features.SystemParameters
         int? MaxEnlistmentUnitsPerStudent,
         int? MinSectionEnrollment,
         int? ScheduleTimeBudgetSeconds,
-        int? ScheduleMaxStepsThousands);
+        int? ScheduleMaxStepsThousands,
+        string? InstitutionName);
 
     public static class SystemParametersEndpoints
     {
@@ -121,6 +123,11 @@ namespace SENGENSystem.Server.Features.SystemParameters
                     minMaxStepsThousands = MinMaxStepsThousands,
                     maxMaxStepsThousands = MaxMaxStepsThousands
                 },
+                institution = new
+                {
+                    name = settings.InstitutionName,
+                    maxLength = SystemSettings.InstitutionNameMaxLength
+                },
                 timeSlots,
                 faculty,
                 updatedAtUtc = settings.UpdatedAtUtc
@@ -149,6 +156,12 @@ namespace SENGENSystem.Server.Features.SystemParameters
             if (request.ScheduleMaxStepsThousands is { } steps && (steps < MinMaxStepsThousands || steps > MaxMaxStepsThousands))
             {
                 errors["scheduleMaxStepsThousands"] = [$"Must be between {MinMaxStepsThousands} and {MaxMaxStepsThousands} (thousand steps)."];
+            }
+            var institutionName = request.InstitutionName?.Trim();
+            if (institutionName is not null
+                && (institutionName.Length == 0 || institutionName.Length > SystemSettings.InstitutionNameMaxLength))
+            {
+                errors["institutionName"] = [$"Enter the institution name (up to {SystemSettings.InstitutionNameMaxLength} characters)."];
             }
             if (errors.Count > 0)
             {
@@ -184,6 +197,12 @@ namespace SENGENSystem.Server.Features.SystemParameters
                 changes.Add($"engine step budget → {ms}k");
             }
 
+            if (institutionName is not null && institutionName != settings.InstitutionName)
+            {
+                settings.InstitutionName = institutionName;
+                changes.Add($"institution name → “{institutionName}”");
+            }
+
             if (changes.Count > 0)
             {
                 settings.UpdatedAtUtc = DateTime.UtcNow;
@@ -199,7 +218,8 @@ namespace SENGENSystem.Server.Features.SystemParameters
                 maxEnlistmentUnitsPerStudent = settings.MaxEnlistmentUnitsPerStudent,
                 minSectionEnrollment = settings.MinSectionEnrollment,
                 timeBudgetSeconds = settings.ScheduleTimeBudgetSeconds,
-                maxStepsThousands = settings.ScheduleMaxStepsThousands
+                maxStepsThousands = settings.ScheduleMaxStepsThousands,
+                institutionName = settings.InstitutionName
             });
         }
 
@@ -291,7 +311,7 @@ namespace SENGENSystem.Server.Features.SystemParameters
             var slot = new TimeSlot { Day = day, StartMinutes = start, EndMinutes = end };
             db.TimeSlots.Add(slot);
             audit.Record(AuditAction.TimeSlotSaved,
-                $"Added the allowable time slot {day} {Hhmm(start)}–{Hhmm(end)}.",
+                $"Added the allowable time slot {day} {ClockText.Hhmm(start)}–{ClockText.Hhmm(end)}.",
                 "TimeSlot", slot.Id.ToString());
             await db.SaveChangesAsync(ct);
 
@@ -324,13 +344,13 @@ namespace SENGENSystem.Server.Features.SystemParameters
             var (ok, day, start, end, problem) = await ValidateSlotAsync(request, id, db, ct);
             if (!ok) return problem;
 
-            var before = $"{slot.Day} {Hhmm(slot.StartMinutes)}–{Hhmm(slot.EndMinutes)}";
+            var before = $"{slot.Day} {ClockText.Hhmm(slot.StartMinutes)}–{ClockText.Hhmm(slot.EndMinutes)}";
             slot.Day = day;
             slot.StartMinutes = start;
             slot.EndMinutes = end;
 
             audit.Record(AuditAction.TimeSlotSaved,
-                $"Changed the allowable time slot {before} to {day} {Hhmm(start)}–{Hhmm(end)}.",
+                $"Changed the allowable time slot {before} to {day} {ClockText.Hhmm(start)}–{ClockText.Hhmm(end)}.",
                 "TimeSlot", slot.Id.ToString());
             await db.SaveChangesAsync(ct);
 
@@ -359,7 +379,7 @@ namespace SENGENSystem.Server.Features.SystemParameters
                 });
             }
 
-            var label = $"{slot.Day} {Hhmm(slot.StartMinutes)}–{Hhmm(slot.EndMinutes)}";
+            var label = $"{slot.Day} {ClockText.Hhmm(slot.StartMinutes)}–{ClockText.Hhmm(slot.EndMinutes)}";
             db.TimeSlots.Remove(slot);
             audit.Record(AuditAction.TimeSlotSaved, $"Removed the allowable time slot {label}.",
                 "TimeSlot", slot.Id.ToString());
@@ -461,6 +481,5 @@ namespace SENGENSystem.Server.Features.SystemParameters
             return Results.Ok(new { id = faculty.Id, maxLoadUnits = units, assignedUnits = assigned });
         }
 
-        private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
     }
 }

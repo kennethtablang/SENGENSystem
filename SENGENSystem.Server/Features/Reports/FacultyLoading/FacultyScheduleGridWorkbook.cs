@@ -1,3 +1,5 @@
+using SENGENSystem.Server.Common.Reporting;
+using SENGENSystem.Server.Common.Formatting;
 using ClosedXML.Excel;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.Reports.Shared;
@@ -91,7 +93,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             {
                 var minutes = GridStartMinutes + i * StepMinutes;
                 var cell = sheet.Cell(FirstDataRow + i, 1);
-                cell.Value = $"{ScheduleGridKit.Hhmm(minutes)}–{ScheduleGridKit.Hhmm(minutes + StepMinutes)}";
+                cell.Value = $"{ClockText.Hhmm(minutes)}–{ClockText.Hhmm(minutes + StepMinutes)}";
                 cell.Style.Fill.BackgroundColor = TimeFill;
                 cell.Style.Font.Bold = true;
                 cell.Style.Font.FontSize = 8;
@@ -107,6 +109,11 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
 
             PlaceBlocks(sheet, meetings);
 
+            if (meetings.Count > 0)
+            {
+                Legend(sheet, lastRow + 2, meetings);
+            }
+
             if (meetings.Count == 0)
             {
                 sheet.Cell(lastRow + 2, 1).Value =
@@ -116,7 +123,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             }
 
             sheet.PageSetup.PageOrientation = XLPageOrientation.Landscape;
-            sheet.PageSetup.FitToPages(1, 1);      // a personal timetable should be one page
+            sheet.PageSetup.FitToPages(1, 1);      // a personal timetable (and its legend) should be one page
             sheet.PageSetup.SetRowsToRepeatAtTop(HeaderRow, HeaderRow);
             sheet.PageSetup.Margins.SetTop(0.4).SetBottom(0.4).SetLeft(0.3).SetRight(0.3);
             sheet.SheetView.Freeze(HeaderRow, 1);
@@ -147,15 +154,18 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                 {
                     var range = sheet.Range(s.Start, column, s.End, column);
                     range.Merge();
-                    range.Value = Block(s.Meeting);
-                    range.Style.Fill.BackgroundColor = XLColor.FromHtml(
-                        ScheduleGridKit.BlockTints[ScheduleGridKit.TintIndex(s.Meeting.Section?.Subject?.Code)]);
+                    Block(sheet.Cell(s.Start, column), s.Meeting);
+
+                    // Same treatment as the class-program grid: the board's subject palette
+                    // (SubjectPalette) for fill and border, so a subject is one colour everywhere.
+                    var subjectId = s.Meeting.Section?.SubjectId ?? Guid.Empty;
+                    range.Style.Fill.BackgroundColor = XLColor.FromHtml("#" + SubjectPalette.FillHex(subjectId));
+                    range.Style.Font.FontColor = XLColor.FromHtml("#0E2A66");
                     range.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
                     range.Style.Alignment.SetVertical(XLAlignmentVerticalValues.Center);
                     range.Style.Alignment.SetWrapText(true);
-                    range.Style.Font.FontSize = 8;
-                    range.Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin);
-                    range.Style.Border.SetOutsideBorderColor(Grid);
+                    range.Style.Border.SetOutsideBorder(XLBorderStyleValues.Medium);
+                    range.Style.Border.SetOutsideBorderColor(XLColor.FromHtml("#" + SubjectPalette.BorderHex(subjectId)));
                 }
 
                 // A member scheduled in two places at once is a genuine defect in the plan —
@@ -182,11 +192,60 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             }
         }
 
-        /// <summary>Time range, subject code, course title, section, and room — in three lines.</summary>
-        private static string Block(ScheduleAssignment m) =>
-            $"{ScheduleGridKit.TimeRange(m.TimeSlot!)} · {m.Section?.Subject?.Code ?? "—"}\n"
-            + $"{m.Section?.Subject?.Title ?? ""}\n"
-            + $"{m.Section?.SectionCode ?? ""} · {m.Room?.Name ?? "No room"}";
+        /// <summary>
+        /// Code (bold), title, section, room with LEC/LAB, and time — the class-program grid's
+        /// block layout, with the section in place of the instructor (this sheet is one
+        /// instructor's week, so the section is the detail that varies).
+        /// </summary>
+        private static void Block(IXLCell cell, ScheduleAssignment m)
+        {
+            var subject = m.Section?.Subject;
+            var slot = m.TimeSlot!;
+            var rt = cell.CreateRichText();
+            var code = rt.AddText(subject?.Code ?? "—"); code.Bold = true; code.FontSize = 10;
+            var title = rt.AddText("\n" + (subject?.Title ?? "")); title.FontSize = 7.5;
+            var section = rt.AddText("\n" + (m.Section?.SectionCode ?? "")); section.FontSize = 8; section.Italic = true;
+            var room = rt.AddText($"\n{m.Room?.Name ?? "No room"} · {(subject?.RequiresLaboratory == true ? "LAB" : "LEC")}"); room.FontSize = 7.5;
+            var time = rt.AddText($"\n{ClockText.H12(slot.StartMinutes)}–{ClockText.H12(slot.EndMinutes)}"); time.FontSize = 7; time.FontColor = XLColor.FromHtml("#333333");
+        }
+
+        /// <summary>A colour key under the grid — one row per subject, as on the class-program grid.</summary>
+        private static void Legend(IXLWorksheet sheet, int startRow, List<ScheduleAssignment> meetings)
+        {
+            sheet.Range(startRow, 1, startRow, Days.Length + 1).Merge();
+            sheet.Cell(startRow, 1).Value = "SUBJECT LEGEND";
+            StyleHeader(sheet.Cell(startRow, 1));
+
+            string[] headers = ["Colour", "Code", "Subject title", "Type", "Units", "Hrs/wk", "Sections"];
+            for (var c = 0; c < headers.Length; c++)
+            {
+                sheet.Cell(startRow + 1, c + 1).Value = headers[c];
+                sheet.Cell(startRow + 1, c + 1).Style.Font.Bold = true;
+                sheet.Cell(startRow + 1, c + 1).Style.Font.FontSize = 8;
+                sheet.Cell(startRow + 1, c + 1).Style.Fill.BackgroundColor = TimeFill;
+            }
+
+            var row = startRow + 2;
+            foreach (var g in meetings
+                         .Where(m => m.Section is not null)
+                         .GroupBy(m => m.Section!.SubjectId)
+                         .OrderBy(g => g.First().Section!.Subject?.Code, StringComparer.OrdinalIgnoreCase))
+            {
+                var s = g.First().Section!.Subject;
+                sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#" + SubjectPalette.FillHex(g.Key));
+                sheet.Cell(row, 1).Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin)
+                    .Border.SetOutsideBorderColor(XLColor.FromHtml("#" + SubjectPalette.BorderHex(g.Key)));
+                sheet.Cell(row, 2).Value = s?.Code ?? "—";
+                sheet.Cell(row, 2).Style.Font.Bold = true;
+                sheet.Cell(row, 3).Value = s?.Title ?? "";
+                sheet.Cell(row, 4).Value = s?.RequiresLaboratory == true ? "LAB" : "LEC";
+                sheet.Cell(row, 5).Value = s?.Units ?? 0;
+                sheet.Cell(row, 6).Value = Math.Round(g.Sum(m => m.TimeSlot!.EndMinutes - m.TimeSlot.StartMinutes) / 60.0, 2);
+                sheet.Cell(row, 7).Value = string.Join(", ", g.Select(m => m.Section!.SectionCode).Distinct());
+                sheet.Range(row, 1, row, headers.Length).Style.Font.FontSize = 8;
+                row++;
+            }
+        }
 
         // ---- Sheet 2: Daily Class Breakdown ---------------------------------------------------
 
@@ -228,8 +287,8 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                 {
                     var slot = m.TimeSlot!;
                     sheet.Cell(row, 1).Value = day.ToString();
-                    sheet.Cell(row, 2).Value = ScheduleGridKit.Hhmm(slot.StartMinutes);
-                    sheet.Cell(row, 3).Value = ScheduleGridKit.Hhmm(slot.EndMinutes);
+                    sheet.Cell(row, 2).Value = ClockText.Hhmm(slot.StartMinutes);
+                    sheet.Cell(row, 3).Value = ClockText.Hhmm(slot.EndMinutes);
                     sheet.Cell(row, 4).Value = Math.Round((slot.EndMinutes - slot.StartMinutes) / 60.0, 2);
                     sheet.Cell(row, 5).Value = m.Section?.Subject?.Code ?? "—";
                     sheet.Cell(row, 5).Style.Font.Bold = true;
@@ -239,7 +298,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                     sheet.Cell(row, 9).Value = m.Room?.Name ?? "No room";
                     sheet.Cell(row, 10).Value = m.Room?.Building?.Name ?? "";
                     sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromHtml(
-                        ScheduleGridKit.BlockTints[ScheduleGridKit.TintIndex(m.Section?.Subject?.Code)]);
+                        "#" + SubjectPalette.FillHex(m.Section?.SubjectId ?? Guid.Empty));
                     row++;
                 }
 

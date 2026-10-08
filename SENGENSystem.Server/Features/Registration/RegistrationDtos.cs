@@ -40,6 +40,15 @@ namespace SENGENSystem.Server.Features.Registration
         int DocumentsTotal,
         string CreatedAtUtc)
     {
+        // F-14: whether this student's term enlistment is complete. Derived per row on the page
+        // (never stored, see EnrollmentCompletion), and only for confirmed registrations — an
+        // unconfirmed one cannot enlist, so "not started" would be noise rather than news.
+        public Enlistment.EnrollmentCompletionDto? Enrollment { get; init; }
+
+        // F-03: how many other registrations look like the same person — a flag for the queue,
+        // never a block (see LikelyDuplicates).
+        public int LikelyDuplicateCount { get; init; }
+
         public static RegistrationListItemDto From(StudentRegistration r, RequirementCatalog catalog)
         {
             var documents = DocumentChecklist.Applicable(r, catalog);
@@ -101,6 +110,10 @@ namespace SENGENSystem.Server.Features.Registration
         string CreatedAtUtc,
         IReadOnlyList<RegistrationDocumentDto> Documents)
     {
+        // F-03: other registrations that look like the same person (see LikelyDuplicates).
+        // Filled only by the Registrar's detail read; empty everywhere else.
+        public IReadOnlyList<LikelyDuplicateDto> LikelyDuplicates { get; init; } = [];
+
         public static StudentRegistrationDto From(StudentRegistration r, RequirementCatalog catalog) =>
             new(
                 r.Id,

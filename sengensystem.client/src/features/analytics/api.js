@@ -1,5 +1,4 @@
-import { apiFetch } from '../shell/apiClient';
-import { saveBlob, filenameFromDisposition } from '../shell/download';
+import { apiFetch, apiDownload } from '../shell/apiClient';
 
 // Analytics: institution-wide classroom usage (FR-DASH-02 room utilization).
 
@@ -27,14 +26,8 @@ export function downloadRoomGridSchedule(semesterId) {
         'sengen-room-grid-schedule.xlsx');
 }
 
-/* Kept local rather than using the shared apiDownload: these endpoints name the file themselves in
-   Content-Disposition, and honouring that beats the caller's guess. `raw: true` gets the Response
-   back while still going through the shared 401 handling. */
-async function downloadXlsx(path, semesterId, fallbackName) {
+/* The shared apiDownload honours the server's Content-Disposition name and adds the timeout. */
+function downloadXlsx(path, semesterId, fallbackName) {
     const qs = semesterId ? `?semesterId=${encodeURIComponent(semesterId)}` : '';
-    const response = await apiFetch(`${path}${qs}`, { raw: true });
-
-    const blob = await response.blob();
-    const name = filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackName);
-    saveBlob(blob, name);
+    return apiDownload(`${path}${qs}`, fallbackName);
 }

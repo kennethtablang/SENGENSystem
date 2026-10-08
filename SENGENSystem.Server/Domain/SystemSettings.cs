@@ -90,6 +90,19 @@ namespace SENGENSystem.Server.Domain
         /// </summary>
         public int ClassDayStartMinutes { get; set; } = 7 * 60;
 
+        // ---- Institution identity ----
+
+        /// <summary>
+        /// The institution/branch name printed on official documents — the faculty-loading
+        /// confirmation memo, the prospectus, the evaluation sheet, and the registration form.
+        /// Configurable rather than hardcoded so a branch other than the one SEN-GEN was built for
+        /// prints its own name. Documents print it in capitals; store it in the form people write it.
+        /// </summary>
+        public string InstitutionName { get; set; } = DefaultInstitutionName;
+
+        public const string DefaultInstitutionName = "STI College Alaminos";
+        public const int InstitutionNameMaxLength = 120;
+
         /// <summary>Audit breadcrumb: when the parameters were last touched, and by whom.</summary>
         public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 

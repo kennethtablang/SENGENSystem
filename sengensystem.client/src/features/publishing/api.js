@@ -16,6 +16,12 @@ export function publishSchedule(semesterId) {
     return authRequest(`/api/publishing/${encodeURIComponent(semesterId)}/publish`, { method: 'POST' });
 }
 
+// F-15: the dry run behind the publish confirmation — what one press would publish and who it
+// would notify, plus the reason it would be refused (a non-finalized draft). Writes nothing.
+export function previewPublish(semesterId) {
+    return authRequest(`/api/publishing/${encodeURIComponent(semesterId)}/preview`);
+}
+
 // FR-PUB-02: published-only view, filterable by day and class block.
 export function getPublishedSchedule({ semesterId, day, cohort } = {}) {
     const qs = new URLSearchParams();

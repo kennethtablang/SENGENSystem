@@ -14,10 +14,12 @@ const authRequest = apiFetch;
  * server refuses with a 409 carrying `requiresConfirmation` and the counts at stake; pass
  * `replacePublished: true` to go ahead, which is the caller saying yes to discarding it.
  */
-export function generateSchedule(semesterId, { replacePublished = false } = {}) {
+// `seed` reproduces a past arrangement (FR-SCHED-08): the same seed over the same inputs gives
+// the same timetable. Omit it for a fresh arrangement.
+export function generateSchedule(semesterId, { replacePublished = false, seed = null } = {}) {
     return authRequest('/api/scheduling/generate', {
         method: 'POST',
-        body: { semesterId: semesterId ?? null, replacePublished }
+        body: { semesterId: semesterId ?? null, replacePublished, seed }
     });
 }
 

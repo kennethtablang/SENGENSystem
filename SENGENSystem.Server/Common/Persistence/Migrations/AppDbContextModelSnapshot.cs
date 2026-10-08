@@ -1330,6 +1330,13 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasColumnType("float")
                         .HasDefaultValue(8.0);
 
+                    b.Property<string>("InstitutionName")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)")
+                        .HasDefaultValue("STI College Alaminos");
+
                     b.Property<int>("MaxEnlistmentUnitsPerStudent")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")

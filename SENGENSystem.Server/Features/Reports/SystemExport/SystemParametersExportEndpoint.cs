@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 ﻿using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
@@ -57,7 +58,7 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
                 .GroupBy(p => p.FacultyProfileId)
                 .ToDictionary(g => g.Key, g => g
                     .OrderBy(p => p.Day).ThenBy(p => p.StartMinutes)
-                    .Select(p => $"{p.Day} {Hhmm(p.StartMinutes)}–{Hhmm(p.EndMinutes)}"));
+                    .Select(p => $"{p.Day} {ClockText.Hhmm(p.StartMinutes)}–{ClockText.Hhmm(p.EndMinutes)}"));
             var users = await db.Users.AsNoTracking()
                 .OrderBy(u => u.Role).ThenBy(u => u.LastName).ThenBy(u => u.FirstName)
                 .ToListAsync(ct);
@@ -94,7 +95,7 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
             var slotRows = timeSlots
                 .Select(t => new object[]
                 {
-                    t.Day.ToString(), Hhmm(t.StartMinutes), Hhmm(t.EndMinutes),
+                    t.Day.ToString(), ClockText.Hhmm(t.StartMinutes), ClockText.Hhmm(t.EndMinutes),
                     t.EndMinutes - t.StartMinutes
                 })
                 .ToList();
@@ -231,6 +232,5 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
             sheet.Columns().AdjustToContents();
         }
 
-        private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
     }
 }

@@ -8,6 +8,7 @@ import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import '../registration/registration.css';
 import './enlistment.css';
+import SeatCountCheck from './SeatCountCheck';
 
 /* FR-ENL-04: the Registrar's slot-approval queue. Approving consumes a seat (capacity is
    enforced transactionally server-side — 40 per section, FR-ENL-03) and emails the student;
@@ -297,6 +298,8 @@ function ApprovalsPage() {
                     </button>
                 </div>
             </header>
+
+            <SeatCountCheck refreshKey={reload} />
 
             {selectedPending.length > 0 && (
                 <div className="enl-bulkbar">

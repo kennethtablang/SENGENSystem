@@ -1,8 +1,10 @@
+using SENGENSystem.Server.Common.Formatting;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Enlistment;
 using SENGENSystem.Server.Features.Registration;
 using SENGENSystem.Server.Features.Registration.TransfereeEvaluation;
 using SENGENSystem.Server.Common;
@@ -200,7 +202,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 evaluator,
                 evaluation.EvaluatedAtUtc,
                 rows,
-                InstitutionClock.Now);
+                InstitutionClock.Now, (await db.GetSettingsAsync(ct)).InstitutionName);
 
             return Results.File(document.GeneratePdf(), Pdf,
                 $"sengen-evaluation-{Slug(registration.StudentNumber)}.pdf");
@@ -233,10 +235,27 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 return Results.NotFound(new { message = "Registration not found." });
             }
 
+            // The term the form certifies: the active one, falling back to the registration's own
+            // for a school with no active term. Approvals are scoped to it — unscoped, a returning
+            // student's form listed every class they had ever been approved into, last semester's
+            // included, under this semester's heading (the same cross-term shape as F-09).
+            var activeSemesterId = await db.GetActiveSemesterIdAsync(ct);
+            var semester = activeSemesterId is { } sid
+                ? await db.Semesters.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sid, ct)
+                : registration.Semester;
+
             var approvedSectionIds = await db.SlotRequests.AsNoTracking()
-                .Where(r => r.StudentRegistrationId == registrationId && r.Status == SlotRequestStatus.Approved)
+                .Where(r => r.StudentRegistrationId == registrationId
+                    && r.Status == SlotRequestStatus.Approved
+                    && (semester == null || r.Section!.SemesterId == semester.Id))
                 .Select(r => r.SectionId)
                 .ToListAsync(ct);
+
+            // F-14: the form says whether the term's enlistment is complete, so it certifies what it
+            // looks like it certifies rather than "whatever was approved so far".
+            var completion = semester is null
+                ? null
+                : await EnrollmentCompletion.EvaluateAsync(db, registration, semester, ct);
 
             var sections = await db.Sections.AsNoTracking()
                 .Where(s => approvedSectionIds.Contains(s.Id))
@@ -264,9 +283,9 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                         section.Subject?.Units ?? 0,
                         section.SectionCode,
                         meetings.Count == 0 ? "—" : string.Join(", ", meetings
-                            .Select(a => DayAbbr(a.TimeSlot!.Day)).Distinct()),
+                            .Select(a => ClockText.DayAbbr(a.TimeSlot!.Day)).Distinct()),
                         meetings.Count == 0 ? "Not yet scheduled" : string.Join(", ", meetings
-                            .Select(a => $"{Hhmm(a.TimeSlot!.StartMinutes)}–{Hhmm(a.TimeSlot.EndMinutes)}")
+                            .Select(a => $"{ClockText.Hhmm(a.TimeSlot!.StartMinutes)}–{ClockText.Hhmm(a.TimeSlot.EndMinutes)}")
                             .Distinct()),
                         meetings.Count == 0 ? "—" : string.Join(", ", meetings
                             .Select(a => a.Room?.Name ?? "—").Distinct()),
@@ -281,9 +300,10 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 registration.Program.ToString(),
                 YearLevelPolicy.Label(registration.YearLevel),
                 registration.StudentType == StudentType.Transferee ? "Transferee" : "New student",
-                registration.Semester?.Name ?? "the active term",
+                semester?.Name ?? "the active term",
                 rows,
-                InstitutionClock.Now);
+                completion,
+                InstitutionClock.Now, (await db.GetSettingsAsync(ct)).InstitutionName);
 
             return Results.File(document.GeneratePdf(), Pdf,
                 $"sengen-registration-{Slug(registration.StudentNumber)}.pdf");
@@ -326,7 +346,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 years,
                 student,
                 credited ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                InstitutionClock.Now);
+                InstitutionClock.Now, (await db.GetSettingsAsync(ct)).InstitutionName);
             return document.GeneratePdf();
 
             static ProspectusRow Row(Subject s) => new(
@@ -374,18 +394,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
             _ => "Pending"
         };
 
-        private static string DayAbbr(DayOfWeek day) => day switch
-        {
-            DayOfWeek.Monday => "M",
-            DayOfWeek.Tuesday => "T",
-            DayOfWeek.Wednesday => "W",
-            DayOfWeek.Thursday => "Th",
-            DayOfWeek.Friday => "F",
-            DayOfWeek.Saturday => "S",
-            _ => day.ToString()
-        };
 
-        private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
 
         private static string Slug(string value)
         {

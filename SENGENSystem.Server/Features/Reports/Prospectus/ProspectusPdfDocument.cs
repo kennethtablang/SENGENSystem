@@ -43,7 +43,8 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         List<ProspectusYear> years,
         StudentProspectusHeader? student,
         IReadOnlySet<string> creditedCodes,
-        DateTime generatedAt) : IDocument
+        DateTime generatedAt,
+        string institution) : IDocument
     {
         private static readonly Color Ink = Color.FromHex("#111111");
         private static readonly Color Muted = Color.FromHex("#5b6c99");
@@ -86,7 +87,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         private void Header(IContainer container) =>
             container.Column(column =>
             {
-                column.Item().Text("STI COLLEGE ALAMINOS").FontSize(13).Bold().FontColor(Brand);
+                column.Item().Text(institution.ToUpperInvariant()).FontSize(13).Bold().FontColor(Brand);
                 column.Item().Text("Curriculum Prospectus").FontSize(10).FontColor(Muted);
                 column.Item().PaddingTop(4).Text($"{programCode} — {programName}").FontSize(11).Bold();
                 if (!string.IsNullOrWhiteSpace(curriculumNote))

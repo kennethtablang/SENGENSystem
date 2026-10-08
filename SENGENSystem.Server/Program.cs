@@ -29,6 +29,7 @@ using SENGENSystem.Server.Features.Documents.Checklist;
 using SENGENSystem.Server.Features.Documents.Reminders;
 using SENGENSystem.Server.Features.Documents.Requirements;
 using SENGENSystem.Server.Features.Enlistment.Approvals;
+using SENGENSystem.Server.Features.Enlistment.SeatCounts;
 using SENGENSystem.Server.Features.Enlistment.Browse;
 using SENGENSystem.Server.Features.Enlistment.MyEnlistment;
 using SENGENSystem.Server.Features.Enlistment.RequestSlot;
@@ -54,6 +55,7 @@ using SENGENSystem.Server.Features.Profile.UpdateProfile;
 using SENGENSystem.Server.Features.Publishing.GetPublishedSchedule;
 using SENGENSystem.Server.Features.Publishing.PublishSchedule;
 using SENGENSystem.Server.Features.Registration.Manage;
+using SENGENSystem.Server.Features.Registration.SelfService;
 using SENGENSystem.Server.Features.Reports;
 using SENGENSystem.Server.Features.Reports.FacultyLoading;
 using SENGENSystem.Server.Features.Reports.Live;
@@ -248,18 +250,17 @@ namespace SENGENSystem.Server
                 context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                 context.Response.ContentType = "application/problem+json";
 
-                // This is an internal institutional system, so the exception summary is a
-                // reportable diagnostic rather than a leak — it gives staff a real lead instead
-                // of a shrug. The trace id ties it to the full stack trace in the server log.
+                // The exception itself stays in the server log: its message can name tables, file
+                // paths, or query text, which is not something to hand to a browser. The trace id
+                // is the lead staff quote when reporting it — it finds the full stack trace above.
+                const string Detail = "Something went wrong on the server. Quote the reference below when reporting this.";
                 await context.Response.WriteAsJsonAsync(new
                 {
                     title = "The server hit an unexpected error.",
-                    detail = ex is null
-                        ? "An unknown error occurred."
-                        : $"{ex.GetType().Name}: {ex.Message}",
+                    detail = Detail,
                     status = StatusCodes.Status500InternalServerError,
                     reference = traceId,
-                    message = ex is null ? "An unknown error occurred." : $"{ex.GetType().Name}: {ex.Message}"
+                    message = Detail
                 });
             }));
 
@@ -282,6 +283,9 @@ namespace SENGENSystem.Server
             app.UseHttpsRedirection();
             // Before authentication, so even an anonymous or rejected request carries the headers.
             app.UseSecurityHeaders();
+            // Outside the rate limiter so a 429 is logged too; the user name is read after the
+            // request has run, by which point authentication further in has populated it.
+            app.UseRequestLogging();
             app.UseRateLimiter();
 
             app.UseAuthentication();
@@ -338,6 +342,7 @@ namespace SENGENSystem.Server
             app.MapListRegistrations();
             app.MapGetRegistration();
             app.MapUpdateRegistration();
+            app.MapMyRegistration();
             app.MapLinkAccount();
             // Admission Officer records the external student number against a registration (FR-SIS)
             app.MapAssignStudentNumber();
@@ -365,6 +370,7 @@ namespace SENGENSystem.Server
             app.MapRequestSlot();
             app.MapMyEnlistment();
             app.MapEnlistmentApprovals();
+            app.MapSeatCounts();
 
             // Enrollment cycle slice — the active term's stage banner; Registrar advances it
             app.MapEnrollmentStage();

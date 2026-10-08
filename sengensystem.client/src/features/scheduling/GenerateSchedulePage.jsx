@@ -363,6 +363,9 @@ function SoftConstraintDataPanel({ data, loading }) {
 
 function GenerateSchedulePage() {
     const [rows, setRows] = useState([]);
+    // Optional "reproduce arrangement #___". Blank means a fresh arrangement each run; a number
+    // re-runs a past one exactly (same seed + same inputs → same timetable, pinned by tests).
+    const [reproduceSeed, setReproduceSeed] = useState('');
     const [semesterId, setSemesterId] = useState(null);
     const [semesterName, setSemesterName] = useState('');
     const [finalized, setFinalized] = useState(false);
@@ -448,7 +451,8 @@ function GenerateSchedulePage() {
         setAlert(null);
         setSummary(null);
         try {
-            const data = await generateSchedule(null, { replacePublished });
+            const seed = /^\d+$/.test(reproduceSeed.trim()) ? Number(reproduceSeed.trim()) : null;
+            const data = await generateSchedule(null, { replacePublished, seed });
             setRows(data.schedule);
             setSemesterId(data.semesterId);
             setSemesterName(data.semesterName);
@@ -569,6 +573,16 @@ function GenerateSchedulePage() {
                 </div>
                 <div className="sched-head-actions">
                     {finalized && <span className="chip chip-blue sched-final-chip">Finalized · ready to publish</span>}
+                    {!finalized && (
+                        <label className="sched-seed" title="Leave blank for a fresh arrangement. Enter an arrangement number from a past run to rebuild exactly that timetable — provided the rooms, load, and time slots have not changed since.">
+                            <span>Reproduce #</span>
+                            <input type="text" inputMode="numeric" placeholder="optional"
+                                value={reproduceSeed}
+                                onChange={e => setReproduceSeed(e.target.value.replace(/\D/g, ''))}
+                                disabled={generating || finalizing}
+                                aria-label="Arrangement number to reproduce (optional)" />
+                        </label>
+                    )}
                     <button
                         className={rows.length > 0 ? 'btn btn-ghost' : 'btn btn-primary'}
                         type="button"

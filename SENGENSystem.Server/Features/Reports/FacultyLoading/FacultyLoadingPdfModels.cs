@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
@@ -76,7 +77,8 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
 
             var head = await NameOf(db, UserRole.AcademicHead, ct);
             var admin = await NameOf(db, UserRole.SchoolAdmin, ct);
-            return new FacultyLoadingSignatories(head, head, admin, "STI");
+            var institution = (await db.GetSettingsAsync(ct)).InstitutionName;
+            return new FacultyLoadingSignatories(head, head, admin, institution.ToUpperInvariant());
         }
     }
 
@@ -170,8 +172,8 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                             load.Subject?.Title ?? string.Empty,
                             a.Section.SectionCode,
                             type, section,
-                            DayAbbr(a.TimeSlot.Day),
-                            $"{H12(a.TimeSlot.StartMinutes)} - {H12(a.TimeSlot.EndMinutes)}",
+                            ClockText.DayAbbr(a.TimeSlot.Day),
+                            $"{ClockText.H12(a.TimeSlot.StartMinutes)} - {ClockText.H12(a.TimeSlot.EndMinutes)}",
                             a.Room?.Name ?? string.Empty,
                             units, contact, students, ShowSubjectInfo: first));
                         first = false;
@@ -194,26 +196,5 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             }).ToList();
         }
 
-        /// <summary>STI-style single/two-letter weekday abbreviation (M, T, W, Th, F, S).</summary>
-        internal static string DayAbbr(DayOfWeek day) => day switch
-        {
-            DayOfWeek.Monday => "M",
-            DayOfWeek.Tuesday => "T",
-            DayOfWeek.Wednesday => "W",
-            DayOfWeek.Thursday => "Th",
-            DayOfWeek.Friday => "F",
-            DayOfWeek.Saturday => "S",
-            _ => "Su"
-        };
-
-        /// <summary>12-hour clock, no leading zero, e.g. 480 → "8:00AM", 780 → "1:00PM".</summary>
-        internal static string H12(int minutes)
-        {
-            var h = minutes / 60;
-            var m = minutes % 60;
-            var suffix = h < 12 ? "AM" : "PM";
-            var h12 = h % 12 == 0 ? 12 : h % 12;
-            return $"{h12}:{m:00}{suffix}";
-        }
     }
 }

@@ -237,6 +237,14 @@ function EnrollmentRulesCard({ data, onChanged }) {
                         Institution-wide gates for online subject enlistment (FR-ENL) — independent of any
                         one student’s eligibility.
                     </p>
+                    {/* F-02: the precedence between this switch and the enrollment stage, said where the
+                        switch is flipped rather than only in the server's doc comments. */}
+                    <p className="param-hint">
+                        The term’s enrollment stage defines the enlistment period; this switch pauses it
+                        within that period. Students can enlist only while the stage is
+                        <strong> Enlistment</strong> <em>and</em> this switch is open. Opening the switch
+                        outside that stage does nothing.
+                    </p>
                 </div>
                 <label className="param-switch">
                     <input type="checkbox" checked={open} disabled={saving} onChange={toggleOpen} />
@@ -275,6 +283,59 @@ function EnrollmentRulesCard({ data, onChanged }) {
                     below the {data.minSectionEnrollment}-seat minimum. Consider merging, promoting, or moving students.
                 </p>
             )}
+        </section>
+    );
+}
+
+// ---------------- Institution ----------------
+
+// The name printed on official documents (faculty-loading memo, prospectus, evaluation sheet,
+// registration form). Keyed on the saved name by the parent, like the other cards.
+function InstitutionCard({ data, onChanged }) {
+    const [name, setName] = useState(data.name);
+    const [saving, setSaving] = useState(false);
+    const [fieldError, setFieldError] = useState('');
+
+    const dirty = name.trim() !== data.name;
+
+    async function save(e) {
+        e.preventDefault();
+        setFieldError(''); setSaving(true);
+        try {
+            await updateSettings({ institutionName: name });
+            notifySuccess('Institution name saved.');
+            onChanged();
+        } catch (ex) {
+            notifyError(ex.message);
+            setFieldError(ex.fieldErrors?.institutionName?.[0] || ex.message);
+        } finally { setSaving(false); }
+    }
+
+    return (
+        <section className="card param-card">
+            <header className="param-card-head">
+                <div>
+                    <h3>Institution</h3>
+                    <p className="setup-sub">
+                        The institution or branch name printed on official documents — the faculty-loading
+                        confirmation, the prospectus, transferee evaluations, and registration forms.
+                    </p>
+                </div>
+            </header>
+
+            <form className="param-cap-form" onSubmit={save} noValidate>
+                <div className="field">
+                    <label htmlFor="institution-name">Institution name</label>
+                    <input id="institution-name" type="text" maxLength={data.maxLength}
+                        value={name} onChange={e => setName(e.target.value)} />
+                    {fieldError && <p className="field-error">{fieldError}</p>}
+                </div>
+                <button className="btn btn-primary" type="submit" disabled={saving || !dirty || !name.trim()}>
+                    {saving && <span className="spinner" aria-hidden="true" />}
+                    {saving ? 'Saving…' : 'Save name'}
+                </button>
+                <p className="param-hint">Documents print it in capitals.</p>
+            </form>
         </section>
     );
 }
@@ -490,6 +551,8 @@ export default function ParametersPage() {
                     </p>
                 </div>
             </header>
+
+            <InstitutionCard key={`inst-${data.institution.name}`} data={data.institution} onChanged={refresh} />
 
             <SeatCapCard key={data.sectionCapacity.cap} data={data.sectionCapacity} onChanged={refresh} />
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { Wordmark } from '../auth/AuthLayout';
@@ -291,7 +291,10 @@ function AppLayout() {
                 </header>
 
                 <main className="shell-content">
-                    <Outlet />
+                    {/* Pages are lazy-loaded (App.jsx); keep the shell up while one arrives. */}
+                    <Suspense fallback={<p className="route-loading" role="status">Loading…</p>}>
+                        <Outlet />
+                    </Suspense>
                 </main>
             </div>
         </div>

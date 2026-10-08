@@ -711,6 +711,8 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                 catch (DbUpdateConcurrencyException) when (attempt < 5)
                 {
                     // A racing approval consumed a seat first — reload, re-check the floor, re-apply.
+                    // The lost attempt's audit entry is discarded, or the retry would commit two.
+                    audit.DiscardUnsaved();
                     await db.Entry(section).ReloadAsync(cancellationToken);
                     if (body.Capacity < section.EnrolledCount)
                     {

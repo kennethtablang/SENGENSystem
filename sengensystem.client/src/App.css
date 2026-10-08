@@ -72,3 +72,9 @@
 .Toastify__close-button:hover {
   color: var(--sti-blue);
 }
+
+/* Fallback while a lazily-loaded page chunk arrives (route-level code splitting, App.jsx). */
+.route-loading {
+  padding: 2rem;
+  color: var(--text-3);
+}

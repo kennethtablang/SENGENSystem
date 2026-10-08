@@ -1,3 +1,5 @@
+using SENGENSystem.Server.Common.Reporting;
+using SENGENSystem.Server.Common.Formatting;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
@@ -104,7 +106,7 @@ namespace SENGENSystem.Server.Features.Reports.RoomGrid
             sheet.Cell(TitleRow, 1).Style.Font.Bold = true;
             sheet.Cell(TitleRow, 1).Style.Font.FontSize = 14;
             sheet.Cell(SubtitleRow, 1).Value =
-                $"{semester.Name} · {Hhmm(GridStartMinutes)}–{Hhmm(GridEndMinutes)}"
+                $"{semester.Name} · {ClockText.Hhmm(GridStartMinutes)}–{ClockText.Hhmm(GridEndMinutes)}"
                 + $" · generated {InstitutionClock.Now:dd MMM yyyy HH:mm}";
             sheet.Cell(SubtitleRow, 1).Style.Font.Italic = true;
 
@@ -142,7 +144,7 @@ namespace SENGENSystem.Server.Features.Reports.RoomGrid
             {
                 var minutes = GridStartMinutes + i * StepMinutes;
                 var cell = sheet.Cell(HeaderRow + 1 + i, 1);
-                cell.Value = $"{Hhmm(minutes)}–{Hhmm(minutes + StepMinutes)}";
+                cell.Value = $"{ClockText.Hhmm(minutes)}–{ClockText.Hhmm(minutes + StepMinutes)}";
                 cell.Style.Fill.BackgroundColor = TimeFill;
                 cell.Style.Font.Bold = true;
                 cell.Style.Font.FontSize = 8;
@@ -205,14 +207,16 @@ namespace SENGENSystem.Server.Features.Reports.RoomGrid
                     var range = sheet.Range(s.Start, column, s.End, column);
                     range.Merge();
                     range.Value = Label(s.Meeting, compact: false);
-                    range.Style.Fill.BackgroundColor = XLColor.FromHtml(
-                        ScheduleGridKit.BlockTints[ScheduleGridKit.TintIndex(s.Meeting.Section?.Subject?.Code)]);
+                    // The board's palette (SubjectPalette), so a subject is one colour on screen and
+                    // on every printed grid.
+                    var subjectId = s.Meeting.Section?.SubjectId ?? Guid.Empty;
+                    range.Style.Fill.BackgroundColor = XLColor.FromHtml("#" + SubjectPalette.FillHex(subjectId));
                     range.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
                     range.Style.Alignment.SetVertical(XLAlignmentVerticalValues.Center);
                     range.Style.Alignment.SetWrapText(true);
                     range.Style.Font.FontSize = 8;
                     range.Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin);
-                    range.Style.Border.SetOutsideBorderColor(Grid);
+                    range.Style.Border.SetOutsideBorderColor(XLColor.FromHtml("#" + SubjectPalette.BorderHex(subjectId)));
                 }
 
                 // Overlaps are written cell-by-cell instead of merged, so a double-booking
@@ -261,6 +265,5 @@ namespace SENGENSystem.Server.Features.Reports.RoomGrid
             cell.Style.Alignment.SetWrapText(true);
         }
 
-        private static string Hhmm(int minutes) => ScheduleGridKit.Hhmm(minutes);
     }
 }

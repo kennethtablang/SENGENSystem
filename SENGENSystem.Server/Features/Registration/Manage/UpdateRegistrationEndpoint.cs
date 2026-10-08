@@ -98,10 +98,14 @@ namespace SENGENSystem.Server.Features.Registration.Manage
             }
 
             // ---- Apply corrections ----
-            if (!string.IsNullOrWhiteSpace(request.FirstName)) registration.FirstName = NameFormatter.ToProperCase(request.FirstName);
-            if (!string.IsNullOrWhiteSpace(request.LastName)) registration.LastName = NameFormatter.ToProperCase(request.LastName);
-            if (request.MiddleName is not null) registration.MiddleName = string.IsNullOrWhiteSpace(request.MiddleName) ? string.Empty : NameFormatter.ToProperCase(request.MiddleName);
-            if (!string.IsNullOrWhiteSpace(request.Email)) registration.Email = request.Email.Trim().ToLowerInvariant();
+            // The SIS is stored ALL-CAPS (see RegisterStudent). A correction used to write names in
+            // Proper Case and the email in lower case, so a corrected record silently fell out of
+            // the "one SIS per email" check (which compares capitals) and out of the likely-duplicate
+            // match. Corrections now keep the convention the record was created under.
+            if (!string.IsNullOrWhiteSpace(request.FirstName)) registration.FirstName = SisText.Caps(request.FirstName);
+            if (!string.IsNullOrWhiteSpace(request.LastName)) registration.LastName = SisText.Caps(request.LastName);
+            if (request.MiddleName is not null) registration.MiddleName = SisText.Caps(request.MiddleName);
+            if (!string.IsNullOrWhiteSpace(request.Email)) registration.Email = request.Email.Trim().ToUpperInvariant();
             if (!string.IsNullOrWhiteSpace(request.MobileNumber)) registration.MobileNumber = request.MobileNumber.Trim();
 
             var documentsChanged = false;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getFullSchedule, publishSchedule } from './api';
+import { getFullSchedule, previewPublish, publishSchedule } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { hhmm } from '../scheduling/calendarUtils';
 import ScheduleTable from '../scheduling/ScheduleTable';
@@ -74,13 +74,20 @@ function FlatTable({ rows, showDay = true }) {
     );
 }
 
+function plural(n, one, many) {
+    return `${n} ${n === 1 ? one : many}`;
+}
+
 function PublishingPage() {
     const [rows, setRows] = useState([]);
     const [semesterId, setSemesterId] = useState(null);
     const [semesterName, setSemesterName] = useState('');
     const [loading, setLoading] = useState(true);
     const [publishing, setPublishing] = useState(false);
-    const [confirming, setConfirming] = useState(false);
+    // The dry run the confirmation is built from, so the Registrar agrees to concrete numbers
+    // ("19 classes, 15 people") rather than to "everyone". Null while not confirming.
+    const [preview, setPreview] = useState(null);
+    const [previewing, setPreviewing] = useState(false);
     const [alert, setAlert] = useState(null);
     const [view, setView] = useState('class'); // 'class' | 'week' | 'day'
     const [dayFilter, setDayFilter] = useState('Monday');
@@ -109,8 +116,20 @@ function PublishingPage() {
         () => dayOrder.filter(d => published.some(r => r.day === d)),
         [published]);
 
+    async function startConfirm() {
+        setPreviewing(true);
+        setAlert(null);
+        try {
+            setPreview(await previewPublish(semesterId));
+        } catch (err) {
+            setAlert({ kind: 'error', text: err.message });
+        } finally {
+            setPreviewing(false);
+        }
+    }
+
     async function publish() {
-        setConfirming(false);
+        setPreview(null);
         setPublishing(true);
         setAlert(null);
         try {
@@ -136,26 +155,37 @@ function PublishingPage() {
                 <div>
                     <h2>Schedule publishing</h2>
                     <p className="sched-sub">
-                        Publish the finalized, conflict-verified timetable for
+                        Publish the timetable the Academic Head has finalized for
                         {semesterName ? <> <strong>{semesterName}</strong></> : ' the active semester'} so
                         students and faculty can see it. Publishing emails every affected person and
                         locks the rows against regeneration.
                     </p>
                 </div>
-                {confirming ? (
-                    <div className="pub-confirm">
-                        <span>Publish {drafts.length} draft class{drafts.length === 1 ? '' : 'es'} and notify everyone?</span>
-                        <button className="btn btn-primary" type="button" onClick={publish}>Yes, publish</button>
-                        <button className="btn" type="button" onClick={() => setConfirming(false)}>Cancel</button>
-                    </div>
+                {preview ? (
+                    preview.blockedReason ? (
+                        <div className="pub-confirm" role="alert">
+                            <span>{preview.blockedReason}</span>
+                            <button className="btn" type="button" onClick={() => setPreview(null)}>OK</button>
+                        </div>
+                    ) : (
+                        <div className="pub-confirm" role="status">
+                            <span>
+                                Publish {plural(preview.toPublish, 'class', 'classes')} and notify{' '}
+                                {plural(preview.facultyToNotify, 'faculty member', 'faculty members')} and{' '}
+                                {plural(preview.studentsToNotify, 'student', 'students')}? This cannot be undone.
+                            </span>
+                            <button className="btn btn-primary" type="button" onClick={publish}>Yes, publish</button>
+                            <button className="btn" type="button" onClick={() => setPreview(null)}>Cancel</button>
+                        </div>
+                    )
                 ) : (
                     <button
                         className="btn btn-primary"
                         type="button"
-                        onClick={() => setConfirming(true)}
-                        disabled={publishing || loading || drafts.length === 0}
+                        onClick={startConfirm}
+                        disabled={publishing || previewing || loading || drafts.length === 0}
                     >
-                        {publishing && <span className="spinner" aria-hidden="true" />}
+                        {(publishing || previewing) && <span className="spinner" aria-hidden="true" />}
                         {publishing ? 'Publishing…' : drafts.length === 0 ? 'Nothing to publish' : `Publish ${drafts.length} draft class${drafts.length === 1 ? '' : 'es'}`}
                     </button>
                 )}

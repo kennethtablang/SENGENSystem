@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 using SENGENSystem.Server.Domain;
 
 namespace SENGENSystem.Server.Features.Reports.Shared
@@ -5,33 +6,16 @@ namespace SENGENSystem.Server.Features.Reports.Shared
     /// <summary>
     /// Shared machinery for the timetable-style Excel reports. The grids differ in what their
     /// columns mean — rooms for the room grid, weekdays for the faculty grid — but they agree
-    /// on how a time slot maps to rows, how blocks are coloured, and how an overlap is
-    /// detected. Keeping that here stops the three grids from drifting apart.
+    /// on how a time slot maps to rows and how an overlap is detected. Keeping that here stops
+    /// the grids from drifting apart. Block colours come from <c>Common.Reporting.SubjectPalette</c>
+    /// — the board's palette — rather than a report-only tint set, which used to give a subject a
+    /// different colour in print than on screen.
     /// </summary>
     internal static class ScheduleGridKit
     {
-        /// <summary>
-        /// Block tints, chosen to stay legible behind dark text in print. Keyed off the subject
-        /// code so one subject keeps one colour across every grid in the workbook.
-        /// </summary>
-        internal static readonly string[] BlockTints =
-        [
-            "#DCE9FB", "#E8F5E9", "#FDF0D5", "#F3E4F6", "#E0F2F4",
-            "#FCE9E4", "#EDE7F6", "#E9F5E9", "#FFF3E0", "#E1F5FE"
-        ];
-
-        /// <summary>Stable colour index for a subject code — same subject, same colour, always.</summary>
-        internal static int TintIndex(string? subjectCode)
-        {
-            if (string.IsNullOrEmpty(subjectCode)) return 0;
-            var hash = subjectCode.Aggregate(17, (acc, c) => acc * 31 + c);
-            return Math.Abs(hash) % BlockTints.Length;
-        }
-
-        internal static string Hhmm(int minutes) => $"{minutes / 60:00}:{minutes % 60:00}";
-
+        /// <summary>A slot's "HH:mm–HH:mm" range.</summary>
         internal static string TimeRange(TimeSlot slot) =>
-            $"{Hhmm(slot.StartMinutes)}–{Hhmm(slot.EndMinutes)}";
+            $"{ClockText.Hhmm(slot.StartMinutes)}–{ClockText.Hhmm(slot.EndMinutes)}";
 
         /// <summary>
         /// The grid rows a slot covers, or null when it falls entirely outside the visible grid.

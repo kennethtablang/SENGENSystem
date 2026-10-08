@@ -355,3 +355,20 @@
   font-size: 0.8rem;
   line-height: 1.5;
 }
+
+/* F-08 follow-up: the seat-count mismatch list on the approvals page. */
+.enl-seatcheck {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.enl-seatcheck li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}

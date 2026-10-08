@@ -20,7 +20,9 @@ finding is kept rather than deleted, because the reasoning is why the code now l
 security batch, and the first automated tests; (5) 5 August 2026 — F-07, F-12, the email outbox;
 (6) 6 August 2026 — the shared client `apiFetch`; (7) 6 August 2026 — accessibility and ops;
 (8) 6 August 2026 — the CSP engine test suite, CI, and the pigeonhole tightening; (9) 6 August 2026
-— the outbox admin view; (10) 6 August 2026 — F-17/18/19.*
+— the outbox admin view; (10) 6 August 2026 — F-17/18/19; (11) 8 October 2026 — the decisions pass
+(F-05, F-14, F-15, institution name, 500 detail), F-03, F-04, the seat reconcile, and every
+remaining engineering-time P2/P3 item.*
 
 > **A note on stale findings.** Pass (8) tested the P3 "a 2-hour subject rounds up to a 3h block"
 > claim before budgeting to fix it, and found the engine had already been corrected — the finding had
@@ -93,25 +95,47 @@ precedence — a staff member had three places to look when a student said "it w
 
 **Fixed** — precedence is now decided and documented on `EnrollmentCyclePolicy`: **the stage defines
 the period; the parameter switches are a manual pause within it.** Closing either closes enlistment,
-and the refusal names which one did it. Still to do: surface that sentence on the Parameters screen
-so the admin reads it where they flip the switch.
+and the refusal names which one did it. ~~Still to do: surface that sentence on the Parameters
+screen~~ — **done** (pass 11): the Enrollment rules card states the rule beside the switch, including
+that opening it outside the Enlistment stage does nothing.
 
 ### Stage 1 — Registration (SIS)
 
-**F-03 · No duplicate-person detection, only duplicate email. [P2]**
+**F-03 · No duplicate-person detection, only duplicate email. [P2] [FIXED]**
 `RegisterStudentEndpoint.cs:123` rejects a second registration with the same email. Nothing catches
 the same *person* registering twice with two mailboxes (same name + birth date + program), which is
 the realistic paper-world duplicate. Add a soft duplicate check that flags — not blocks — a likely
 match for the Registrar's queue.
 
-**F-04 · A student cannot correct their own submitted SIS. [P2]**
+**Fixed** — `Features/Registration/LikelyDuplicates.cs`. Same last name + first name + date of birth
+under a different record is flagged: a "Possible duplicate" chip in the Registrar's queue and, in
+the drawer, the matching records with a jump to each. **Computed on read, never stored**, and never
+a block — two people can share a name and a birthday, and refusing a real student on an anonymous
+public form is worse than showing the Registrar a pair to compare. Middle name and program are left
+out of the key on purpose: a typo'd middle name or a changed program is exactly how the second
+attempt differs from the first.
+
+The match relies on names being stored in capitals, which surfaced a real bug in the staff
+correction path — see *Found while fixing* in pass 11.
+
+**F-04 · A student cannot correct their own submitted SIS. [P2] [FIXED]**
 Once submitted, only staff can edit the registration (`Features/Registration/Manage`). A typo in a
 name or address requires a staff visit — the exact friction the system exists to remove. Consider
 allowing student-side edits while status is `Pending`, locked on `Confirmed`.
 
+**Fixed** — `Features/Registration/SelfService/MyRegistrationEndpoints.cs` (`GET`/`PUT
+/api/registration/mine`) and the student's **My SIS** page. Editable only while `Submitted`; once the
+Registrar confirms, it is what they vouched for and corrections go back through staff. The editable
+set is the typo-prone personal and contact fields — names, birth details, mobile, address (through
+the same PSGC picker as the public form), guardian. **Not** the email (the account's sign-in, with
+its own verified change flow) and **not** program or student type (they drive the checklist, the
+curriculum, and a transferee's evaluation — an admission decision, not a correction). A name fix is
+carried onto the provisioned account, and the change is audited as `RegistrationSelfCorrected`
+(78) so the trail shows whose hand changed the record.
+
 ### Stage 2 — Documents
 
-**F-05 · There is no document *submission* — only a status flag. [verified] [decision] [P1]**
+**F-05 · There is no document *submission* — only a status flag. [verified] [decision] [P1] [DECIDED]**
 `Domain/RegistrationDocument.cs` carries `RequirementCode` + `Status` and nothing else. `IFormFile`
 appears exactly once in the entire server (the pre-enrollment .xlsx import,
 `Features/PreEnrollment/Import/ImportStudentsEndpoint.cs:30`) — so **no file is ever uploaded for a
@@ -124,6 +148,12 @@ box. Either:
   allowlist, retention policy, and a per-document `SubmittedAtUtc`/`VerifiedByUserId`.
 
 This is the single biggest gap between what the requirements imply and what the code does.
+
+**Decided (pass 11): (a), track rather than submit.** Paper is handed over at the counter; the
+system records its arrival. Student-facing wording now says so (Help, the nav description), and the
+requirements spec carries a scope note saying nothing is uploaded, rather than implying it. Upload
+remains a possible future slice — the per-row `UpdatedAtUtc` / `VerifiedByUserId` from F-06 are
+already the provenance it would need.
 
 **F-06 · No per-row provenance on a checklist decision. [P1]**
 `RegistrationDocument` has no `UpdatedAtUtc` and no `VerifiedByUserId`. FR-DOC-03 calls the checklist
@@ -174,9 +204,16 @@ New statuses fall out of every existing filter correctly — every read path tes
 `== Requested`, and the filtered unique index already covered only that live pair, so a dropped
 subject can be requested again.
 
-Still open: **3.** **[decision]** whether to derive `EnrolledCount` from the count of live approved
-requests rather than storing it, keeping the column only as the concurrency/CHECK anchor; and a
-reconcile pass for counts that drifted before this path existed.
+Still open: **[decision]** whether to derive `EnrolledCount` from the count of live approved
+requests rather than storing it, keeping the column only as the concurrency/CHECK anchor.
+~~A reconcile pass for counts that drifted before this path existed~~ — **done** (pass 11):
+`Features/Enlistment/SeatCounts`. The approvals page lists every active-term section whose stored
+count disagrees with its live approved requests, and the Registrar corrects one deliberately — it is
+**surfaced, never silently rewritten**, because a mismatch means something happened that the seat
+lifecycle did not record. The correction rides the same `RowVersion` retry (recounting inside the
+loop) and refuses when there are more live approvals than seats, since that needs a person to raise
+the cap or drop a student. Audited as `SeatCountReconciled` (79) with before/after figures. The live
+dev database currently has **no** mismatches.
 
 **F-09 · The approval-time overlap re-check is not scoped to the active term. [verified] [P0] [FIXED]**
 `ApprovalsEndpoints.cs:322-326` gathers the student's approved sections with
@@ -269,7 +306,7 @@ identically on the audit page.
 **Fixed** — `SlotCancelled = 73` and `SlotDropped = 74`, appended to the enum (never renumbered, per
 the contract in its own doc comment) and wired to their call sites.
 
-**F-14 · Enlistment has no terminal state. [decision] [P2]**
+**F-14 · Enlistment has no terminal state. [decision] [P2] [FIXED]**
 A student ends up with a set of approved `SlotRequest` rows and nothing that says *"this student's
 enrollment for the term is complete."* The cycle's own last stage is *Closed*, but no per-student
 completion exists, so the Registrar cannot answer "who is actually enrolled?" except by counting
@@ -277,12 +314,32 @@ approvals. Since tuition (stage 4) is out of scope, an explicit `RegistrationSta
 `EnrollmentCompleted` marker — set when the student's plan is fully covered by approved seats — is
 the honest stand-in and makes the COR meaningful.
 
+**Decided and fixed (pass 11): derived, not stored.** `Features/Enlistment/EnrollmentCompletion.cs`
+— a student is *Enrolled* when every subject their plan says they owe this term holds an approved
+seat; otherwise *Partial* (naming what is missing) or *Not started*. A stored flag would need
+keeping in step with every approval, rejection, drop, re-evaluation and recorded verdict — exactly
+the drift F-08 recorded for `EnrolledCount`. It shows on the Registrar's registration queue, the
+student's enlistment page and dashboard journey (where "done" now means fully enlisted, not "one
+subject approved"), and the COR prints *Enrollment complete* / *incomplete — still to enlist: …*.
+
+Two limits worth stating: it is **not a filter** (the plan cannot run in SQL, so it is computed per
+row of the page shown, at most 200 plan resolutions), and an **empty plan reads "No subjects due"**,
+not *Enrolled* — nothing left to take is not the same as having enlisted for the term.
+
 ### Stage 4 — Scheduling, finalize, publish
 
-**F-15 · Publish does not require finalize. [decision] [P1]**
+**F-15 · Publish does not require finalize. [decision] [P1] [FIXED]**
 Carried forward and still true: the Registrar can publish a draft that was never finalized
 (`Features/Publishing/PublishSchedule/PublishScheduleEndpoint.cs`). If the intended flow is strictly
 Draft → Finalized → Published, add the guard.
+
+**Decided and fixed (pass 11): strictly Draft → Finalized → Published, with a dry run.** Publish
+refuses with a 409 while any draft row is unfinalized. `GET /api/publishing/{id}/preview` returns
+what one press would do — classes, faculty and students to notify, and the refusal reason if any —
+computed by the same recipient code the publish uses, so the number the Registrar agrees to is the
+number that happens. The Publish button now loads it and asks "Publish 19 classes and notify 7
+faculty members and 15 students? This cannot be undone." This also closes the P2 bulk-confirmation
+item for publish, the irreversible one.
 
 **F-16 · No optimistic concurrency on schedule writes. [verified] [P1]**
 `RowVersion` exists on exactly one entity — `Domain/Section.cs:45`. `ScheduleAssignment` has none, so
@@ -613,6 +670,68 @@ deleting the cohort-clash check fails 1; letting a block span a break in the day
 the tie-break ignore the seed fails exactly the reproducibility-variety test written for it. All
 three reverted, and the engine verified byte-identical to `HEAD` afterwards.
 
+## Done — 8 October 2026
+
+The decisions pass, then everything left at P2/P3 that was engineering time rather than a call.
+Started by re-verifying every open item against the code, per the note on stale findings at the
+top — one was partly stale (the per-faculty grid already had colours, just from a third palette).
+
+**Decisions taken**: F-05 → *track*, not upload · F-15 → finalize required, plus a dry-run
+confirmation · F-14 → derived marker · institution name → configurable · 500 detail → trace id only.
+**Declined for now**: shortening the JWT lifetime, moving secrets out of `appsettings.json`.
+
+| # | What it was | Where the fix lives |
+|---|---|---|
+| **F-15** | Publish accepted a never-finalized draft and announced it to everyone | `PublishScheduleEndpoint` (409 guard + `GET …/preview`), `PublishingPage` confirmation |
+| **F-14** | No per-student "enrolled" state | `Features/Enlistment/EnrollmentCompletion.cs`, `EnrollmentChip.jsx`, COR line |
+| **F-05** | "Submit documents" implied an upload that does not exist | Wording in Help/nav; scope note in the spec |
+| **F-03** | Same person, second mailbox, undetected | `Features/Registration/LikelyDuplicates.cs` |
+| **F-04** | Students could not fix their own SIS | `Features/Registration/SelfService/*`, `/my-registration` |
+| **F-08 follow-up** | Drifted seat counts had no reconcile | `Features/Enlistment/SeatCounts/*`, `SeatCountCheck.jsx` |
+| **F-02 follow-up** | Precedence documented only in code | Parameters → Enrollment rules card |
+| — | Institution printed as a hardcoded "STI" | `SystemSettings.InstitutionName` (migration `AddInstitutionName`), Parameters card, memo + 3 PDFs |
+| — | 500 responses carried the exception type and message | `Program.cs` handler + `GenerateScheduleEndpoint`: trace id only; the message stays in the log and audit trail |
+| — | No way to reproduce a past arrangement | "Reproduce #" field on Generate |
+| — | Subject palette in two places, kept in sync by hand — *and* a third report-only palette | `Common/Reporting/SubjectPalette.cs` mirrors `calendarUtils.subjectHue`; `SubjectPaletteTests` pins it to hues computed by running the client function |
+| — | Day/time formatting re-implemented in 12 server files | `Common/Formatting/ClockText.cs` (the server's half; the client's was done in pass 10) |
+| — | Per-faculty grid lacked the class-program grid's treatment | Board palette fill + border, bold code, LEC/LAB, 12-hour time, subject legend |
+| — | Main bundle > 500 kB | 47 pages lazy-loaded; main chunk 330 kB, FullCalendar only with the board |
+| — | Downloads could hang forever | `apiDownload` timeout (120 s) + cancel; every download now goes through it |
+| — | Sparse operational logging | `Common/Web/RequestLogging.cs` — one line per `/api` request; 5xx Error, > 3 s Warning |
+
+**Found while fixing** — none of these were in the analysis:
+
+- **The COR certified classes from every term.** `RegistrationFormAsync` gathered approved sections
+  with no semester filter, so a returning student's form listed last semester's classes under this
+  semester's heading — the F-09 shape again, on a printed, signed document. Now scoped to the term.
+- **A staff correction broke the SIS case convention.** `UpdateRegistrationEndpoint` wrote names in
+  Proper Case and the email in lower case while everything else stores CAPS, so a corrected record
+  fell out of the "one SIS per email" check (which compares capitals) and out of the F-03 match.
+  All three SIS writers now share `SisText.Caps`.
+- **The capacity override audited twice on a lost race.** It recorded inside its retry loop, so
+  the losing attempt's entry committed alongside the winner's. `AuditLog.DiscardUnsaved()` now
+  drops staged entries before a retry; the new reconcile uses it too.
+- **The report tint hash could crash.** `ScheduleGridKit.TintIndex` took `Math.Abs` of a wrapping
+  `int`, which throws `OverflowException` when the hash lands on `int.MinValue`. Removed along with
+  the third palette.
+- **`apiDownload` revoked its object URL after 0 ms** — the exact pitfall `saveBlob` documents and
+  guards against. It now uses `saveBlob`.
+- **The seat-count query worked in memory and failed against SQL Server** (a `WHERE` over a
+  positional record's constructor). Caught by the live run, not the tests — the in-memory caveat in
+  `TestDb` is not theoretical.
+
+**Verified**: 127 tests green (up from 76), with the new ones mutation-checked — perturbing the
+palette hash fails all six pinned hues, counting a pending request as a seat fails 1, and switching
+the publish guard off fails 1. Lint clean (the same 8 pre-existing warnings). A scratch build on
+:5299 against the dev database exercised every new and changed endpoint read-only, and every report
+whose code changed was downloaded and opened (valid `PK`/`%PDF`, legend present, institution
+printed).
+
+**Worth knowing about the demo data**: the confirmed seeded students hold approved seats in BSCS and
+BSIT sections that are not in their own (ITP) plan, and several have plans that resolve to zero
+subjects due — so on this database the Enrolled marker reads "No subjects due" or "Not enlisted"
+for everyone. That is the marker telling the truth about seed data assembled before plans existed.
+
 ## P0 — correctness / data integrity · 5 of 6 done
 
 The one remaining P0 is not engineering time — it needs real secret values.
@@ -624,23 +743,23 @@ The one remaining P0 is not engineering time — it needs real secret values.
 - [x] **F-11** No record of completed subjects — prerequisites, year-level advance, and repeats all rest on it **[decided: verdicts, not grades]**
 - [ ] Secrets committed to `appsettings.json` (JWT key, seed admin password, SMTP identity)
 
-## P1 — workflow gaps & hardening · 10 of 13 done
+## P1 — workflow gaps & hardening · 12 of 13 done
 
 **Everything remaining at P1 is a decision.** No engineering-time item is left at this priority.
 
-- [ ] **F-05** No actual document upload — the "digital checklist" is a status flag **[decision]**
+- [x] **F-05** No actual document upload — **decided: track, not upload**; wording and spec now say so
 - [x] **F-06** No `UpdatedAtUtc` / `VerifiedByUserId` on a checklist row
 - [x] **F-07** Reminder blast is synchronous, uncapped, and re-sendable without limit
 - [x] **F-10** Prerequisites modeled and printed but never enforced
 - [x] **F-12** Bulk approve: N inline SMTP sends per request (the "batch the saves" half is won't-fix — see above)
-- [ ] **F-15** Publish doesn't require finalization **[decision]**
+- [x] **F-15** Publish doesn't require finalization — **decided: required**, with a dry-run confirmation
 - [x] **F-16** No optimistic concurrency on schedule writes (only `Section` has `RowVersion`)
 - [x] No login rate-limiting / lockout (brute force)
 - [x] No global 401/expiry handling on the client
 - [x] No security response headers (nosniff, frame-ancestors/CSP, Referrer-Policy)
 - [x] No top-level React error boundary
 - [x] No automated tests at all — 37 now, unit-level; the CSP engine and DB-level integration remain
-- [ ] JWT in `localStorage` + 8-hour lifetime **[decision]**
+- [ ] JWT in `localStorage` + 8-hour lifetime **[decision]** — considered in pass 11 and left as is
 
 > **These were not theoretical.** During the previous pass a single `POST /publishing/{id}/publish`
 > against the dev database published 19 draft rows and sent **15 real emails** through the live
@@ -654,45 +773,47 @@ The one remaining P0 is not engineering time — it needs real secret values.
 > classes and notify 15 people, continue?" — which is what would have made that mistake harmless.
 > Added to P2 below; it is a UX decision about how those buttons behave, not a bug.
 
-## P2 — quality, consistency, UX · 2 of 19 done
+## P2 — quality, consistency, UX · 21 of 21 done
 
-- [ ] **F-03** No duplicate-person detection on SIS submission
-- [ ] **F-04** Student cannot correct their own pending SIS
+- [x] **F-03** No duplicate-person detection on SIS submission — flagged, never blocked
+- [x] **F-04** Student cannot correct their own pending SIS
 - [x] **F-13** Cancellation audited as `SlotRequested`
 - [x] **F-02** No documented precedence between the stage and the parameter switches
-- [ ] Surface the stage-vs-switch precedence on the Parameters screen (follow-on from F-02)
-- [ ] **Dry-run / impact confirmation on the bulk paths** — publish and the reminder sweep should state
+- [x] Surface the stage-vs-switch precedence on the Parameters screen (follow-on from F-02)
+- [x] **Dry-run / impact confirmation on the bulk paths** (publish now previews before it runs) — publish and the reminder sweep should state
       what they are about to do ("19 classes, 15 people") and require a confirmation before doing it.
       The document sweep already confirms; publish does not, and publish is the irreversible one **[decision]**
 - [x] An admin view over the outbox — a failed notice is now recorded but nothing surfaces it
-- [ ] **F-14** No terminal "enrolled" state per student **[decision]**
+- [x] **F-14** No terminal "enrolled" state per student — **decided: derived marker**
 - [x] **F-17** No proactive "Finalized — reopen to edit" banner
 - [x] **F-18** Fullscreen height doesn't re-fit on window resize
 - [x] **F-19** Hover tooltip missing on the My schedule view
 - [x] `parseError` duplicated across 20 api modules → one shared `apiFetch`
 - [x] ProblemDetails `detail`/`reference` parsed only in `scheduling/api.js`
-- [~] Time/day formatting duplicated — `DAY_ABBR`/`DAY_NAMES` now live once in `calendarUtils.js`
-      (**client half done**); the server still formats days and 12-hour times independently
-- [ ] Subject-colour palette duplicated (client `calendarUtils.js` + server `HueFor`/`HslToHex`)
+- [x] Time/day formatting duplicated — client in `calendarUtils.js` (pass 10), server in
+      `Common/Formatting/ClockText.cs` (pass 11): one source of truth per side
+- [x] Subject-colour palette duplicated — client is the source of truth; the server mirror is pinned
+      to it by `SubjectPaletteTests`
 - [x] `.alert` banners lack `role="alert"` / `aria-live`
 - [x] Verify icon-button labels + modal focus trapping/restore (labels were already fine; focus was not)
 - [x] `DateTime.Now` vs `DateTime.UtcNow` mixed (8 sites, 3 report files)
-- [ ] Client bundle > 500 kB — no route-level code splitting
-- [~] No `/health` endpoint (**done**); sparse operational logging (still open)
-- [ ] No timeout/cancel on client downloads
+- [x] Client bundle > 500 kB — route-level code splitting; main chunk now 330 kB
+- [x] No `/health` endpoint (pass 7); sparse operational logging (pass 11, request logging)
+- [x] No timeout/cancel on client downloads
 
-## P3 — scheduling engine & reports · 3 of 12 done
+## P3 — scheduling engine & reports · 7 of 12 done
 
 - [x] Time-grid granularity — **the finding was stale**; the engine already places exact-length blocks
-- [ ] No UI to re-enter a seed and reproduce a past arrangement
+- [x] No UI to re-enter a seed and reproduce a past arrangement
 - [ ] Determinism per-seed vs. absolute **[decision]** — now *tested* in both directions (same seed → same timetable; different seeds → different ones), so the current answer is locked in and provable. Whether it is the *wanted* answer is still a product call.
 - [x] Pigeonhole pre-check counted meetings only — now counts teaching minutes as well
-- [ ] Raw exception detail exposed to the Academic Head on a 500 **[decision]**
+- [x] Raw exception detail exposed to the Academic Head on a 500 — **decided: trace id only**
 - [ ] Program Head role not modeled (memo reuses Academic Head for THRU and FROM)
 - [ ] STI lab-credit factor not modeled (Teaching vs Contact hrs)
-- [ ] Institution/branch name hardcoded "STI" **[decision]**
+- [x] Institution/branch name hardcoded "STI" — **decided: configurable** (System parameters)
 - [ ] "Class No." is a proxy (`SectionCode`)
-- [ ] Per-faculty schedule grid lacks the instructor detail + colour-coding
+- [x] Per-faculty schedule grid lacks the instructor detail + colour-coding (it had colour, from a
+      third palette; now the board's, plus the class grid's block layout and legend)
 - [ ] In-memory aggregation in the **report** endpoints (the list endpoints were fixed with F-20)
 - [x] No CI pipeline
 
@@ -711,10 +832,9 @@ The one remaining P0 is not engineering time — it needs real secret values.
 
   The lesson for this file: a finding written against one implementation can outlive it silently.
   Worth re-testing an old P3 before budgeting to fix it.
-- **Reproduce a specific arrangement.** Generation varies each run via a random seed and
-  returns/audits it, but there's no UI to re-enter a seed and reproduce a past timetable. Add an
-  optional "reproduce arrangement #___" field on the Generate page.
-  `GenerateSchedulePage.jsx`, `GenerateScheduleEndpoint.cs` (already accepts `Seed`).
+- ~~**Reproduce a specific arrangement.**~~ — **done** (pass 11): an optional "Reproduce #" field
+  beside Generate passes the seed through. It reproduces the arrangement only over the same inputs
+  (rooms, load, time slots), and its tooltip says so.
 - **[decision] Determinism vs. variety.** Output is deterministic *per seed*, not absolute. If the
   spec requires one fixed timetable for identical inputs, revisit.
 - ~~**Pigeonhole pre-check messaging.**~~ — **fixed, and it was a real gap rather than a wording
@@ -728,14 +848,14 @@ The one remaining P0 is not engineering time — it needs real secret values.
   over-detect, because a pre-check that rejected a feasible timetable would be far worse than one
   that occasionally lets an impossible one reach the search. A test pins the exactly-fitting case for
   that reason — changing the comparison from `>` to `>=` fails it.
-- **No tests.** The engine is written to be pure and unit-testable and has zero coverage — see
-  *Testing* below. This is the highest-value test target in the repository.
+- ~~**No tests.**~~ — covered since pass 8; see *Testing* below.
 
 ## Schedule generation — error handling
 
-- **[decision] Exception detail exposure.** On an unexpected 500, the raw exception type/message is
-  returned to the Academic Head (with a trace id) — `Program.cs:204-213`. Fine for an internal tool;
-  if that's too much, show only the trace id and keep the message server-side.
+- ~~**[decision] Exception detail exposure.**~~ — **decided: trace id only** (pass 11). Both the
+  global handler and the generation endpoint now return a fixed sentence plus the trace id; the
+  exception's type and message stay in the server log (and, for generation, the staff-only audit
+  trail), found by that id.
 
 ## Enlistment (see F-08 – F-14)
 
@@ -774,8 +894,11 @@ through the system, and that a decision on a row leaves no structured trace.
   (per-subject crediting). We store only Units + Hours, so the report shows Units (credited load) +
   Contact hours (meeting duration). Add a per-subject teaching-credit factor for an exact match.
   `Features/Reports/FacultyLoading/FacultyLoadingPdfModels.cs`.
-- **[decision] Institution/branch name hardcoded.** The form prints `"STI"`; the template said
-  "STI ALAMINOS". Make the institution/branch name configurable in System Parameters.
+- ~~**[decision] Institution/branch name hardcoded.**~~ — **configurable** (pass 11):
+  `SystemSettings.InstitutionName`, default "STI College Alaminos", set on System parameters and
+  printed in capitals on the memo, prospectus, evaluation sheet, and COR. **Not yet** on the email
+  footers — those are static builders with no settings access, and threading it through ~17 call
+  sites was left for when a second branch actually exists.
 - **Class No. proxy.** "Class No." maps to `Section.SectionCode` (no real STI class number exists in
   the data).
 - **"No. of students" inherits the `EnrolledCount` drift** described in F-08 — it uses
@@ -785,9 +908,11 @@ through the system, and that a decision on a row leaves no structured trace.
 
 ## Reports — grid schedules
 
-- **Individual (per-faculty) schedule grid** doesn't yet have the instructor detail + subject
-  colour-coding that the class-program grid has. Apply the same treatment for consistency.
-  `Features/Reports/FacultyLoading/FacultyScheduleGridWorkbook.cs`.
+- ~~**Individual (per-faculty) schedule grid**~~ — **done** (pass 11). The finding was half stale:
+  the grid was already colour-coded, but from `ScheduleGridKit.BlockTints` — a third palette keyed
+  on subject code, so a subject printed a different colour than it showed on the board (the room
+  grid had the same problem). Both now use `SubjectPalette`; the faculty grid also gets the class
+  grid's block layout (bold code, title, section, room · LEC/LAB, 12-hour time) and a subject legend.
 
 ## Testing
 
@@ -856,11 +981,14 @@ through the system, and that a decision on a row leaves no structured trace.
   day-abbreviation formatting of their own. That half cannot be deduplicated *with* the client — it
   is a different language — so the realistic goal is one formatter per side, each documented as the
   source of truth, rather than one shared implementation.
-- **Subject-colour palette duplicated.** The hue set + HSL logic lives in both
-  `features/scheduling/calendarUtils.js` and `FacultyLoadingReportsEndpoints.cs`
-  (`HueFor`/`HslToHex`), kept in sync by hand. Pick one documented source of truth.
-- **Bundle size.** The build warns the main chunk is > 500 kB (FullCalendar et al.). Introduce
-  route-level code-splitting (dynamic `import()`), especially for scheduling/report pages.
+- ~~**Subject-colour palette duplicated.**~~ — **one source of truth** (pass 11): the client's
+  `SUBJECT_HUES` / `subjectHue`. The server cannot import it, so `Common/Reporting/SubjectPalette.cs`
+  mirrors it and `SubjectPaletteTests` pins the mirror to hues produced by *running the client
+  function* — a cross-language contract test rather than a comment asking people to keep two files
+  in step.
+- ~~**Bundle size.**~~ — **done** (pass 11): every page except login, the forced password change,
+  and the shell is `React.lazy`; the shell keeps its sidebar up with a fallback while a page chunk
+  loads. Main chunk 330 kB; FullCalendar (230 kB) now arrives only with the board and calendar pages.
 
 ## Auth & security
 
@@ -874,9 +1002,8 @@ through the system, and that a decision on a row leaves no structured trace.
   `?next=`. Three exemptions are deliberate and documented at their call sites — `/api/auth/*` (login
   answers a bad password with a 401), `fetchCurrentUser` (its job is to find out whether a session
   exists), and `useNavBadges` (a background poll must not yank the user mid-sentence).
-- **No rate limiting / lockout on login.** `RateLimit` appears nowhere in the server. Failed logins
-  are audited (`LoginFailed`) but nothing throttles or locks an account, so the API is open to
-  credential brute force. Add ASP.NET rate limiting on `/api/auth/login` and/or a temporary lockout.
+- ~~**No rate limiting / lockout on login.**~~ — fixed in pass 4 (`LoginThrottle` + IP limiter);
+  this entry had been left open here by mistake.
 - **Long-lived tokens.** `Jwt.ExpiryMinutes` is 480 (8h); combined with `localStorage` a stolen token
   stays valid a long time. Shorten access-token lifetime (+ refresh) once storage is hardened.
 - **Elevation breadth.** `SchoolAdminClaimsTransformation` grants a School Admin every role's claims.
@@ -898,9 +1025,9 @@ through the system, and that a decision on a row leaves no structured trace.
 
 - **No optimistic concurrency on schedule writes** (F-16). `RowVersion` exists only on
   `Domain/Section.cs:45`.
-- **`EnrolledCount` is a denormalized counter with no reconciliation** (F-08). Even after a drop path
-  exists, add a periodic or on-demand reconcile against the count of live approved requests, and
-  surface a mismatch to the admin rather than silently correcting it.
+- ~~**`EnrolledCount` is a denormalized counter with no reconciliation**~~ — **on-demand reconcile
+  added** (pass 11, see F-08): mismatches are surfaced on the approvals page and corrected one at a
+  time, deliberately, never silently.
 
 ## Correctness — time zones
 
@@ -929,8 +1056,10 @@ through the system, and that a decision on a row leaves no structured trace.
   institutional scale, but push grouping/sums into SQL if volumes grow.
   `Features/Reports/FacultyLoading/FacultyLoadingReportsEndpoints.cs`,
   `Features/Scheduling/SoftConstraints/*`.
-- **No request timeout/cancellation on client downloads.** A slow bulk export (.zip, consolidated
-  workbook) can hang the button indefinitely; add an `AbortController` timeout + a cancel affordance.
+- ~~**No request timeout/cancellation on client downloads.**~~ — **done** (pass 11): `apiDownload`
+  is now the one download path (five local copies folded into it), with a 120 s timeout that covers
+  the body as well as the headers and an optional cancel signal. The faculty-load reports page — home
+  of the slow bulk .zip — shows **Cancel download** while one runs.
 
 ## Accessibility (audit needed)
 
@@ -950,10 +1079,8 @@ through the system, and that a decision on a row leaves no structured trace.
 
 ## Web hardening (HTTP headers)
 
-- **No security response headers.** Only `UseHttpsRedirection` is configured (`Program.cs:231`) —
-  there's no `X-Content-Type-Options: nosniff`, no `X-Frame-Options` / CSP `frame-ancestors`
-  (clickjacking), no `Referrer-Policy`, and no `Content-Security-Policy` for the served SPA. Add a
-  headers middleware.
+- ~~**No security response headers.**~~ — fixed in pass 4 (`Common/Web/SecurityHeaders.cs`); this
+  entry had been left open here by mistake.
 - **No CORS policy configured.** Fine while the SPA is served same-origin by the same host; it
   becomes a blocking gap the moment the client is deployed separately. Note it as a deployment
   precondition.
@@ -965,10 +1092,12 @@ through the system, and that a decision on a row leaves no structured trace.
   database outage is not a reason to kill the process), `/health` includes a DB probe so an
   orchestrator stops routing traffic while the database is unreachable without recycling the
   container. Both anonymous — a probe needing a token cannot run before the app is ready.
-- **Sparse application logging.** Only schedule generation and the global exception handler emit logs;
-  most requests and failures aren't logged for operations (the audit trail covers *domain* events, not
-  operational diagnostics). Add structured request logging + warning-level logs on the notable failure
-  paths.
+- ~~**Sparse application logging.**~~ — **done** (pass 11): `Common/Web/RequestLogging.cs` writes
+  one structured line per `/api` request (method, path, status, duration, user, trace id). 5xx is
+  Error — the exception handler has already logged the stack under the same trace id — and anything
+  over 3 s is Warning whatever its status. 4xx stays Information on purpose: a wrong password or a
+  full section is the system working. Query strings are never logged (search terms and tokens travel
+  there), and static assets, the SignalR hub, and the health probes are skipped.
 - ~~**Email delivery is fire-and-forget with no record of failure.**~~ — **fixed for the bulk paths.**
   `OutboxEmail` carries status, attempt count, and last error, and `Failed` is a terminal state
   rather than a deleted row, precisely so "we tried five times over half an hour and that address
@@ -991,9 +1120,8 @@ through the system, and that a decision on a row leaves no structured trace.
 
 ## Client resilience
 
-- **No React error boundary.** `ErrorBoundary`/`componentDidCatch` appear nowhere in `src`. A
-  render-time exception in any feature blanks the entire SPA (white screen) with nothing logged. Add
-  a top-level `ErrorBoundary` that renders a recoverable fallback and reports the error. `src/App.jsx`.
+- ~~**No React error boundary.**~~ — fixed in pass 4 (`features/shell/ErrorBoundary.jsx`); this
+  entry had been left open here by mistake.
 
 ## Documentation consistency
 
@@ -1001,8 +1129,11 @@ through the system, and that a decision on a row leaves no structured trace.
   rested on the gaps above. Three are now genuinely closed and the spec can say so: **FR-ENL-04** has
   a reverse transition (F-08), **FR-TERM-03**'s widened search reaches every row rather than the
   first 500 (F-20), and **FR-ENL-01/06** now enforces the prerequisites it prints and offers the
-  repeats a student owes (F-10/F-11). **FR-DOC-01/02** is the one still overstated — nothing is ever
-  uploaded (F-05) — so either close it or downgrade it to 🟡 with the limitation named. A spec that
+  repeats a student owes (F-10/F-11). ~~**FR-DOC-01/02** is the one still overstated~~ — resolved
+  by a scope note rather than a downgrade (pass 11): as worded they are met (a checklist the
+  Admission Officer maintains), and what overstated things was the section's "submission" implying an
+  upload. The note says plainly that papers are handed over in person and nothing is uploaded. The
+  spec also gained FR-CYC-05 (stage enforced), FR-PUB-05, FR-SIS-13/14, FR-ENL-18/19, FR-SCHED-17. A spec that
   overstates completeness is a worse problem than an incomplete system, because it removes the reason
   to go back.
 - The spec should gain the **F-11 scope boundary** in the same breath as the feature: SEN-GEN records

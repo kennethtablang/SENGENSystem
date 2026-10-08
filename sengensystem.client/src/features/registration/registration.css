@@ -774,3 +774,55 @@
     gap: 0;
   }
 }
+
+/* F-03: the "possible duplicate" flag beside a name in the queue, and the in-drawer jump to the
+   matching record. */
+.reg-dup-chip {
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.reg-drawer-body .link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--sti-blue);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* F-04: the student's own SIS (MyRegistrationPage). */
+.myreg-card {
+  padding: 1.2rem 1.3rem;
+}
+
+.myreg-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.myreg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.2rem 1rem;
+}
+
+.myreg-address {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.3rem 0 0.6rem;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.myreg-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}

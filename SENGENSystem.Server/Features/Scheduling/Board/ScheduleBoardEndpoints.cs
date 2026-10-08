@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Notifications;
@@ -304,7 +305,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             audit.Record(AuditAction.ScheduleOverridden,
                 $"Placed {load.Subject.Code} {component.ToString().ToLowerInvariant()} ({cohort.DisplayName}) " +
                 $"with {load.FacultyProfile?.User?.FullName} in {room.Name}, " +
-                $"{DayName(request.Day)} {Hhmm(request.StartMinutes)}–{Hhmm(request.EndMinutes)}.",
+                $"{DayName(request.Day)} {ClockText.Hhmm(request.StartMinutes)}–{ClockText.Hhmm(request.EndMinutes)}.",
                 "ScheduleAssignment", assignment.Id.ToString());
             // A placement is checked against the rows read a moment ago — the room, faculty, and
             // cohort clash tests above. A regenerate committing in between invalidates all three, so
@@ -395,7 +396,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             assignment.IsManualOverride = true;
 
             audit.Record(AuditAction.ScheduleOverridden,
-                $"Moved {assignment.Section.Subject?.Code} ({CohortLabel(assignment.Section)}) to {room.Name}, {DayName(request.Day)} {Hhmm(request.StartMinutes)}–{Hhmm(request.EndMinutes)}.",
+                $"Moved {assignment.Section.Subject?.Code} ({CohortLabel(assignment.Section)}) to {room.Name}, {DayName(request.Day)} {ClockText.Hhmm(request.StartMinutes)}–{ClockText.Hhmm(request.EndMinutes)}.",
                 "ScheduleAssignment", assignment.Id.ToString());
 
             var after = ScheduleAmendments.Describe(
@@ -541,7 +542,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 // Overlap on the same day: start < otherEnd && otherStart < end.
                 if (!(start < o.TimeSlot.EndMinutes && o.TimeSlot.StartMinutes < end)) continue;
 
-                var when = $"{DayName(day)} {Hhmm(o.TimeSlot.StartMinutes)}–{Hhmm(o.TimeSlot.EndMinutes)}";
+                var when = $"{DayName(day)} {ClockText.Hhmm(o.TimeSlot.StartMinutes)}–{ClockText.Hhmm(o.TimeSlot.EndMinutes)}";
                 if (o.RoomId == roomId)
                     return Results.Conflict(new { message = $"{roomName} is already booked {when} ({CohortLabel(o.Section)} · {o.Section.Subject?.Code})." });
                 if (o.FacultyProfileId == facultyProfileId)
@@ -641,7 +642,6 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
         private static string CohortLabel(Section s) => $"{s.ProgramCode} {s.YearLevel}-{s.Block}";
 
         private static string DayName(int day) => ((DayOfWeek)day).ToString();
-        private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
 
         private static async Task<Semester?> ResolveSemesterAsync(Guid? semesterId, AppDbContext db, CancellationToken ct) =>
             semesterId is { } id

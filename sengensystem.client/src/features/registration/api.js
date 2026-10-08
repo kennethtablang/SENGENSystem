@@ -89,3 +89,15 @@ export function getRegistration(id) {
 export function updateRegistration(id, data) {
     return apiFetch(`/api/registration/${id}`, { method: 'PUT', body: data });
 }
+
+// ---- Student (own record) ----
+
+// F-04: the signed-in student's own SIS, with whether it is still open to their corrections.
+export function getMyRegistration() {
+    return apiFetch('/api/registration/mine');
+}
+
+// F-04: only the fields passed change; refused once the Registrar has confirmed the record.
+export function updateMyRegistration(patch) {
+    return apiFetch('/api/registration/mine', { method: 'PUT', body: patch });
+}

@@ -839,10 +839,16 @@ function StudentDashboard() {
         }] : []),
         {
             title: 'Enlist in subjects',
-            detail: mine.approvedUnits > 0
-                ? `${mine.approvedUnits} units approved`
-                : 'Browse published sections and reserve your seats.',
-            done: mine.approvedUnits > 0,
+            // F-14: done means the term's plan is fully covered, not merely that something was
+            // approved — one approved subject out of seven is not an enrolled student.
+            detail: mine.completion?.state === 'Enrolled'
+                ? `Enrolled — ${mine.approvedUnits} units approved`
+                : mine.completion?.state === 'Partial'
+                    ? `${mine.completion.coveredSubjects}/${mine.completion.plannedSubjects} subjects approved — still to enlist: ${mine.completion.missingCodes.join(', ')}`
+                    : mine.approvedUnits > 0
+                        ? `${mine.approvedUnits} units approved`
+                        : 'Browse published sections and reserve your seats.',
+            done: mine.completion ? mine.completion.state === 'Enrolled' : mine.approvedUnits > 0,
             to: '/enlistment'
         }
     ];

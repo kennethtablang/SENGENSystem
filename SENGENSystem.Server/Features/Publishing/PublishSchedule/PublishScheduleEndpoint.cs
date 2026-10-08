@@ -8,7 +8,8 @@ using SENGENSystem.Server.Features.Scheduling;
 namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
 {
     // Vertical slice: the Registrar publishes a semester's finalized, constraint-verified
-    // schedule before the enrollment period opens (FR-PUB-01). Publishing flips
+    // schedule before the enrollment period opens (FR-PUB-01). Only a finalized draft can be
+    // published (F-15); the GET preview is the dry run the confirmation dialog reads. Publishing flips
     // ScheduleAssignment.IsPublished — generation never replaces published rows — and
     // notifies affected faculty and confirmed students by email (FR-PUB-03).
     public record PublishScheduleResponse(
@@ -20,6 +21,21 @@ namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
         // Accepted for sending, not delivered — the notices are queued and go out in the background.
         int EmailsQueued);
 
+    // The dry run behind the Publish button's confirmation (F-15 / the bulk-path confirmation):
+    // what one press would do, computed by the same code the publish itself uses, so the number
+    // the Registrar agrees to is the number that happens. Nothing is written.
+    public record PublishPreviewResponse(
+        Guid SemesterId,
+        string SemesterName,
+        int ToPublish,
+        int AlreadyPublished,
+        // Draft rows not yet signed off by the Academic Head — any of these blocks the publish.
+        int NotFinalized,
+        int FacultyToNotify,
+        int StudentsToNotify,
+        // Null when the publish would go through; otherwise the sentence the publish refuses with.
+        string? BlockedReason);
+
     public static class PublishScheduleEndpoint
     {
         public static IEndpointRouteBuilder MapPublishSchedule(this IEndpointRouteBuilder app)
@@ -27,7 +43,64 @@ namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
             app.MapPost("/api/publishing/{semesterId:guid}/publish", HandleAsync)
                 .RequireAuthorization(policy => policy.RequireRole(
                     nameof(UserRole.Registrar), nameof(UserRole.SchoolAdmin)));
+            app.MapGet("/api/publishing/{semesterId:guid}/preview", PreviewAsync)
+                .RequireAuthorization(policy => policy.RequireRole(
+                    nameof(UserRole.Registrar), nameof(UserRole.SchoolAdmin)));
             return app;
+        }
+
+        // F-15: the lifecycle is strictly Draft → Finalized → Published. Publishing a draft the
+        // Academic Head never signed off would make official — and announce to the whole
+        // institution — a timetable still open to regeneration and board edits.
+        internal static string? BlockedReason(int toPublish, int notFinalized) =>
+            toPublish > 0 && notFinalized > 0
+                ? $"{notFinalized} of the {toPublish} draft class(es) have not been finalized. " +
+                  "The Academic Head must finalize the schedule before it can be published."
+                : null;
+
+        private static async Task<List<StudentRegistration>> StudentRecipientsAsync(
+            AppDbContext db, Guid semesterId, CancellationToken ct) =>
+            await db.StudentRegistrations
+                .Where(r => r.SemesterId == semesterId && r.Status == RegistrationStatus.Confirmed)
+                .ToListAsync(ct);
+
+        private static List<User> FacultyRecipients(IEnumerable<ScheduleAssignment> assignments) =>
+            assignments
+                .Select(a => a.FacultyProfile?.User)
+                .Where(u => u is not null && u.IsActive)
+                .DistinctBy(u => u!.Id)
+                .Select(u => u!)
+                .ToList();
+
+        private static async Task<IResult> PreviewAsync(
+            Guid semesterId, AppDbContext db, CancellationToken ct)
+        {
+            var semester = await db.Semesters.AsNoTracking().FirstOrDefaultAsync(s => s.Id == semesterId, ct);
+            if (semester is null)
+            {
+                return Results.NotFound(new { message = "Semester not found." });
+            }
+
+            var assignments = await db.ScheduleAssignments.AsNoTracking()
+                .Where(a => a.SemesterId == semester.Id)
+                .Include(a => a.FacultyProfile).ThenInclude(f => f!.User)
+                .ToListAsync(ct);
+
+            var drafts = assignments.Where(a => !a.IsPublished).ToList();
+            var notFinalized = drafts.Count(a => !a.IsFinalized);
+            var students = await StudentRecipientsAsync(db, semester.Id, ct);
+
+            var blocked = semester.IsArchived
+                ? $"“{semester.Name}” is archived — its schedule is read-only."
+                : assignments.Count == 0
+                    ? "There is no schedule to publish for this semester yet."
+                    : BlockedReason(drafts.Count, notFinalized);
+
+            return Results.Ok(new PublishPreviewResponse(
+                semester.Id, semester.Name, drafts.Count, assignments.Count - drafts.Count, notFinalized,
+                drafts.Count == 0 ? 0 : FacultyRecipients(assignments).Count,
+                drafts.Count == 0 ? 0 : students.DistinctBy(r => r.Email).Count(),
+                blocked));
         }
 
         private static async Task<IResult> HandleAsync(
@@ -71,6 +144,11 @@ namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
                     semester.Id, semester.Name, 0, alreadyPublished, assignments.Count, 0));
             }
 
+            if (BlockedReason(drafts.Count, drafts.Count(a => !a.IsFinalized)) is { } blocked)
+            {
+                return Results.Conflict(new { message = blocked });
+            }
+
             foreach (var assignment in drafts)
             {
                 assignment.IsPublished = true;
@@ -82,21 +160,14 @@ namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
 
             // Recipients: every faculty member on the schedule, and confirmed students —
             // in-app bell notices for those with accounts, email for everyone reachable.
-            var facultyRecipients = assignments
-                .Select(a => a.FacultyProfile?.User)
-                .Where(u => u is not null && u.IsActive)
-                .DistinctBy(u => u!.Id)
-                .ToList();
-
-            var studentRecipients = await db.StudentRegistrations
-                .Where(r => r.SemesterId == semester.Id && r.Status == RegistrationStatus.Confirmed)
-                .ToListAsync(cancellationToken);
+            var facultyRecipients = FacultyRecipients(assignments);
+            var studentRecipients = await StudentRecipientsAsync(db, semester.Id, cancellationToken);
 
             // Bell notices commit in the same transaction as the publish itself.
             foreach (var user in facultyRecipients)
             {
-                var classCount = assignments.Count(a => a.FacultyProfile?.UserId == user!.Id);
-                notifier.Notify(user!.Id, NotificationKind.SchedulePublished,
+                var classCount = assignments.Count(a => a.FacultyProfile?.UserId == user.Id);
+                notifier.Notify(user.Id, NotificationKind.SchedulePublished,
                     "Your teaching schedule is published",
                     $"{classCount} class(es) for {semester.Name} are now final. Open My schedule to see your week.",
                     "/schedule");
@@ -137,9 +208,9 @@ namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
             var queued = 0;
             foreach (var user in facultyRecipients)
             {
-                var classCount = assignments.Count(a => a.FacultyProfile?.UserId == user!.Id);
-                var (subject, body) = PublishingEmails.FacultySchedulePublished(user!, semester.Name, classCount);
-                if (outbox.Queue(user!.Email, user.FullName, subject, body,
+                var classCount = assignments.Count(a => a.FacultyProfile?.UserId == user.Id);
+                var (subject, body) = PublishingEmails.FacultySchedulePublished(user, semester.Name, classCount);
+                if (outbox.Queue(user.Email, user.FullName, subject, body,
                         kind: "SchedulePublished",
                         dedupeKey: $"published:{semester.Id}:faculty:{user.Id}"))
                 {

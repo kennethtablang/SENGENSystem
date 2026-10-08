@@ -53,12 +53,21 @@ export function fmtHours(n) {
 // identical across the pool, the calendar, and the trackers. Derived from the subject id (no
 // stored field) against a curated, well-spaced hue set. Theme-aware: light tint + dark-blue
 // text on the light theme; deep tint + light text on the dark theme (data-theme on <html>).
-const SUBJECT_HUES = [214, 265, 330, 24, 43, 158, 190, 288, 8, 128, 300, 174];
+//
+// SOURCE OF TRUTH for the palette. The server's printed grids mirror it in
+// Common/Reporting/SubjectPalette.cs (a different language, so it cannot import this), and
+// SubjectPaletteTests pins the server to hues produced by running *this* function — change the
+// hue list or the hash here and that test names the GUIDs that now disagree.
+export const SUBJECT_HUES = [214, 265, 330, 24, 43, 158, 190, 288, 8, 128, 300, 174];
 
-export function subjectColor(id) {
+export function subjectHue(id) {
     let h = 0;
     for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-    const hue = SUBJECT_HUES[h % SUBJECT_HUES.length];
+    return SUBJECT_HUES[h % SUBJECT_HUES.length];
+}
+
+export function subjectColor(id) {
+    const hue = subjectHue(id);
     if (document.documentElement.dataset.theme === 'dark') {
         return {
             bg: `hsl(${hue} 42% 21%)`,

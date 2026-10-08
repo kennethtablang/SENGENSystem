@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Persistence;
@@ -253,7 +254,7 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 return Results.BadRequest(new
                 {
                     message = $"No time slots start at or after the configured class start time " +
-                        $"({Hhmm(classDayStart)}). Move the start time earlier, or add later periods."
+                        $"({ClockText.Hhmm(classDayStart)}). Move the start time earlier, or add later periods."
                 });
             }
             var faculty = await db.FacultyProfiles
@@ -429,9 +430,9 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
             {
                 // An engine bug must never bubble up as a bare 500 with no context. Give whoever
                 // hit this a lead they can act on: a trace id that ties the message they see to
-                // the full stack trace in the logs, plus the exception's own summary. This is an
-                // Academic-Head-only endpoint, so surfacing the exception type/message is a
-                // reportable diagnostic, not a leak to the public.
+                // the full stack trace in the logs. The exception's own type and message stay
+                // server-side (log + audit trail) — decided against showing them to the user, since
+                // they can name internals (tables, paths, query text) and the id is enough to find them.
                 var traceId = http.TraceIdentifier;
                 logger.LogError(ex,
                     "Schedule generation for {Semester} ({SemesterId}) crashed [trace {TraceId}]",
@@ -443,7 +444,7 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 await db.SaveChangesAsync(cancellationToken);
                 return Results.Problem(
                     title: "Schedule generation failed unexpectedly.",
-                    detail: $"The scheduling engine hit an internal error ({ex.GetType().Name}: {ex.Message}). " +
+                    detail: "The scheduling engine hit an internal error. " +
                         $"Quote reference {traceId} when reporting this — it points to the full diagnostics in the server log.",
                     statusCode: StatusCodes.Status500InternalServerError,
                     extensions: new Dictionary<string, object?>
@@ -451,7 +452,7 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                         ["reference"] = traceId,
                         ["reasons"] = new[]
                         {
-                            $"{ex.GetType().Name}: {ex.Message}",
+                            "The scheduling engine hit an internal error.",
                             $"Diagnostic reference: {traceId} (find the full stack trace in the server log by this id)."
                         }
                     });
@@ -577,7 +578,6 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                     opt.AverageRoomFitPct)));
         }
 
-        private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
 
         /// <summary>
         /// Creates a <see cref="Section"/> for every (subject, cohort) the semester's faculty load

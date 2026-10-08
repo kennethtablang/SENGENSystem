@@ -1,65 +1,72 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useAuth } from './features/auth/useAuth';
 import LoginPage from './features/auth/LoginPage';
-import RegisterPage from './features/auth/RegisterPage';
-import ForgotPasswordPage from './features/auth/ForgotPasswordPage';
-import ResetPasswordPage from './features/auth/ResetPasswordPage';
-import ConfirmEmailPage from './features/auth/ConfirmEmailPage';
 import FirstLoginPasswordChange from './features/auth/FirstLoginPasswordChange';
-import DashboardPage from './features/dashboard/DashboardPage';
-import ProfilePage from './features/profile/ProfilePage';
-import GenerateSchedulePage from './features/scheduling/GenerateSchedulePage';
-import ReviewSchedulePage from './features/scheduling/ReviewSchedulePage';
-import ScheduleBoardPage from './features/scheduling/ScheduleBoardPage';
-import SchedulePage from './features/scheduling/SchedulePage';
-import AuditTrailPage from './features/audit/AuditTrailPage';
-import SisRegistrationPage from './features/registration/SisRegistrationPage';
-import TermActivationPage from './features/registration/TermActivationPage';
-import RegistrationsPage from './features/registration/RegistrationsPage';
-import TermActivationsPage from './features/registration/TermActivationsPage';
-import TermActivationControlPage from './features/registration/TermActivationControlPage';
-import AssignStudentNumberPage from './features/registration/AssignStudentNumberPage';
-import TransfereeEvaluationPage from './features/evaluation/TransfereeEvaluationPage';
-import AcademicRecordsPage from './features/academic-records/AcademicRecordsPage';
-import OutboxPage from './features/outbox/OutboxPage';
-import ProspectusPage from './features/evaluation/ProspectusPage';
-import MySubjectsPage from './features/evaluation/MySubjectsPage';
-import UserManagementPage from './features/users/UserManagementPage';
-import ParametersPage from './features/parameters/ParametersPage';
-import SchoolYearsPage from './features/academic/SchoolYearsPage';
-import SemestersPage from './features/academic/SemestersPage';
-import BuildingsPage from './features/academic/BuildingsPage';
-import RoomsPage from './features/academic/RoomsPage';
-import ClassSectionsPage from './features/academic/ClassSectionsPage';
-import SubjectsCurriculumPage from './features/curriculum/SubjectsCurriculumPage';
-import FacultyLoadPage from './features/faculty/FacultyLoadPage';
-import PublishingPage from './features/publishing/PublishingPage';
-import DocumentsPage from './features/documents/DocumentsPage';
-import PreAuthorizationPage from './features/pre-enrollment/PreAuthorizationPage';
-import PreEnrollmentPage from './features/pre-enrollment/PreEnrollmentPage';
-import EnlistmentPage from './features/enlistment/EnlistmentPage';
-import ApprovalsPage from './features/enlistment/ApprovalsPage';
-import ReportsPage from './features/reports/ReportsPage';
-import FacultyLoadReportsPage from './features/reports/FacultyLoadReportsPage';
-import RoomUtilizationPage from './features/analytics/RoomUtilizationPage';
-import NotificationsPage from './features/notifications/NotificationsPage';
-import SurveyPage from './features/survey/SurveyPage';
-import SurveyAdminPage from './features/survey/SurveyAdminPage';
-import SurveyRecipientsPage from './features/survey/SurveyRecipientsPage';
-import SettingsPage from './features/settings/SettingsPage';
-import HelpPage from './features/help/HelpPage';
 import AppLayout from './features/shell/AppLayout';
 import ComingSoon from './features/shell/ComingSoon';
 import { allNavItems } from './features/shell/nav';
 import { getPrefs } from './features/settings/prefs';
 import './App.css';
 
+/* Route-level code splitting: every page below loads on first visit rather than in the main
+   bundle, which had grown past 500 kB (FullCalendar, the report pages, the PSGC address data).
+   Login, the forced first-login password change, and the shell stay eager so signing in never
+   waits on a second request. The shell shows its own fallback while a page loads (AppLayout). */
+const RegisterPage = lazy(() => import('./features/auth/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./features/auth/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./features/auth/ResetPasswordPage'));
+const ConfirmEmailPage = lazy(() => import('./features/auth/ConfirmEmailPage'));
+const DashboardPage = lazy(() => import('./features/dashboard/DashboardPage'));
+const ProfilePage = lazy(() => import('./features/profile/ProfilePage'));
+const GenerateSchedulePage = lazy(() => import('./features/scheduling/GenerateSchedulePage'));
+const ReviewSchedulePage = lazy(() => import('./features/scheduling/ReviewSchedulePage'));
+const ScheduleBoardPage = lazy(() => import('./features/scheduling/ScheduleBoardPage'));
+const SchedulePage = lazy(() => import('./features/scheduling/SchedulePage'));
+const AuditTrailPage = lazy(() => import('./features/audit/AuditTrailPage'));
+const SisRegistrationPage = lazy(() => import('./features/registration/SisRegistrationPage'));
+const TermActivationPage = lazy(() => import('./features/registration/TermActivationPage'));
+const RegistrationsPage = lazy(() => import('./features/registration/RegistrationsPage'));
+const MyRegistrationPage = lazy(() => import('./features/registration/MyRegistrationPage'));
+const TermActivationsPage = lazy(() => import('./features/registration/TermActivationsPage'));
+const TermActivationControlPage = lazy(() => import('./features/registration/TermActivationControlPage'));
+const AssignStudentNumberPage = lazy(() => import('./features/registration/AssignStudentNumberPage'));
+const TransfereeEvaluationPage = lazy(() => import('./features/evaluation/TransfereeEvaluationPage'));
+const AcademicRecordsPage = lazy(() => import('./features/academic-records/AcademicRecordsPage'));
+const OutboxPage = lazy(() => import('./features/outbox/OutboxPage'));
+const ProspectusPage = lazy(() => import('./features/evaluation/ProspectusPage'));
+const MySubjectsPage = lazy(() => import('./features/evaluation/MySubjectsPage'));
+const UserManagementPage = lazy(() => import('./features/users/UserManagementPage'));
+const ParametersPage = lazy(() => import('./features/parameters/ParametersPage'));
+const SchoolYearsPage = lazy(() => import('./features/academic/SchoolYearsPage'));
+const SemestersPage = lazy(() => import('./features/academic/SemestersPage'));
+const BuildingsPage = lazy(() => import('./features/academic/BuildingsPage'));
+const RoomsPage = lazy(() => import('./features/academic/RoomsPage'));
+const ClassSectionsPage = lazy(() => import('./features/academic/ClassSectionsPage'));
+const SubjectsCurriculumPage = lazy(() => import('./features/curriculum/SubjectsCurriculumPage'));
+const FacultyLoadPage = lazy(() => import('./features/faculty/FacultyLoadPage'));
+const PublishingPage = lazy(() => import('./features/publishing/PublishingPage'));
+const DocumentsPage = lazy(() => import('./features/documents/DocumentsPage'));
+const PreAuthorizationPage = lazy(() => import('./features/pre-enrollment/PreAuthorizationPage'));
+const PreEnrollmentPage = lazy(() => import('./features/pre-enrollment/PreEnrollmentPage'));
+const EnlistmentPage = lazy(() => import('./features/enlistment/EnlistmentPage'));
+const ApprovalsPage = lazy(() => import('./features/enlistment/ApprovalsPage'));
+const ReportsPage = lazy(() => import('./features/reports/ReportsPage'));
+const FacultyLoadReportsPage = lazy(() => import('./features/reports/FacultyLoadReportsPage'));
+const RoomUtilizationPage = lazy(() => import('./features/analytics/RoomUtilizationPage'));
+const NotificationsPage = lazy(() => import('./features/notifications/NotificationsPage'));
+const SurveyPage = lazy(() => import('./features/survey/SurveyPage'));
+const SurveyAdminPage = lazy(() => import('./features/survey/SurveyAdminPage'));
+const SurveyRecipientsPage = lazy(() => import('./features/survey/SurveyRecipientsPage'));
+const SettingsPage = lazy(() => import('./features/settings/SettingsPage'));
+const HelpPage = lazy(() => import('./features/help/HelpPage'));
+
 // Routes with a real page; everything else in the nav falls back to ComingSoon.
 const builtRoutes = new Set([
     '/', '/profile', '/schedule', '/scheduling/generate', '/scheduling/review', '/scheduling/board', '/audit',
-    '/registrations', '/term-activations', '/term-activation-control',
+    '/registrations', '/my-registration', '/term-activations', '/term-activation-control',
     '/assign-student-number', '/users', '/parameters',
     '/evaluate-transferee', '/academic-records', '/prospectus', '/my-subjects',
     '/school-years', '/semesters', '/buildings', '/rooms', '/class-sections', '/subjects', '/faculty-load',
@@ -89,6 +96,7 @@ function App() {
     return (
         <>
         <ToastContainer theme="light" newestOnTop pauseOnFocusLoss={false} />
+        <Suspense fallback={<p className="route-loading" role="status">Loading…</p>}>
         <Routes>
             <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
             <Route path="/register" element={<RedirectIfAuthed><RegisterPage /></RedirectIfAuthed>} />
@@ -114,6 +122,8 @@ function App() {
                 <Route path="/schedule" element={<SchedulePage />} />
                 <Route path="/audit" element={<AuditTrailPage />} />
                 <Route path="/registrations" element={<RegistrationsPage />} />
+                {/* F-04: the student corrects their own SIS while it awaits confirmation */}
+                <Route path="/my-registration" element={<MyRegistrationPage />} />
                 <Route path="/term-activations" element={<TermActivationsPage />} />
                 <Route path="/term-activation-control" element={<TermActivationControlPage />} />
                 <Route path="/assign-student-number" element={<AssignStudentNumberPage />} />
@@ -162,6 +172,7 @@ function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
         </>
     );
 }

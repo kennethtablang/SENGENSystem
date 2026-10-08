@@ -34,7 +34,9 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         string studentTypeLabel,
         string semesterName,
         List<EnrolledClassRow> rows,
-        DateTime generatedAt) : IDocument
+        Enlistment.EnrollmentCompletionDto? completion,
+        DateTime generatedAt,
+        string institution) : IDocument
     {
         private static readonly Color Ink = Color.FromHex("#111111");
         private static readonly Color Muted = Color.FromHex("#5b6c99");
@@ -77,7 +79,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         private void Header(IContainer container) =>
             container.Column(column =>
             {
-                column.Item().Text("STI COLLEGE ALAMINOS").FontSize(13).Bold().FontColor(Brand);
+                column.Item().Text(institution.ToUpperInvariant()).FontSize(13).Bold().FontColor(Brand);
                 column.Item().Text("Certificate of Registration").FontSize(10).FontColor(Muted);
                 column.Item().Text(semesterName).FontSize(9).FontColor(Muted);
 
@@ -86,10 +88,24 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                     box.Item().Text(studentName).Bold().FontSize(11);
                     box.Item().Text($"{studentNumber}  ·  {programLabel}  ·  {yearLevelLabel}  ·  {studentTypeLabel}")
                         .FontSize(8.5f).FontColor(Muted);
+                    if (CompletionLine() is { } line)
+                    {
+                        box.Item().PaddingTop(2).Text(line.Text).FontSize(8.5f).Bold()
+                            .FontColor(line.Complete ? Brand : AlertInk);
+                    }
                 });
 
                 column.Item().PaddingTop(6).LineHorizontal(1).LineColor(Line);
             });
+
+        // F-14: the enrollment state for the term, in the words a student or staff member reads it.
+        private (string Text, bool Complete)? CompletionLine() => completion?.State switch
+        {
+            "Enrolled" => ("ENROLLMENT COMPLETE — every subject due this term holds an approved seat.", true),
+            "Partial" => ($"ENROLLMENT INCOMPLETE — still to enlist: {string.Join(", ", completion.MissingCodes)}.", false),
+            "NotStarted" when completion.PlannedSubjects > 0 => ("ENROLLMENT NOT STARTED — no subject due this term holds an approved seat yet.", false),
+            _ => null
+        };
 
         private void Body(IContainer container) =>
             container.Column(column =>

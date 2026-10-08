@@ -1,4 +1,5 @@
 import { getToken, clearToken } from './token';
+import { saveBlob, filenameFromDisposition } from './download';
 
 /* One fetch wrapper for every API call the client makes.
 
@@ -81,12 +82,14 @@ export async function parseError(response) {
  * @param {any}    [options.body]         JSON-serialised unless it is FormData, which is sent as-is.
  * @param {boolean}[options.auth]         Send the bearer token. Default true.
  * @param {boolean}[options.raw]          Return the Response instead of parsed JSON (for blobs).
+ * @param {AbortSignal}[options.signal]   Cancels the request (see apiDownload).
  */
-export async function apiFetch(url, { method = 'GET', body, auth = true, raw = false, headers } = {}) {
+export async function apiFetch(url, { method = 'GET', body, auth = true, raw = false, headers, signal } = {}) {
     const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
 
     const response = await fetch(url, {
         method,
+        signal,
         headers: {
             // FormData must set its own multipart boundary — declaring JSON here would corrupt an
             // upload in a way that only shows up server-side as a malformed request.
@@ -119,22 +122,57 @@ export async function apiFetch(url, { method = 'GET', body, auth = true, raw = f
     return response.json();
 }
 
+/** How long a download may run before it is stopped. Generous: a semester's bulk .zip is the slow one. */
+export const DOWNLOAD_TIMEOUT_MS = 120_000;
+
 /**
- * Downloads a bearer-authenticated file and hands it to the browser.
+ * Downloads a bearer-authenticated file and hands it to the browser — the one download path every
+ * report, export, and template goes through.
  *
- * A plain `<a href>` cannot carry the Authorization header, which is why every report and export in
- * this app goes through a blob. Centralised here so the 401 handling above applies to downloads
- * too — previously a download on an expired session produced a corrupt file rather than an error.
+ * A plain `<a href>` cannot carry the Authorization header, which is why every download is a blob.
+ * Centralised so three things apply everywhere at once:
+ *   - the 401 handling in apiFetch (a lapsed session raises an error instead of saving one as a file);
+ *   - the server's own filename from Content-Disposition, with `fallbackName` only as a fallback;
+ *   - a timeout and a cancel. Before this a slow bulk export held the button in its busy state
+ *     indefinitely with no way out but reloading the page. The timer covers the body as well as the
+ *     headers — a server that answers promptly and then streams a large .zip slowly is the case
+ *     that actually hangs.
+ *
+ * Errors carry `cancelled` (the caller's own signal fired — usually not worth a notice) or
+ * `timedOut` so pages can word them.
+ *
+ * @param {string} url
+ * @param {string} fallbackName
+ * @param {object} [options]
+ * @param {AbortSignal} [options.signal]   Pass an AbortController's signal to offer a Cancel button.
+ * @param {number} [options.timeoutMs]
+ * @returns {Promise<string>} The name the file was saved under.
  */
-export async function apiDownload(url, filename) {
-    const response = await apiFetch(url, { raw: true });
-    const blob = await response.blob();
-    const href = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = href;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(href), 0);
+export async function apiDownload(url, fallbackName, { signal, timeoutMs = DOWNLOAD_TIMEOUT_MS } = {}) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+    const onCancel = () => controller.abort();
+    if (signal?.aborted) controller.abort();
+    signal?.addEventListener('abort', onCancel, { once: true });
+
+    try {
+        const response = await apiFetch(url, { raw: true, signal: controller.signal });
+        const blob = await response.blob();
+        const name = filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackName);
+        saveBlob(blob, name);
+        return name;
+    } catch (err) {
+        if (err?.name !== 'AbortError') throw err;
+        const error = new Error(timedOut
+            ? `The download took longer than ${Math.round(timeoutMs / 1000)} seconds and was stopped. `
+              + 'Try again in a moment, or download a smaller part.'
+            : 'Download cancelled.');
+        error.timedOut = timedOut;
+        error.cancelled = !timedOut;
+        throw error;
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onCancel);
+    }
 }

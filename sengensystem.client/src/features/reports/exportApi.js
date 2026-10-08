@@ -1,16 +1,8 @@
-import { apiFetch } from '../shell/apiClient';
-import { saveBlob, filenameFromDisposition } from '../shell/download';
+import { apiDownload } from '../shell/apiClient';
 
-/* `raw: true` because these endpoints name the file themselves in Content-Disposition and that
-   beats the caller's guess — but the request still goes through the shared client, so an export
-   started on a lapsed session now raises a 401 instead of silently saving whatever the server
-   returned instead of a workbook. */
-async function downloadWorkbook(url, fallbackName) {
-    const response = await apiFetch(url, { raw: true });
-    const blob = await response.blob();
-    const name = filenameFromDisposition(response.headers.get('content-disposition'), fallbackName);
-    saveBlob(blob, name);
-}
+/* The shared apiDownload: server-named file, 401 handling, and a timeout so a slow export cannot
+   hold its button busy forever. */
+const downloadWorkbook = (url, fallbackName) => apiDownload(url, fallbackName);
 
 /* Downloads the one-workbook "everything" bundle for a semester (FR-RPT-02):
    overview, registrations, master schedule, faculty loads, enlistment, room

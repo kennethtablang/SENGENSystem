@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 ﻿using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
@@ -93,8 +94,8 @@ namespace SENGENSystem.Server.Features.Analytics.RoomUtilization
             sheet.Cell(1, 1).Style.Font.FontSize = 14;
             sheet.Cell(2, 1).Value = semester.Name;
             sheet.Cell(3, 1).Value =
-                $"Utilization measured against Mon–Fri {Hhmm(RoomUtilizationAnalysisEndpoint.WindowStartMinutes)}"
-                + $"–{Hhmm(RoomUtilizationAnalysisEndpoint.WindowEndMinutes)} "
+                $"Utilization measured against Mon–Fri {ClockText.Hhmm(RoomUtilizationAnalysisEndpoint.WindowStartMinutes)}"
+                + $"–{ClockText.Hhmm(RoomUtilizationAnalysisEndpoint.WindowEndMinutes)} "
                 + $"({RoomUtilizationAnalysisEndpoint.WindowHoursPerDay:0.#} h/day × "
                 + $"{RoomUtilizationAnalysisEndpoint.SchedulableDaysPerWeek} days = "
                 + $"{RoomUtilizationAnalysisEndpoint.SchedulableHoursPerWeek:0.#} h/week).";
@@ -170,8 +171,8 @@ namespace SENGENSystem.Server.Features.Analytics.RoomUtilization
             sheet.Cell(1, 1).Style.Font.FontSize = 13;
             sheet.Cell(2, 1).Value =
                 $"Against {RoomUtilizationAnalysisEndpoint.WindowHoursPerDay:0.#} schedulable hours "
-                + $"({Hhmm(RoomUtilizationAnalysisEndpoint.WindowStartMinutes)}"
-                + $"–{Hhmm(RoomUtilizationAnalysisEndpoint.WindowEndMinutes)}) on this day.";
+                + $"({ClockText.Hhmm(RoomUtilizationAnalysisEndpoint.WindowStartMinutes)}"
+                + $"–{ClockText.Hhmm(RoomUtilizationAnalysisEndpoint.WindowEndMinutes)}) on this day.";
             sheet.Cell(2, 1).Style.Font.Italic = true;
 
             const int headerRow = 4;
@@ -207,7 +208,7 @@ namespace SENGENSystem.Server.Features.Analytics.RoomUtilization
                 sheet.Cell(row, 9).Value = mine.Count == 0
                     ? "(free all day)"
                     : string.Join(" · ", mine.Select(m =>
-                        $"{Hhmm(m.TimeSlot!.StartMinutes)}–{Hhmm(m.TimeSlot.EndMinutes)} "
+                        $"{ClockText.Hhmm(m.TimeSlot!.StartMinutes)}–{ClockText.Hhmm(m.TimeSlot.EndMinutes)} "
                         + $"{m.Section?.Subject?.Code ?? "?"}"));
 
                 Tint(sheet.Range(row, 1, row, headers.Length), level);
@@ -262,7 +263,6 @@ namespace SENGENSystem.Server.Features.Analytics.RoomUtilization
             Math.Min(slot.EndMinutes, RoomUtilizationAnalysisEndpoint.WindowEndMinutes)
             - Math.Max(slot.StartMinutes, RoomUtilizationAnalysisEndpoint.WindowStartMinutes));
 
-        private static string Hhmm(int minutes) => $"{minutes / 60:00}:{minutes % 60:00}";
 
         private static string Slug(string value) =>
             new(value.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());

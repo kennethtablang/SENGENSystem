@@ -167,6 +167,15 @@ namespace SENGENSystem.Server.Domain
         // A prerequisite gate refused a seat request or an approval. Audited because it is the one
         // enlistment refusal a student cannot resolve themselves — the trail is how the Registrar
         // finds out the rule fired and whether the history behind it is wrong.
-        PrerequisiteBlocked = 77
+        PrerequisiteBlocked = 77,
+
+        // F-04: a student corrected their own SIS while it was still awaiting confirmation. Kept
+        // apart from a staff correction so the trail shows whose hand changed the record.
+        RegistrationSelfCorrected = 78,
+
+        // F-08 follow-up: a section's EnrolledCount was corrected to the count of its live approved
+        // requests. Audited with the before/after figures because it is the one write to the
+        // counter that does not correspond to a seat being taken or given back.
+        SeatCountReconciled = 79
     }
 }

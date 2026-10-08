@@ -3,6 +3,7 @@ using SENGENSystem.Server.Common.Paging;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.Documents;
+using SENGENSystem.Server.Features.Enlistment;
 
 namespace SENGENSystem.Server.Features.Registration.Manage
 {
@@ -92,8 +93,24 @@ namespace SENGENSystem.Server.Features.Registration.Manage
                 .ToPagedAsync(PageSpec.From(page, pageSize), cancellationToken);
 
             var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+
+            // F-14, per row of this page only (at most PageSpec.MaxPageSize plan resolutions) —
+            // the marker is derived from the plan, which cannot run in SQL, so it is not a filter.
+            var completion = new Dictionary<Guid, EnrollmentCompletionDto>();
+            foreach (var r in result.Items.Where(r => r.Status == RegistrationStatus.Confirmed && r.Semester is not null))
+            {
+                completion[r.Id] = await EnrollmentCompletion.EvaluateAsync(db, r, r.Semester!, cancellationToken);
+            }
+
+            var duplicates = await LikelyDuplicates.FindAsync(
+                db, result.Items.Select(r => r.Id).ToList(), cancellationToken);
+
             return Results.Ok(result
-                .Select(r => RegistrationListItemDto.From(r, catalog))
+                .Select(r => RegistrationListItemDto.From(r, catalog) with
+                {
+                    Enrollment = completion.GetValueOrDefault(r.Id),
+                    LikelyDuplicateCount = duplicates.GetValueOrDefault(r.Id)?.Count ?? 0
+                })
                 .ToResponse("registrations"));
         }
     }

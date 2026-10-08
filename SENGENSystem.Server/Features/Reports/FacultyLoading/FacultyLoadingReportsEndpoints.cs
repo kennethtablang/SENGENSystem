@@ -1,3 +1,5 @@
+using SENGENSystem.Server.Common.Formatting;
+using SENGENSystem.Server.Common.Reporting;
 using System.IO.Compression;
 using ClosedXML.Excel;
 using QuestPDF.Fluent;
@@ -200,8 +202,8 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             foreach (var m in meetings)
             {
                 week.Cell(r1, 1).Value = m.TimeSlot!.Day.ToString();
-                week.Cell(r1, 2).Value = Hhmm(m.TimeSlot.StartMinutes);
-                week.Cell(r1, 3).Value = Hhmm(m.TimeSlot.EndMinutes);
+                week.Cell(r1, 2).Value = ClockText.Hhmm(m.TimeSlot.StartMinutes);
+                week.Cell(r1, 3).Value = ClockText.Hhmm(m.TimeSlot.EndMinutes);
                 week.Cell(r1, 4).Value = m.Section?.Subject?.Code ?? string.Empty;
                 week.Cell(r1, 5).Value = m.Section?.SectionCode ?? string.Empty;
                 week.Cell(r1, 6).Value = m.Room?.Name ?? string.Empty;
@@ -527,7 +529,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                 {
                     var t = gridStart + i * step;
                     var cell = sheet.Cell(firstSlotRow + i, 1);
-                    cell.Value = $"{Hhmm(t)}–{Hhmm(t + step)}";
+                    cell.Value = $"{ClockText.Hhmm(t)}–{ClockText.Hhmm(t + step)}";
                     cell.Style.Font.SetFontSize(8).Font.SetFontColor(XLColor.FromHtml("#5b6c99"));
                     cell.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
                     sheet.Row(firstSlotRow + i).Height = 15;
@@ -548,7 +550,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                     if (rowEnd < rowStart) continue;
 
                     var subject = m.Section!.Subject;
-                    var hue = HueFor(m.Section.SubjectId);
+                    var subjectId = m.Section.SubjectId;
                     var range = sheet.Range(rowStart, col, rowEnd, col);
                     range.Merge();
 
@@ -558,15 +560,15 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                     var title = rt.AddText("\n" + (subject?.Title ?? "")); title.FontSize = 7.5;
                     var instr = rt.AddText("\n" + (m.FacultyProfile?.User?.FullName ?? "TBA")); instr.FontSize = 8; instr.Italic = true;
                     var room = rt.AddText($"\n{m.Room?.Name ?? "—"} · {(subject?.RequiresLaboratory == true ? "LAB" : "LEC")}"); room.FontSize = 7.5;
-                    var time = rt.AddText($"\n{FacultyLoadingPdfData.H12(slot.StartMinutes)}–{FacultyLoadingPdfData.H12(slot.EndMinutes)}"); time.FontSize = 7; time.FontColor = XLColor.FromHtml("#333333");
+                    var time = rt.AddText($"\n{ClockText.H12(slot.StartMinutes)}–{ClockText.H12(slot.EndMinutes)}"); time.FontSize = 7; time.FontColor = XLColor.FromHtml("#333333");
 
-                    range.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#" + HslToHex(hue, 0.72, 0.90)));
+                    range.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#" + SubjectPalette.FillHex(subjectId)));
                     range.Style.Font.SetFontColor(XLColor.FromHtml("#0E2A66"));
                     range.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
                     range.Style.Alignment.SetVertical(XLAlignmentVerticalValues.Center);
                     range.Style.Alignment.SetWrapText(true);
                     range.Style.Border.SetOutsideBorder(XLBorderStyleValues.Medium);
-                    range.Style.Border.SetOutsideBorderColor(XLColor.FromHtml("#" + HslToHex(hue, 0.55, 0.45)));
+                    range.Style.Border.SetOutsideBorderColor(XLColor.FromHtml("#" + SubjectPalette.BorderHex(subjectId)));
                 }
 
                 // ---- Legend / subject details below the grid ----
@@ -593,15 +595,15 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                 foreach (var g in bySubject)
                 {
                     var s = g.First().Section!.Subject;
-                    var hue = HueFor(g.Key);
+                    var subjectId = g.Key;
                     var instructors = string.Join(", ", g
                         .Select(a => a.FacultyProfile?.User?.FullName ?? "TBA")
                         .Distinct());
                     var hrs = g.Sum(a => (a.TimeSlot!.EndMinutes - a.TimeSlot.StartMinutes) / 60.0);
 
-                    sheet.Cell(lr, 1).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#" + HslToHex(hue, 0.72, 0.90)));
+                    sheet.Cell(lr, 1).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#" + SubjectPalette.FillHex(subjectId)));
                     sheet.Cell(lr, 1).Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin)
-                        .Border.SetOutsideBorderColor(XLColor.FromHtml("#" + HslToHex(hue, 0.55, 0.45)));
+                        .Border.SetOutsideBorderColor(XLColor.FromHtml("#" + SubjectPalette.BorderHex(subjectId)));
                     sheet.Cell(lr, 2).Value = s?.Code ?? "—";
                     sheet.Cell(lr, 2).Style.Font.SetBold();
                     sheet.Cell(lr, 3).Value = s?.Title ?? "";
@@ -624,36 +626,6 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             using var stream = new MemoryStream();
             workbook.SaveAs(stream);
             return stream.ToArray();
-        }
-
-        // Subject colour coding, matching the schedule board's palette so a subject reads the same
-        // colour on screen and in the exported grid. Hue is derived from the subject id exactly as
-        // the client does (calendarUtils.subjectColor), then rendered as a light fill + darker border.
-        private static readonly int[] SubjectHues = { 214, 265, 330, 24, 43, 158, 190, 288, 8, 128, 300, 174 };
-
-        private static int HueFor(Guid subjectId)
-        {
-            uint h = 0;
-            foreach (var ch in subjectId.ToString()) h = h * 31u + ch;
-            return SubjectHues[h % (uint)SubjectHues.Length];
-        }
-
-        /// <summary>HSL (h in degrees, s/l in 0..1) to an "RRGGBB" hex string.</summary>
-        private static string HslToHex(double h, double s, double l)
-        {
-            h = ((h % 360) + 360) % 360;
-            var c = (1 - Math.Abs(2 * l - 1)) * s;
-            var x = c * (1 - Math.Abs(h / 60.0 % 2 - 1));
-            var m = l - c / 2;
-            double r = 0, g = 0, b = 0;
-            if (h < 60) { r = c; g = x; }
-            else if (h < 120) { r = x; g = c; }
-            else if (h < 180) { g = c; b = x; }
-            else if (h < 240) { g = x; b = c; }
-            else if (h < 300) { r = x; b = c; }
-            else { r = c; b = x; }
-            int R = (int)Math.Round((r + m) * 255), G = (int)Math.Round((g + m) * 255), B = (int)Math.Round((b + m) * 255);
-            return $"{R:X2}{G:X2}{B:X2}";
         }
 
         // ---- Bulk bundle (.zip) -----------------------------------------------------------
@@ -704,6 +676,5 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
         private static string Sanitize(string s) =>
             string.Concat(s.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '-'));
 
-        private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
     }
 }

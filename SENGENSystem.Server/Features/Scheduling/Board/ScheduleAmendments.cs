@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Formatting;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
@@ -23,9 +24,8 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
     {
         /// <summary>A human description of one placement, for before/after messages.</summary>
         public static string Describe(DayOfWeek day, int startMinutes, int endMinutes, string roomName) =>
-            $"{day} {Hhmm(startMinutes)}–{Hhmm(endMinutes)} in {roomName}";
+            $"{day} {ClockText.Hhmm(startMinutes)}–{ClockText.Hhmm(endMinutes)} in {roomName}";
 
-        public static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
 
         /// <summary>
         /// Flags a published row as amended and notifies its faculty member and every student with

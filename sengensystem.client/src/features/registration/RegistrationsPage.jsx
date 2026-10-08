@@ -5,6 +5,7 @@ import { statusOptionsFor, humanize, formatPHT } from './options';
 import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import './registration.css';
+import EnrollmentChip from '../enlistment/EnrollmentChip';
 
 const statusChip = {
     Submitted: 'chip chip-muted',
@@ -140,18 +141,28 @@ function RegistrationsPage() {
                                 <SortHeader label="Requirements" sortKey="documentsSubmitted" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Submitted" sortKey="createdAtUtc" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Status" sortKey="status" sort={table.sort} onSort={table.toggleSort} />
+                                <th scope="col">Enlistment</th>
                             </tr>
                         </thead>
                         <tbody>
                             {table.pageRows.map(r => (
                                 <tr key={r.id} className="reg-row" onClick={() => open(r.id)}>
                                     <td className="reg-mono">{r.studentNumber}</td>
-                                    <td><strong>{r.fullName}</strong></td>
+                                    <td>
+                                        <strong>{r.fullName}</strong>
+                                        {r.likelyDuplicateCount > 0 && (
+                                            <span className="chip chip-yellow reg-dup-chip"
+                                                title="Another registration has the same name and date of birth — open to compare">
+                                                Possible duplicate
+                                            </span>
+                                        )}
+                                    </td>
                                     <td>{r.program}</td>
                                     <td>{humanize(r.studentType)}</td>
                                     <td>{r.documentsSubmitted}/{r.documentsTotal}</td>
                                     <td className="reg-when">{formatPHT(r.createdAtUtc)}</td>
                                     <td><span className={statusChip[r.status] || 'chip chip-muted'}>{r.status}</span></td>
+                                    <td><EnrollmentChip completion={r.enrollment} /></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -173,6 +184,26 @@ function RegistrationsPage() {
                         </header>
 
                         <div className="reg-drawer-body">
+                            {/* F-03: flagged, never blocked — two people can share a name and a birthday. */}
+                            {selected.likelyDuplicates?.length > 0 && (
+                                <div className="alert" role="status">
+                                    <p>
+                                        <strong>Possible duplicate.</strong> The same name and date of birth
+                                        appear on {selected.likelyDuplicates.length === 1 ? 'another registration' : `${selected.likelyDuplicates.length} other registrations`}:
+                                    </p>
+                                    <ul>
+                                        {selected.likelyDuplicates.map(d => (
+                                            <li key={d.id}>
+                                                <button type="button" className="link-button" onClick={() => open(d.id)}>
+                                                    {d.studentNumber}
+                                                </button>
+                                                {' '}· {d.status}{d.semesterName ? ` · ${d.semesterName}` : ''}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <p>Compare the two before confirming — if they are one person, keep one record and reject the other.</p>
+                                </div>
+                            )}
                             <section className="reg-detail-grid">
                                 <div><span>Type</span><strong>{humanize(selected.studentType)}</strong></div>
                                 <div><span>Program</span><strong>{selected.program}</strong></div>

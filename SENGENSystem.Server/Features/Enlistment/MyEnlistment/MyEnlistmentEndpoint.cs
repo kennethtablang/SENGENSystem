@@ -79,8 +79,18 @@ namespace SENGENSystem.Server.Features.Enlistment.MyEnlistment
                 .ToListAsync(cancellationToken);
 
             var rows = requests.Select(MyRequestDto.From).ToList();
+
+            // F-14: "am I enrolled?" — answered against the student's own plan for the term.
+            var activeSemester = activeSemesterId is { } semId
+                ? await db.Semesters.AsNoTracking().FirstOrDefaultAsync(s => s.Id == semId, cancellationToken)
+                : null;
+            var completion = activeSemester is null
+                ? null
+                : await EnrollmentCompletion.EvaluateAsync(db, eligibility.Registration, activeSemester, cancellationToken);
+
             return Results.Ok(new
             {
+                completion,
                 eligibility = new
                 {
                     eligible = eligibility.IsEligible,

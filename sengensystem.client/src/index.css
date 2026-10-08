@@ -471,6 +471,12 @@ select option {
   color: var(--sti-blue);
 }
 
+/* A finished state (e.g. "Enrolled") — the same success tokens as .alert-success. */
+.chip-green {
+  background: var(--up-dim);
+  color: var(--up);
+}
+
 .chip-muted {
   background: var(--bg-wash);
   color: var(--text-3);
