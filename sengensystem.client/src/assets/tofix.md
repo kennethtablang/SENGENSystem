@@ -23,7 +23,8 @@ security batch, and the first automated tests; (5) 5 August 2026 — F-07, F-12,
 — the outbox admin view; (10) 6 August 2026 — F-17/18/19; (11) 8 October 2026 — the decisions pass
 (F-05, F-14, F-15, institution name, 500 detail), F-03, F-04, the seat reconcile, and every
 remaining engineering-time P2/P3 item; (12) 9 October 2026 — SQL Server integration tests (local
-and CI), the institution name on email, and the reminder email's enlistment claim.*
+and CI), the institution name on email, and the reminder email's enlistment claim; (13) 9 October
+2026 — approval-path and report integration tests.*
 
 > **A note on stale findings.** Pass (8) tested the P3 "a 2-hour subject rounds up to a 3h block"
 > claim before budgeting to fix it, and found the engine had already been corrected — the finding had
@@ -205,8 +206,11 @@ New statuses fall out of every existing filter correctly — every read path tes
 `== Requested`, and the filtered unique index already covered only that live pair, so a dropped
 subject can be requested again.
 
-Still open: **[decision]** whether to derive `EnrolledCount` from the count of live approved
-requests rather than storing it, keeping the column only as the concurrency/CHECK anchor.
+~~Still open: **[decision]** whether to derive `EnrolledCount` from the count of live approved
+requests~~ — **decided (9 October 2026): keep it stored.** It is the anchor for the
+`CK_Sections_EnrolledCount` check and the `RowVersion` race (both now pinned by integration tests),
+and drift is handled by surfacing and deliberate reconciliation rather than by recounting on every
+read.
 ~~A reconcile pass for counts that drifted before this path existed~~ — **done** (pass 11):
 `Features/Enlistment/SeatCounts`. The approvals page lists every active-term section whose stored
 count disagrees with its live approved requests, and the Registrar corrects one deliberately — it is
@@ -289,9 +293,11 @@ Four things are worth knowing about the fix:
   when there is history; otherwise the calendar rule stands. It remains a recommendation the
   Admission Officer can override, the same standing the transferee derivation always had.
 
-Still open: **[decision]** whether a student who owes subjects from two years back should be blocked
-from this year's load rather than merely offered the repeat alongside it — the plan currently offers
-both and lets the unit ceiling arbitrate.
+~~Still open: **[decision]** whether a student who owes subjects from two years back should be
+blocked from this year's load~~ — **decided (9 October 2026): offer both.** The repeat is offered
+alongside this year's load and the unit ceiling arbitrates. Nothing is lost by not blocking:
+anything that genuinely depends on the failed subject is already refused by the prerequisite gate
+(F-10), now tested at both endpoints.
 
 **F-12 · Bulk approval: N saves and N synchronous emails in one request. [P1]**
 `BulkApproveAsync` takes up to 500 requests and calls `TryApproveAsync` per row, each with its own
@@ -777,6 +783,30 @@ GitHub Actions pattern but has not run on a runner yet — the first push will s
 
 Tests: 142 (up from 127).
 
+## Done — 9 October 2026, second pass
+
+The two "still to cover" testing items, closed through the real endpoints against SQL Server.
+
+| What it covers | Tests |
+|---|---|
+| **The approval path** — the one place a seat is taken | `ApprovalTests`: a grant takes exactly one seat; a full section refuses and leaves the request pending; an overlap this term is refused; different days are not a clash; **last term's class at the same time is not a clash** (F-09 as a regression test); and **two Registrars racing for the last seat grant exactly one** |
+| **Every report and export** | `ReportSmokeTests`: all 13 workbooks open in ClosedXML with content, all 4 PDFs are whole (header *and* trailer), the bulk .zip is a zip of workbooks that each open, and **renaming the institution changes the printed memo** |
+
+Shared setup moved into `EnlistmentScenario`, so the gate and approval tests build situations the
+same way — subjects in the plan a student genuinely resolves to, published meetings at chosen
+times, and students who are genuinely eligible — rather than each test inventing its own world.
+
+**Mutation-checked, four ways**: removing the approval leg's term filter fails exactly the F-09
+test; skipping the revert on a full section fails both the full-section and the race tests (a
+"refused" request left reading *Approved*); removing the overlap check fails the overlap test; and
+hard-coding "STI COLLEGE ALAMINOS" back onto the memo fails the institution test.
+
+**One thing the report tests surfaced about the seed**: it creates no timetable — on a real install
+that comes from running the generator — so a report test that trusted the seed was testing reports
+over nothing. The tests now arrange the class, seat, and curriculum they print.
+
+Tests: 152 (up from 142), of which 27 run against SQL Server.
+
 ## P0 — correctness / data integrity · 5 of 6 done
 
 The one remaining P0 is not engineering time — it needs real secret values.
@@ -803,7 +833,7 @@ The one remaining P0 is not engineering time — it needs real secret values.
 - [x] No global 401/expiry handling on the client
 - [x] No security response headers (nosniff, frame-ancestors/CSP, Referrer-Policy)
 - [x] No top-level React error boundary
-- [x] No automated tests at all — 142 now: unit, the CSP engine, and SQL Server integration
+- [x] No automated tests at all — 152 now: unit, the CSP engine, and 27 against SQL Server
 - [ ] JWT in `localStorage` + 8-hour lifetime **[decision]** — considered in pass 11 and left as is
 
 > **These were not theoretical.** During the previous pass a single `POST /publishing/{id}/publish`
@@ -987,12 +1017,10 @@ through the system, and that a decision on a row leaves no structured trace.
   diagnostic. Mutation-checked three ways.
 - ~~**Integration tests against SQL Server**~~ — **added** (pass 12, `Integration/`): the database's
   own guarantees, query translation, and the F-10 gate on **both** endpoints. See *Done — 9 October*.
-- **Still to cover.** In rough order of value:
-  - the remaining enlistment blockers at the endpoint — capacity at the approval (the race itself is
-    now covered at the database), the overlap rule, and the F-09 cross-term case as a regression,
-  - report generation smoke tests (PDF/XLSX builders return non-empty, valid files) — verified by
-    hand in pass 11, not yet by a test,
-  - ~~`AcademicHistory` itself~~ — covered since pass 4; this line had outlived it.
+- ~~**Still to cover**~~ — **covered** (pass 13): capacity, overlap, F-09 cross-term, and the
+  last-seat race at the approval endpoint; every report and export opened as a real file. What is
+  left untested is the request leg's own unit ceiling and duplicate-subject checks, and the bulk
+  approval endpoint — lower value, since they share `TryApproveAsync` with what is covered.
   `Features/Scheduling/Engine/*`, `Features/Enlistment/*`, `Features/Reports/*`.
 - ~~No CI pipeline to run build + tests on push~~ — **added** (`.github/workflows/ci.yml`), now that
   there are tests for it to run. Two jobs: server (restore, build, `dotnet test`) and client (`npm
