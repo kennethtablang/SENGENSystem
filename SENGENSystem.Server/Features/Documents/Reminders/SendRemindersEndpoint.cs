@@ -95,14 +95,18 @@ namespace SENGENSystem.Server.Features.Documents.Reminders
             {
                 // Only chase papers this enrollee's student type is actually asked for, so a
                 // transferee is never reminded about a Form 138 (FR-DOC-01/05).
-                var missing = DocumentChecklist.Applicable(registration, catalog)
+                var applicable = DocumentChecklist.Applicable(registration, catalog);
+                var missing = applicable
                     .Where(d => d.Status == DocumentStatus.NotSubmitted)
                     .OrderBy(d => catalog.Order(d.RequirementCode))
                     .Select(d => catalog.Label(d.RequirementCode))
                     .ToList();
                 if (missing.Count == 0) continue;
 
-                var (subject, body) = DocumentEmails.SubmissionReminder(registration, missing);
+                // Which of those actually hold up enlistment, so the email can say so honestly.
+                var blocking = DocumentChecklist.MissingAuthorizationRequirements(applicable, catalog).ToHashSet();
+
+                var (subject, body) = DocumentEmails.SubmissionReminder(registration, missing, blocking);
                 // Queued rather than sent: the mail commits with this transaction and goes out on
                 // the dispatcher's next cycle, so a term-sized sweep no longer runs inside the
                 // request. The dedupe key is the second guard behind the interval check above.

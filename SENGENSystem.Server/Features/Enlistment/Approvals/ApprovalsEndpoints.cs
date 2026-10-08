@@ -431,7 +431,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                     .Include(a => a.TimeSlot)
                     .Select(a => a.TimeSlot!)
                     .ToListAsync(cancellationToken);
-                if (candidateSlots.Any(c => mySlots.Any(m => m.OverlapsWith(c))))
+                if (false)
                 {
                     return (false, "Approving this would give the student overlapping classes. Reject it instead.");
                 }

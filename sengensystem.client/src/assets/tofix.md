@@ -22,7 +22,8 @@ security batch, and the first automated tests; (5) 5 August 2026 — F-07, F-12,
 (8) 6 August 2026 — the CSP engine test suite, CI, and the pigeonhole tightening; (9) 6 August 2026
 — the outbox admin view; (10) 6 August 2026 — F-17/18/19; (11) 8 October 2026 — the decisions pass
 (F-05, F-14, F-15, institution name, 500 detail), F-03, F-04, the seat reconcile, and every
-remaining engineering-time P2/P3 item.*
+remaining engineering-time P2/P3 item; (12) 9 October 2026 — SQL Server integration tests (local
+and CI), the institution name on email, and the reminder email's enlistment claim.*
 
 > **A note on stale findings.** Pass (8) tested the P3 "a 2-hour subject rounds up to a 3h block"
 > claim before budgeting to fix it, and found the engine had already been corrected — the finding had
@@ -732,6 +733,50 @@ BSIT sections that are not in their own (ITP) plan, and several have plans that 
 subjects due — so on this database the Enrolled marker reads "No subjects due" or "Not enlisted"
 for everyone. That is the marker telling the truth about seed data assembled before plans existed.
 
+## Done — 9 October 2026
+
+| What it was | Where the fix lives |
+|---|---|
+| **Nothing asserted the database's own guarantees** — the in-memory suite could not, and said so | `SENGENSystem.Server.Tests/Integration`: a migrated throwaway database per run (the real migrations, not `EnsureCreated`) |
+| **The F-10 gate was untested at both endpoints** — the one part live verification could not reach | `EndpointGateTests`, through the real HTTP pipeline via `WebApplicationFactory` |
+| CI ran no database tests | SQL Server 2022 service container in `ci.yml`, plus a guard that fails the run if it is configured but unreachable |
+| Emails still printed a hard-coded institution | `EmailLayout` + send-time branding (see *Reports — Confirmation of Faculty Loading*) |
+| **The reminder email told every student their checklist blocked enlistment** | Only the papers marked required-for-authorization are flagged as blocking; the rest are named as still required but not holding them up |
+
+**The reminder finding was not in the analysis.** It surfaced while consolidating the email
+builders: the footer of every reminder read *"incomplete checklists cannot be cleared for subject
+enlistment"*. Only requirements flagged `IsRequiredForAuthorization` gate pre-authorization — the
+rest may arrive after enlistment opens, and `EnlistmentEligibility` says so in a comment. So the
+system's own email was contradicting the system's own rule, and sending students to queue at the
+Admission Office for papers that could have followed later.
+
+**What the integration tests cover**, ten of them across two fixtures:
+
+- *Database level* — the `CK_Sections_EnrolledCount` check refuses an oversold and a negative
+  count; two writers racing on one section cannot both win (`RowVersion`); the filtered unique index
+  allows one live request per student per section and a fresh one after a drop; and the seat-count,
+  enrollment-completion, and duplicate queries **translate** on SQL Server.
+- *Endpoint level* — the request leg refuses an unmet prerequisite and audits it; the request leg
+  falls open for a student with no history; the approval leg refuses a queued request whose
+  prerequisite is unmet and leaves the seat untouched; publish refuses an unfinalized draft, and the
+  preview reports the same reason first.
+
+**Mutation-checked**: restoring the record-constructor query from pass 11 fails the translation
+test (the in-memory suite never did); disabling the prerequisite gate fails exactly the test for that
+leg, once per leg. Without a database the tests report *skipped*, never passed; with
+`SENGEN_TEST_SQL` set but unreachable the run fails, so a broken CI container cannot read as green.
+Every fixture drops its database — none are left behind.
+
+Two things deliberately arranged: the app under test runs in a **Testing** environment with the SMTP
+password blanked, because in Development it loads user-secrets and the outbox dispatcher would send
+real mail to whatever the seed creates; and the endpoint fixture is seeded by the app's own
+`DbInitializer`, so the tests sign in through the real login endpoint as the seeded Registrar.
+
+**Not verified here**: the CI workflow itself. The service-container block follows the documented
+GitHub Actions pattern but has not run on a runner yet — the first push will show it.
+
+Tests: 142 (up from 127).
+
 ## P0 — correctness / data integrity · 5 of 6 done
 
 The one remaining P0 is not engineering time — it needs real secret values.
@@ -758,7 +803,7 @@ The one remaining P0 is not engineering time — it needs real secret values.
 - [x] No global 401/expiry handling on the client
 - [x] No security response headers (nosniff, frame-ancestors/CSP, Referrer-Policy)
 - [x] No top-level React error boundary
-- [x] No automated tests at all — 37 now, unit-level; the CSP engine and DB-level integration remain
+- [x] No automated tests at all — 142 now: unit, the CSP engine, and SQL Server integration
 - [ ] JWT in `localStorage` + 8-hour lifetime **[decision]** — considered in pass 11 and left as is
 
 > **These were not theoretical.** During the previous pass a single `POST /publishing/{id}/publish`
@@ -896,9 +941,12 @@ through the system, and that a decision on a row leaves no structured trace.
   `Features/Reports/FacultyLoading/FacultyLoadingPdfModels.cs`.
 - ~~**[decision] Institution/branch name hardcoded.**~~ — **configurable** (pass 11):
   `SystemSettings.InstitutionName`, default "STI College Alaminos", set on System parameters and
-  printed in capitals on the memo, prospectus, evaluation sheet, and COR. **Not yet** on the email
-  footers — those are static builders with no settings access, and threading it through ~17 call
-  sites was left for when a second branch actually exists.
+  printed in capitals on the memo, prospectus, evaluation sheet, and COR — and, since pass 12, on
+  every email footer. The five email builders had five copies of the same frame, escaper, and
+  hard-coded footer; they now share `Common/Notifications/EmailLayout`, whose footer carries a slot
+  that `SmtpEmailSender` fills from settings at send time. Send time rather than build time because
+  the builders are static, queued mail can wait in the outbox, and every message — inline or
+  queued — leaves through that one sender.
 - **Class No. proxy.** "Class No." maps to `Section.SectionCode` (no real STI class number exists in
   the data).
 - **"No. of students" inherits the `EnrolledCount` drift** described in F-08 — it uses
@@ -937,13 +985,14 @@ through the system, and that a decision on a row leaves no structured trace.
   coverage including the no-block-across-a-break rule, seeded reproducibility in both directions
   (same seed → same timetable; different seeds → genuinely different ones), and every infeasibility
   diagnostic. Mutation-checked three ways.
+- ~~**Integration tests against SQL Server**~~ — **added** (pass 12, `Integration/`): the database's
+  own guarantees, query translation, and the F-10 gate on **both** endpoints. See *Done — 9 October*.
 - **Still to cover.** In rough order of value:
-  - the enlistment gates (each blocker independently, the capacity race, the overlap rule — including
-    the F-09 cross-term case as a regression test, and the F-10 prerequisite gate on **both** legs,
-    which is the one part of that fix live verification could not reach),
-  - `AcademicHistory` itself: the fall-open rule when nothing is on file, a transferee's credited
-    subject satisfying a prerequisite, and a subject failed then passed counting its units once,
-  - report generation smoke tests (PDF/XLSX builders return non-empty, valid files).
+  - the remaining enlistment blockers at the endpoint — capacity at the approval (the race itself is
+    now covered at the database), the overlap rule, and the F-09 cross-term case as a regression,
+  - report generation smoke tests (PDF/XLSX builders return non-empty, valid files) — verified by
+    hand in pass 11, not yet by a test,
+  - ~~`AcademicHistory` itself~~ — covered since pass 4; this line had outlived it.
   `Features/Scheduling/Engine/*`, `Features/Enlistment/*`, `Features/Reports/*`.
 - ~~No CI pipeline to run build + tests on push~~ — **added** (`.github/workflows/ci.yml`), now that
   there are tests for it to run. Two jobs: server (restore, build, `dotnet test`) and client (`npm

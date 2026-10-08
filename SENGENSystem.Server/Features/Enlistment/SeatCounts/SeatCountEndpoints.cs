@@ -46,7 +46,7 @@ namespace SENGENSystem.Server.Features.Enlistment.SeatCounts
         // Filtered on an anonymous projection and only then mapped to the record: EF cannot
         // translate a WHERE over a positional record's constructor, which failed at runtime against
         // SQL Server while passing happily in memory.
-        private static async Task<List<SeatCountMismatchDto>> MismatchesAsync(
+        internal static async Task<List<SeatCountMismatchDto>> MismatchesAsync(
             AppDbContext db, Guid semesterId, CancellationToken ct) =>
             (await db.Sections.AsNoTracking()
                 .Where(s => s.SemesterId == semesterId)

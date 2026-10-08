@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Persistence;
 using System.Net;
 using System.Net.Mail;
 using Microsoft.Extensions.Options;
@@ -14,11 +15,13 @@ namespace SENGENSystem.Server.Common.Notifications
     {
         private readonly EmailOptions _options;
         private readonly ILogger<SmtpEmailSender> _logger;
+        private readonly AppDbContext _db;
 
-        public SmtpEmailSender(IOptions<EmailOptions> options, ILogger<SmtpEmailSender> logger)
+        public SmtpEmailSender(IOptions<EmailOptions> options, ILogger<SmtpEmailSender> logger, AppDbContext db)
         {
             _options = options.Value;
             _logger = logger;
+            _db = db;
         }
 
         public async Task<EmailResult> SendAsync(
@@ -32,6 +35,10 @@ namespace SENGENSystem.Server.Common.Notifications
             }
 
             var fromAddress = string.IsNullOrWhiteSpace(_options.FromAddress) ? _options.User : _options.FromAddress;
+
+            // The footer's institution is the one configured now (EmailLayout explains why it is
+            // filled here rather than when the message was built).
+            htmlBody = EmailLayout.Brand(htmlBody, (await _db.GetSettingsAsync(cancellationToken)).InstitutionName);
 
             try
             {

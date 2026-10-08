@@ -27,6 +27,27 @@ jobs:
   server:
     name: Server — build & test
     runs-on: ubuntu-latest
+    # A real SQL Server for the integration tests (SENGENSystem.Server.Tests/Integration): the seat
+    # CHECK, the rowversion race, the filtered unique index, query translation, and the endpoint
+    # gates through the real pipeline. The sa password is a throwaway for this ephemeral container
+    # only — it guards nothing and is deliberately not a repository secret.
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: 'Ci_Throwaway_Pa55word!'
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Ci_Throwaway_Pa55word!' -C -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # Its presence also arms SqlServerAvailabilityTests: if this server is unreachable the run
+      # fails instead of every integration test quietly skipping.
+      SENGEN_TEST_SQL: 'Server=localhost,1433;User Id=sa;Password=Ci_Throwaway_Pa55word!;TrustServerCertificate=True;Encrypt=False'
     steps:
       - uses: actions/checkout@v4
 
@@ -45,11 +66,8 @@ jobs:
       - name: Build
         run: dotnet build SENGENSystem.Server.Tests/SENGENSystem.Server.Tests.csproj --no-restore -c Release -p:BuildClient=false
 
-      # The suite is pure unit coverage — policy and the CSP engine, all in memory — so it needs no
-      # SQL Server here. Anything that genuinely depends on the database (the seat-count CHECK, the
-      # filtered unique index, the rowversion tokens) is deliberately *not* covered by these tests;
-      # see the Testing section of tofix.md. Adding a SQL service container is the next step if
-      # integration tests are written.
+      # Unit coverage (policy and the CSP engine, in memory) plus the integration tests against the
+      # service container above. Each integration fixture creates and drops its own database.
       - name: Test
         run: dotnet test SENGENSystem.Server.Tests/SENGENSystem.Server.Tests.csproj --no-build -c Release -p:BuildClient=false --verbosity normal
 
