@@ -45,6 +45,7 @@ namespace SENGENSystem.Server.Features.Navigation
 
             var isRegistrar = principal.IsInRole(nameof(UserRole.Registrar));
             var isAdmission = principal.IsInRole(nameof(UserRole.AdmissionOfficer));
+            var isAcademicHead = principal.IsInRole(nameof(UserRole.AcademicHead));
             var isAdmin = principal.IsInRole(nameof(UserRole.SchoolAdmin));
 
             // Counts follow the active term so a badge matches its (semester-scoped) queue and
@@ -71,7 +72,7 @@ namespace SENGENSystem.Server.Features.Navigation
 
             // Transferees still waiting on a completed credit evaluation — they cannot enlist until
             // it is signed off, so this is the queue that holds their whole term up (FR-EVAL).
-            var evaluations = isRegistrar || isAdmission || isAdmin
+            var evaluations = isRegistrar || isAdmission || isAcademicHead || isAdmin
                 ? await db.StudentRegistrations.AsNoTracking()
                     .CountAsync(r => r.StudentType == StudentType.Transferee
                         && r.Status != RegistrationStatus.Rejected

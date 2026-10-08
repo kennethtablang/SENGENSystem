@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { getToken } from '../auth/api';
+import { importPreEnrollment, fetchPreEnrollmentTemplate } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { saveBlob } from '../shell/download';
 import { useTableControls } from '../shell/useTableControls';
@@ -89,15 +89,7 @@ function PreEnrollmentPage() {
         setAlert(null);
         setReport(null);
         try {
-            const form = new FormData();
-            form.append('file', file);
-            const response = await fetch('/api/pre-enrollment/import', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${getToken()}` },
-                body: form
-            });
-            const payload = await response.json();
-            if (!response.ok) throw new Error(payload?.message || 'Import failed.');
+            const payload = await importPreEnrollment(file);
             setReport(payload);
             const text = `Imported ${payload.loaded} of ${payload.totalRows} row(s) into ${payload.semesterName} — ` +
                 `${payload.skipped} duplicate(s) skipped, ${payload.failed} failed validation.`;
@@ -116,11 +108,7 @@ function PreEnrollmentPage() {
     async function downloadTemplate() {
         setAlert(null);
         try {
-            const response = await fetch('/api/pre-enrollment/template', {
-                headers: { Authorization: `Bearer ${getToken()}` }
-            });
-            if (!response.ok) throw new Error('Could not download the template.');
-            const blob = await response.blob();
+            const blob = await fetchPreEnrollmentTemplate();
             saveBlob(blob, 'sengen-preenrollment-template.xlsx');
         } catch (err) {
             setAlert({ kind: 'error', text: err.message });
@@ -144,7 +132,8 @@ function PreEnrollmentPage() {
                 </button>
             </header>
 
-            {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>{alert.text}</div>}
+            {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>{alert.text}</div>}
 
             <form className="card" style={{ padding: '1.1rem 1.3rem', marginBottom: '1.3rem' }} onSubmit={upload}>
                 <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>

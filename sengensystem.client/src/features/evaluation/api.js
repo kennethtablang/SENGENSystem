@@ -1,42 +1,14 @@
-import { getToken } from '../auth/api';
+import { apiFetch, apiDownload } from '../shell/apiClient';
 import { pageParams } from '../shell/useServerTable';
 
 // FR-EVAL: the Registrar's transferee credit evaluation, and the printable subject listings
 // (FR-RPT-05) that read off it — the prospectus, the evaluation sheet, and a student's
 // certificate of registration.
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        reasons: payload?.reasons || [],
-        fieldErrors: payload?.errors || {}
-    };
-}
-
-function authHeaders() {
-    return { Authorization: `Bearer ${getToken()}` };
-}
-
-async function request(url, options = {}) {
-    const response = await fetch(url, {
-        ...options,
-        headers: {
-            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-            ...authHeaders(),
-            ...(options.headers || {})
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.status === 204 ? null : response.json();
-}
+/* Every call here goes through the shared client — one place for the auth header, the
+   ProblemDetails error shape, and the global 401 handling that signs a lapsed session out rather
+   than failing with a generic message on a page that will never work again. */
+const request = apiFetch;
 
 export function listEvaluations({ status, ...page } = {}) {
     const params = pageParams(page);
@@ -75,23 +47,10 @@ export function listProspectusPrograms() {
     return request('/api/prospectus/programs');
 }
 
-/**
- * Downloads a PDF and hands it to the browser. Blob rather than a plain link because every one of
- * these routes is bearer-authenticated — a bare href would arrive without the token.
- */
-async function downloadPdf(url, filename) {
-    const response = await fetch(url, { headers: authHeaders() });
-    if (!response.ok) throw await parseError(response);
-    const blob = await response.blob();
-    const href = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = href;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(href), 0);
-}
+/* Blob rather than a plain link because every one of these routes is bearer-authenticated — a bare
+   href would arrive without the token. Now shared, so a download on an expired session raises the
+   same 401 as anything else instead of silently saving a corrupt file. */
+const downloadPdf = apiDownload;
 
 export function downloadProspectus({ curriculumId, yearLevel, programCode }) {
     const params = new URLSearchParams();

@@ -57,7 +57,7 @@ function BuildingModal({ record, onClose, onChanged }) {
 
     return (
         <SetupModal title={isCreate ? 'New building' : 'Edit building'} onClose={onClose} footer={footer}>
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             <form id="bldg-form" onSubmit={save} noValidate>
                 <div className="field">
                     <label htmlFor="bldg-name">Name</label>
@@ -117,7 +117,7 @@ export default function BuildingsPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>

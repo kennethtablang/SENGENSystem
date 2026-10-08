@@ -1,49 +1,11 @@
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    // 401/403 come back with an empty body, so there is no payload to read a message from —
-    // name them explicitly instead of falling through to the generic "Something went wrong".
-    const authMessage =
-        response.status === 401 ? 'Your session has expired — sign in again and retry.'
-        : response.status === 403 ? 'You do not have permission to generate schedules.'
-        : null;
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || authMessage || 'Something went wrong. Please try again.',
-        // ProblemDetails (e.g. an unexpected 500) carries its lead in `detail`; the 422 and
-        // validation paths carry row-by-row reasons. Prefer explicit reasons, but fall back to
-        // `detail` so a crash still shows the exception summary and trace reference rather than
-        // just a bare title.
-        reasons: payload?.reasons?.length ? payload.reasons : (payload?.detail ? [payload.detail] : []),
-        reference: payload?.reference || null,
-        // A refusal the caller can answer rather than only report: generating over a published
-        // timetable comes back as a 409 asking to be confirmed, with the counts to confirm against.
-        requiresConfirmation: payload?.requiresConfirmation === true,
-        publishedCount: payload?.publishedCount ?? 0,
-        publishedSections: payload?.publishedSections ?? 0,
-        affectedStudents: payload?.affectedStudents ?? 0,
-        fieldErrors: payload?.errors || {}
-    };
-}
-
-async function authRequest(url, { method = 'GET', body } = {}) {
-    const response = await fetch(url, {
-        method,
-        headers: {
-            ...(body ? { 'Content-Type': 'application/json' } : {}),
-            Authorization: `Bearer ${getToken()}`
-        },
-        ...(body ? { body: JSON.stringify(body) } : {})
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
+/* This module's error handling used to be the exception — it was the only one that recognised a
+   401, and the only one that read ProblemDetails' `detail` and `reference`. Rather than keep the
+   good version here and the poor one in twenty other files, that shape moved into the shared
+   client (including the generation flow's `requiresConfirmation` counts) and every module now gets
+   it. Nothing this module could do before it can do less of now. */
+const authRequest = apiFetch;
 
 /**
  * FR-SCHED-06: Academic Head triggers CSP generation for a semester.

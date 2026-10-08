@@ -103,9 +103,9 @@ export default function FacultyAssignModal({ faculty, semesterId, onClose, onSav
 
     return (
         <SetupModal title={`Assign load — ${faculty.name}`} onClose={onClose} footer={footer} className="fl-modal-wide">
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             {over && !error && (
-                <div className="alert alert-warn">
+                <div className="alert alert-warn" role="alert">
                     This load is {totalUnits} units, over the {maxUnits}-unit ceiling. Remove some classes to save.
                 </div>
             )}

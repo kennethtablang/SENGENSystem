@@ -4,4 +4,5 @@
     <Deploy />
   </Project>
   <Project Path="SENGENSystem.Server/SENGENSystem.Server.csproj" />
+  <Project Path="SENGENSystem.Server.Tests/SENGENSystem.Server.Tests.csproj" />
 </Solution>

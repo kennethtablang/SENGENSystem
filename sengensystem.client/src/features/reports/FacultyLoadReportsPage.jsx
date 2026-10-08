@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 import { getDashboardMetrics } from '../dashboard/api';
 import { subscribeToReports } from './live';
 import { LiveChip } from './ReportsPage';
@@ -15,17 +15,11 @@ import './reports.css';
    name or employee ID, and download individual, consolidated, grid,
    or bulk (.zip) workbooks for workload balance and institutional compliance. */
 
+/* `raw: true` because these endpoints name the file in Content-Disposition, which beats the
+   caller's fallback — but the request goes through the shared client, so an expired session raises
+   a 401 rather than saving an error page as a .xlsx. */
 async function downloadFile(url, fallbackName) {
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
-    if (!response.ok) {
-        let message = 'Download failed.';
-        try {
-            message = (await response.json())?.message ?? message;
-        } catch {
-            // non-JSON error body
-        }
-        throw new Error(message);
-    }
+    const response = await apiFetch(url, { raw: true });
     const blob = await response.blob();
     const name = filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackName);
     saveBlob(blob, name);
@@ -73,11 +67,7 @@ function FacultyLoadReportsPage() {
             try {
                 const qs = new URLSearchParams({ semesterId });
                 if (search.trim()) qs.set('search', search.trim());
-                const response = await fetch(`/api/reports/faculty-loading?${qs}`, {
-                    headers: { Authorization: `Bearer ${getToken()}` }
-                });
-                const payload = await response.json();
-                if (!response.ok) throw new Error(payload?.message || 'Could not load faculty loading.');
+                const payload = await apiFetch(`/api/reports/faculty-loading?${qs}`);
                 if (live) {
                     setData(payload);
                     setUpdatedAt(new Date());
@@ -146,7 +136,7 @@ function FacultyLoadReportsPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             <div className="flr-toolbar">
                 <div className="flr-search">

@@ -1,42 +1,12 @@
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 
 // The active term's enrollment stage (top-bar banner + the Registrar's phase control).
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        fieldErrors: payload?.errors || {}
-    };
+export function getEnrollmentStage() {
+    return apiFetch('/api/enrollment-stage');
 }
 
-function authHeaders(json) {
-    const h = { Authorization: `Bearer ${getToken()}` };
-    if (json) h['Content-Type'] = 'application/json';
-    return h;
-}
-
-export async function getEnrollmentStage() {
-    const response = await fetch('/api/enrollment-stage', { headers: authHeaders() });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
-
-async function post(url, body) {
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: authHeaders(body != null),
-        body: body != null ? JSON.stringify(body) : undefined
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
+const post = (url, body) => apiFetch(url, { method: 'POST', body });
 
 export const advanceEnrollmentStage = () => post('/api/enrollment-stage/advance');
 export const setEnrollmentStage = (stage) => post('/api/enrollment-stage', { stage });

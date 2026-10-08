@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin, { Draggable } from '@fullcalendar/interaction';
@@ -8,12 +7,11 @@ import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import { REF_DATES, toIso, fromDate, fmtHours, hhmm, subjectColor, slotLabelFormat } from './calendarUtils';
 import RoomPickerModal from './RoomPickerModal';
+import ScheduleTooltip from './ScheduleTooltip';
 import './board.css';
 
 const DEFAULT_MINUTES = 90; // a dropped subject starts as a 90-minute block; resize to taste.
 const DAY_END_MINUTES = 18 * 60; // the calendar's last visible minute — a drop never runs past it.
-
-const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // Identifies one meeting — a subject's lecture or laboratory hours, for one faculty member and
 // one class section. Pool items, tracker rows, and placed calendar entries all carry these four
@@ -32,6 +30,9 @@ export default function ScheduleBoardPage() {
     const [tracker, setTracker] = useState([]);
     const [loading, setLoading] = useState(true);
     const [alert, setAlert] = useState(null);
+    // Non-null when this term's schedule cannot be edited — finalized, or archived. Carries the
+    // same sentence the server would refuse with, so the banner and the 409 cannot disagree.
+    const [lockReason, setLockReason] = useState(null);
     // Hover tooltip for a placed class: { x, y, e } where e is the entry's extendedProps.
     const [tooltip, setTooltip] = useState(null);
     const [fullscreen, setFullscreen] = useState(false);
@@ -63,6 +64,10 @@ export default function ScheduleBoardPage() {
         setEntries(data.entries);
         setTracker(data.hoursTracker);
         setSemesterName(data.semesterName || '');
+        // Why the board is read-only, if it is. Every edit path already refuses with a clear 409,
+        // but a 409 arrives after someone has dragged a class across the screen — the wrong moment
+        // to learn the board was locked before they started.
+        setLockReason(data.lockReason || null);
         if (data.classStartMinutes != null) setClassStartMinutes(data.classStartMinutes);
         return data;
     }
@@ -340,9 +345,26 @@ export default function ScheduleBoardPage() {
         return () => document.removeEventListener('fullscreenchange', onChange);
     }, []);
 
+    /* The calendar's fullscreen height is derived from the viewport, and reading window.innerHeight
+       during render is not enough on its own: a resize does not re-render, so the calendar kept the
+       height it had when fullscreen was entered. Rotating a tablet, or moving the window to another
+       display, left it either clipped or floating in empty space until fullscreen was toggled off
+       and on again.
+
+       Listening only while fullscreen — outside it the height is a constant, so there is nothing to
+       recompute and no reason to run a handler on every resize of an ordinary window. */
+    const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
+    useEffect(() => {
+        if (!fullscreen) return undefined;
+        const onResize = () => setViewportHeight(window.innerHeight);
+        onResize();
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, [fullscreen]);
+
     const selectedRoom = rooms.find(r => r.id === roomId);
     // Grow the calendar to fill the screen in fullscreen; keep the fixed height otherwise.
-    const calendarHeight = fullscreen ? Math.max(520, window.innerHeight - 210) : 640;
+    const calendarHeight = fullscreen ? Math.max(520, viewportHeight - 210) : 640;
 
     return (
         <div className={`board-page${fullscreen ? ' is-fullscreen' : ''}`} ref={pageRef}>
@@ -398,7 +420,18 @@ export default function ScheduleBoardPage() {
                 </div>
             </header>
 
-            {alert && <div className="alert board-alert">{alert}</div>}
+            {alert && <div className="alert board-alert" role="alert">{alert}</div>}
+
+            {/* Stated before the first drag, not after it. `role="status"` rather than `alert`:
+                this is a standing condition of the page, not something that just went wrong. */}
+            {!loading && lockReason && (
+                <div className="board-lock" role="status">
+                    <span className="board-lock-icon" aria-hidden="true">🔒</span>
+                    <span>
+                        <strong>Read-only.</strong> {lockReason}
+                    </span>
+                </div>
+            )}
 
             {loading ? (
                 <p className="board-empty">Loading board…</p>
@@ -488,6 +521,10 @@ export default function ScheduleBoardPage() {
                         {rooms.length === 0 ? (
                             <p className="board-empty">Add rooms in Academic setup to start scheduling.</p>
                         ) : (
+                            /* When the board is locked, dragging is switched off outright rather
+                               than left enabled to be refused on drop. The server refuses either
+                               way — this is so the interaction agrees with the banner instead of
+                               contradicting it. */
                             <FullCalendar
                                 plugins={[timeGridPlugin, interactionPlugin]}
                                 initialView="timeGridWeek"
@@ -504,9 +541,9 @@ export default function ScheduleBoardPage() {
                                 expandRows
                                 height={calendarHeight}
                                 nowIndicator={false}
-                                editable
-                                droppable
-                                eventDurationEditable
+                                editable={!lockReason}
+                                droppable={!lockReason}
+                                eventDurationEditable={!lockReason}
                                 drop={handleExternalDrop}
                                 eventDrop={handleEventChange}
                                 eventResize={handleEventChange}
@@ -608,56 +645,9 @@ export default function ScheduleBoardPage() {
                 />
             )}
 
-            {tooltip && (() => {
-                const { x, y, e } = tooltip;
-                // Keep the tooltip on-screen: flip it left/up when near the right/bottom edge.
-                const flipX = x > window.innerWidth - 280;
-                const flipY = y > window.innerHeight - 220;
-                const style = {
-                    left: x + (flipX ? -14 : 14),
-                    top: y + (flipY ? -14 : 14),
-                    transform: `translate(${flipX ? '-100%' : '0'}, ${flipY ? '-100%' : '0'})`
-                };
-                const durationH = (e.endMinutes - e.startMinutes) / 60;
-                // The tooltip is position:fixed off the cursor's viewport coordinates. The board
-                // page's rise animation makes it a containing block, so a tooltip nested inside it
-                // is measured from the page corner, not the viewport — the misplacement seen out of
-                // fullscreen. Portal to <body> to fix that; but a fullscreen element only paints its
-                // own subtree in the top layer, so there it must stay inside the board page — which
-                // is exactly document.fullscreenElement while the board is full-screen.
-                const portalTarget = document.fullscreenElement || document.body;
-                return createPortal((
-                    <div className="board-tooltip" role="tooltip" style={style}>
-                        <div className="board-tooltip-head">
-                            <span className="board-tooltip-dot" style={{ background: subjectColor(e.subjectId).border }} />
-                            <span className="board-tooltip-code">{e.subjectCode}</span>
-                            <span className={`chip ${e.component === 'Laboratory' ? 'chip-lab' : 'chip-muted'}`}>
-                                {e.component === 'Laboratory' ? 'Lab' : 'Lec'}
-                            </span>
-                            <span className={`board-tooltip-tag ${e.isPublished ? 'is-published' : 'is-draft'}`}>
-                                {e.isPublished ? 'Published' : 'Draft'}
-                            </span>
-                            {e.isAmended && <span className="board-tooltip-tag is-amended">Amended</span>}
-                        </div>
-                        <div className="board-tooltip-title">{e.subjectTitle}</div>
-                        <dl className="board-tooltip-grid">
-                            <div><dt>When</dt><dd>{DAY_NAMES[e.day]} · {hhmm(e.startMinutes)}–{hhmm(e.endMinutes)} ({fmtHours(durationH)}h)</dd></div>
-                            <div><dt>Room</dt><dd>{e.roomName}</dd></div>
-                            <div><dt>Meeting</dt><dd>{e.component} · {e.deliveryShort}</dd></div>
-                            <div><dt>Section</dt><dd>{e.cohortLabel}</dd></div>
-                            <div><dt>Faculty</dt><dd>{e.facultyName}</dd></div>
-                        </dl>
-                        {e.isAmended && (
-                            <div className="board-tooltip-note">
-                                Changed after publication — the faculty member and enrolled students were notified.
-                            </div>
-                        )}
-                        {e.isManualOverride && !e.isAmended && (
-                            <div className="board-tooltip-note">Manually overridden</div>
-                        )}
-                    </div>
-                ), portalTarget);
-            })()}
+            {tooltip && (
+                <ScheduleTooltip x={tooltip.x} y={tooltip.y} entry={tooltip.e} />
+            )}
         </div>
     );
 }

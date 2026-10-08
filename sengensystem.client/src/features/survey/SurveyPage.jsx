@@ -224,7 +224,7 @@ function SurveyPage() {
                     </label>
                 </section>
 
-                {formError && <div className="alert">{formError}</div>}
+                {formError && <div className="alert" role="alert">{formError}</div>}
 
                 <div className="survey-footer">
                     <span className="survey-note">{answeredCount}/{totalQuestions} answered</span>

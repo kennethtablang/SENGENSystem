@@ -78,7 +78,7 @@ export default function StageModal({ info, onClose, onChanged }) {
 
     return (
         <SetupModal title="Enrollment stage" onClose={onClose} footer={footer}>
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             <p className="stage-lead">
                 <strong>{info.semesterName}</strong> is in <strong>{info.stageLabel}</strong>.

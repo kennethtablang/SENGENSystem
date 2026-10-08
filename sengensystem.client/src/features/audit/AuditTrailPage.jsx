@@ -182,7 +182,7 @@ function AuditTrailPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="audit-empty">Loading audit trail…</p>

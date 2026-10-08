@@ -70,7 +70,7 @@ function RegisterPage() {
                     One account for documents, registration, and enlistment.
                 </p>
 
-                {error && <div className="alert">{error}</div>}
+                {error && <div className="alert" role="alert">{error}</div>}
 
                 <div className="field-row">
                     <div className="field">

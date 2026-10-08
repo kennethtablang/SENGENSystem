@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
+using SENGENSystem.Server.Common.Paging;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.Documents;
@@ -67,6 +68,11 @@ namespace SENGENSystem.Server.Features.PreEnrollment.PreAuthorize
 
         private static async Task<IResult> ListAsync(
             string? search,
+            string? filter,
+            int? page,
+            int? pageSize,
+            string? sort,
+            string? dir,
             AppDbContext db,
             CancellationToken cancellationToken)
         {
@@ -75,6 +81,14 @@ namespace SENGENSystem.Server.Features.PreEnrollment.PreAuthorize
                 .Include(r => r.Semester)
                 .Include(r => r.Documents)
                 .AsQueryable();
+
+            // Clearance is granted for a term, so the queue follows the active one — otherwise every
+            // past term's enrollees pile up here after a rollover. A search widens to every term.
+            if (string.IsNullOrWhiteSpace(search)
+                && await db.GetActiveSemesterIdAsync(cancellationToken) is { } activeSemesterId)
+            {
+                query = query.Where(r => r.SemesterId == activeSemesterId);
+            }
 
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -85,25 +99,85 @@ namespace SENGENSystem.Server.Features.PreEnrollment.PreAuthorize
                     || r.FirstName.Contains(term));
             }
 
-            var items = await query
-                .OrderByDescending(r => r.CreatedAtUtc)
-                .Take(500)
+            // Which papers gate clearance. Fetched once so both the filter and the count below can
+            // be expressed in SQL rather than by loading the queue and testing it in memory.
+            var gatingCodes = await db.AdmissionRequirements.AsNoTracking()
+                .Where(a => a.IsActive && a.IsRequiredForAuthorization)
+                .Select(a => a.Code)
                 .ToListAsync(cancellationToken);
 
-            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
-            var rows = items.Select(r => PreAuthorizationRowDto.From(r, catalog)).ToList();
-            return Results.Ok(new
+            // The queue before the chip narrows it — the headline tallies are counted against this,
+            // so switching the view cannot change what the term's outstanding work is reported as.
+            var baseQuery = query;
+
+            // Eligibility is derived from the checklist, so this used to be filtered in the browser
+            // over the fetched rows. Paged, that would filter one page and page through a total
+            // that counted the other two states as well.
+            query = (filter?.ToLowerInvariant()) switch
             {
-                count = rows.Count,
-                authorizedCount = rows.Count(r => r.IsPreAuthorized),
-                // Eligible = confirmed SIS, not yet cleared, and holding the papers required for
-                // authorization. The remainder of the checklist is tracked for follow-up
-                // (SubmittedCount/TotalCount) but does not gate clearance.
-                eligibleCount = rows.Count(r => !r.IsPreAuthorized
-                    && r.RegistrationStatus == nameof(Domain.RegistrationStatus.Confirmed)
-                    && r.MissingAuthorizationRequirements.Count == 0),
-                students = rows
-            });
+                "authorized" => query.Where(r => r.IsPreAuthorized),
+                "eligible" => query.Where(r => !r.IsPreAuthorized
+                    && r.Status == Domain.RegistrationStatus.Confirmed
+                    && !r.Documents.Any(d =>
+                        gatingCodes.Contains(d.RequirementCode) && d.Status == DocumentStatus.NotSubmitted)),
+                "blocked" => query.Where(r => !r.IsPreAuthorized
+                    && (r.Status != Domain.RegistrationStatus.Confirmed
+                        || r.Documents.Any(d =>
+                            gatingCodes.Contains(d.RequirementCode) && d.Status == DocumentStatus.NotSubmitted))),
+                _ => query
+            };
+
+            var desc = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
+            var ordered = (sort?.ToLowerInvariant()) switch
+            {
+                "studentnumber" => desc
+                    ? query.OrderByDescending(r => r.StudentNumber) : query.OrderBy(r => r.StudentNumber),
+                "fullname" => desc
+                    ? query.OrderByDescending(r => r.LastName).ThenByDescending(r => r.FirstName)
+                    : query.OrderBy(r => r.LastName).ThenBy(r => r.FirstName),
+                "program" => desc ? query.OrderByDescending(r => r.Program) : query.OrderBy(r => r.Program),
+                "studenttype" => desc
+                    ? query.OrderByDescending(r => r.StudentType) : query.OrderBy(r => r.StudentType),
+                "registrationstatus" => desc
+                    ? query.OrderByDescending(r => r.Status) : query.OrderBy(r => r.Status),
+                "submittedcount" => desc
+                    ? query.OrderByDescending(r => r.Documents.Count(d => d.Status != DocumentStatus.NotSubmitted))
+                    : query.OrderBy(r => r.Documents.Count(d => d.Status != DocumentStatus.NotSubmitted)),
+                "haslinkedaccount" => desc
+                    ? query.OrderByDescending(r => r.UserId != null) : query.OrderBy(r => r.UserId != null),
+                "authorization" => desc
+                    ? query.OrderByDescending(r => r.IsPreAuthorized) : query.OrderBy(r => r.IsPreAuthorized),
+                _ => query.OrderByDescending(r => r.CreatedAtUtc)
+            };
+
+            var paged = await ordered.ThenBy(r => r.Id)
+                .ToPagedAsync(PageSpec.From(page, pageSize), cancellationToken);
+
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+            var rows = paged.Items.Select(r => PreAuthorizationRowDto.From(r, catalog)).ToList();
+
+            // Both tallies are counted in SQL over the whole queue — `baseQuery`, before the chip
+            // narrows it — not over this page and not over the current view. Taken from the rows,
+            // as they were before paging, "23 cleared" would have silently become "23 cleared on
+            // this page", which is the number the Admission Officer works the queue by.
+            //
+            // Eligible = confirmed SIS, not yet cleared, and holding the papers that actually gate
+            // authorization. The rest of the checklist is tracked for follow-up (SubmittedCount /
+            // TotalCount) but does not gate clearance.
+            var authorizedCount = await baseQuery.CountAsync(r => r.IsPreAuthorized, cancellationToken);
+
+            var eligibleCount = await baseQuery.CountAsync(r =>
+                !r.IsPreAuthorized
+                && r.Status == Domain.RegistrationStatus.Confirmed
+                && !r.Documents.Any(d =>
+                    gatingCodes.Contains(d.RequirementCode)
+                    && d.Status == DocumentStatus.NotSubmitted), cancellationToken);
+
+            var body = new Paged<PreAuthorizationRowDto>(rows, paged.Total, paged.Page, paged.PageSize)
+                .ToResponse("students");
+            body["authorizedCount"] = authorizedCount;
+            body["eligibleCount"] = eligibleCount;
+            return Results.Ok(body);
         }
 
         private static async Task<IResult> GrantAsync(

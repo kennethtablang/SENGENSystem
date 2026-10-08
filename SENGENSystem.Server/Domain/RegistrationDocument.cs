@@ -19,5 +19,20 @@ namespace SENGENSystem.Server.Domain
         public string RequirementCode { get; set; } = string.Empty;
 
         public DocumentStatus Status { get; set; } = DocumentStatus.NotSubmitted;
+
+        /// <summary>
+        /// When this row's status was last decided, and by whom. FR-DOC-03 calls the checklist "an
+        /// auditable record", and until these existed the only trace of a decision was a free-text
+        /// audit entry that could not be joined back to the row — so the board could show a paper as
+        /// received with nothing on the row itself saying who had said so, or when.
+        /// <para>
+        /// Both stay null for a freshly seeded checklist, which is the honest reading: nobody has
+        /// decided anything about that paper yet. They are set together, on every path that changes
+        /// <see cref="Status"/>.
+        /// </para>
+        /// </summary>
+        public DateTime? UpdatedAtUtc { get; set; }
+
+        public Guid? VerifiedByUserId { get; set; }
     }
 }

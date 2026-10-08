@@ -1,5 +1,9 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
+using SENGENSystem.Server.Common.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,6 +13,7 @@ using SENGENSystem.Server.Common.Auth;
 using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.AcademicRecords;
 using SENGENSystem.Server.Features.AcademicSetup.Buildings;
 using SENGENSystem.Server.Features.Analytics.RoomUtilization;
 using SENGENSystem.Server.Features.AcademicSetup.ClassSections;
@@ -31,6 +36,7 @@ using SENGENSystem.Server.Features.FacultyLoad;
 using SENGENSystem.Server.Features.FacultyLoad.Preferences;
 using SENGENSystem.Server.Features.Navigation;
 using SENGENSystem.Server.Features.Notifications;
+using SENGENSystem.Server.Features.Notifications.Outbox;
 using SENGENSystem.Server.Features.Survey;
 using SENGENSystem.Server.Features.PreEnrollment.Import;
 using SENGENSystem.Server.Features.PreEnrollment.PreAuthorize;
@@ -56,6 +62,8 @@ using SENGENSystem.Server.Features.Reports.SemesterExport;
 using SENGENSystem.Server.Features.Reports.SystemExport;
 using SENGENSystem.Server.Features.Registration.RegisterStudent;
 using SENGENSystem.Server.Features.Registration.TermActivation;
+using SENGENSystem.Server.Features.Registration.TransfereeEvaluation;
+using SENGENSystem.Server.Features.Reports.Prospectus;
 using SENGENSystem.Server.Features.SystemParameters;
 using SENGENSystem.Server.Features.Scheduling.Board;
 using SENGENSystem.Server.Features.Scheduling.Engine;
@@ -74,6 +82,13 @@ namespace SENGENSystem.Server
 {
     public class Program
     {
+        /// <summary>
+        /// Names the sign-in rate-limit policy. A constant rather than a literal so the registration
+        /// and the endpoint that opts into it cannot drift apart — a typo on either side would
+        /// silently leave login unlimited, which is the one failure mode this must not have.
+        /// </summary>
+        internal const string LoginRateLimitPolicy = "auth-login";
+
         public static async Task Main(string[] args)
         {
             // QuestPDF is used for the Consolidated Faculty Loading Report (FR-RPT-02).
@@ -131,6 +146,11 @@ namespace SENGENSystem.Server
             builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
             builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
             builder.Services.AddScoped<Notifier>();
+            // Bulk email is queued on the caller's transaction and drained in the background, so an
+            // enrollment-sized sweep no longer runs inside the request that triggered it. Single
+            // interactive mail (password reset, 2FA code) still goes out inline via IEmailSender.
+            builder.Services.AddScoped<EmailOutbox>();
+            builder.Services.AddHostedService<OutboxDispatcher>();
             builder.Services.AddSignalR();
             builder.Services.AddSingleton<ReportsBroadcaster>();
             builder.Services.AddSingleton<JwtTokenService>();
@@ -175,6 +195,38 @@ namespace SENGENSystem.Server
             builder.Services.AddSingleton<Microsoft.AspNetCore.Authentication.IClaimsTransformation, SchoolAdminClaimsTransformation>();
             builder.Services.AddAuthorization();
 
+            // Brute-force defence, part one: cap sign-in attempts per source address. This is the
+            // half that stops one attacker working through many accounts; LoginThrottle is the half
+            // that stops many sources working on one account. Before either existed, failed logins
+            // were audited in detail and otherwise unimpeded.
+            //
+            // Partitioned by IP rather than by email so an attacker cannot sidestep it by varying
+            // the address they claim — the whole point is to limit the attempts, not the targets.
+            // Uptime monitoring and container liveness/readiness probes had nothing to call: the
+            // only way to know the app was up was to request a real page, and the only way to know
+            // the database was reachable was to wait for a user to hit an error. The DB check is the
+            // part that matters — the process answering while its database is gone is precisely the
+            // state a probe exists to catch.
+            builder.Services.AddHealthChecks()
+                .AddDbContextCheck<AppDbContext>("database");
+
+            builder.Services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy(LoginRateLimitPolicy, context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        // A shared campus NAT would otherwise share one budget; 20 a minute is well
+                        // clear of a lab full of students signing in at once and nowhere near what
+                        // guessing needs.
+                        partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 20,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0
+                        }));
+            });
+
             var app = builder.Build();
 
             await DbInitializer.InitializeAsync(app.Services);
@@ -214,6 +266,7 @@ namespace SENGENSystem.Server
             app.UseDefaultFiles();
             app.MapStaticAssets();
 
+
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
@@ -227,11 +280,28 @@ namespace SENGENSystem.Server
             }
 
             app.UseHttpsRedirection();
+            // Before authentication, so even an anonymous or rejected request carries the headers.
+            app.UseSecurityHeaders();
+            app.UseRateLimiter();
 
             app.UseAuthentication();
             app.UseAuthorization();
 
             app.MapControllers();
+
+            /* Two probes, because liveness and readiness answer different questions and conflating
+               them causes restart loops. `/health/live` says the process is running and should be
+               left alone; it deliberately runs **no** checks, since a database outage is not a
+               reason to kill and restart the app. `/health` (readiness) includes the database, so an
+               orchestrator stops routing traffic here while the DB is unreachable but does not
+               recycle the container over it.
+
+               Anonymous by design: a probe that needs a bearer token is a probe that cannot run
+               before the app is ready. Neither endpoint reveals more than up/down and the check
+               names. */
+            app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false })
+                .AllowAnonymous();
+            app.MapHealthChecks("/health").AllowAnonymous();
 
             // Feature slices (Vertical Slice Architecture)
             app.MapRegister();
@@ -271,6 +341,15 @@ namespace SENGENSystem.Server
             app.MapLinkAccount();
             // Admission Officer records the external student number against a registration (FR-SIS)
             app.MapAssignStudentNumber();
+            // FR-EVAL: the credit ruling that decides a transferee's subjects and year level — the
+            // gate their enlistment waits on.
+            app.MapTransfereeEvaluation();
+            // FR-ENL-01/06: the record of what a student has already taken and how it ended — what
+            // prerequisite enforcement, repeat subjects, and the year-level ladder are answered from.
+            app.MapAcademicRecords();
+            // FR-RPT-05: printable curriculum prospectus, evaluation sheet, and certificate of
+            // registration — the staff copies and the student's own.
+            app.MapProspectus();
 
             // Documents slice — Admission Officer checklist board + reminder emails (FR-DOC)
             app.MapDocumentChecklist();
@@ -335,6 +414,9 @@ namespace SENGENSystem.Server
 
             // Notifications slice — the signed-in user's in-app bell notices (FR-NOTIF)
             app.MapNotifications();
+            // Operational visibility over the email outbox — which notices went out, which
+            // failed permanently, and a way to requeue them after a mail outage.
+            app.MapEmailOutbox();
 
             // Sidebar badge counts — role-scoped outstanding-work numbers for the nav
             app.MapNavBadges();

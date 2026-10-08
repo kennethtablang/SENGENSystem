@@ -1,43 +1,12 @@
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 
 // Academic setup (School Admin): school years, semesters, buildings, rooms.
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        fieldErrors: payload?.errors || {}
-    };
-}
-
-function authHeaders(json) {
-    const h = { Authorization: `Bearer ${getToken()}` };
-    if (json) h['Content-Type'] = 'application/json';
-    return h;
-}
-
-async function get(url) {
-    const response = await fetch(url, { headers: authHeaders() });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
-
-async function send(method, url, body) {
-    const response = await fetch(url, {
-        method,
-        headers: authHeaders(body != null),
-        body: body != null ? JSON.stringify(body) : undefined
-    });
-    if (response.status === 204) return null;
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
+/* Both helpers go through the shared client — one place for the auth header, the ProblemDetails
+   error shape, and the global 401 handling that signs a lapsed session out rather than failing
+   with a generic message on a page that will never work again. A 204 still comes back as null. */
+const get = (url) => apiFetch(url);
+const send = (method, url, body) => apiFetch(url, { method, body });
 
 function query(params) {
     const qs = new URLSearchParams();

@@ -4,7 +4,7 @@ import { listChecklists, updateDocumentStatus, sendReminders, getMyLink, claimRe
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import { confirmsHeavy } from '../settings/prefs';
-import { statusOptionsFor, documentStatusLabel, humanize } from '../registration/options';
+import { statusOptionsFor, documentStatusLabel, humanize, formatPHT } from '../registration/options';
 import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import RequirementsModal from './RequirementsModal';
@@ -78,7 +78,8 @@ function StudentChecklist() {
                     of birth to link your record. Your account email must match the email on your SIS
                     {state?.claimable && <> — <strong>we found a record matching your email, so you're one step away</strong></>}.
                 </p>
-                {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>{alert.text}</div>}
+                {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>{alert.text}</div>}
                 <form onSubmit={claim} className="doc-claim-form">
                     <input
                         type="text"
@@ -105,7 +106,8 @@ function StudentChecklist() {
     const r = state.registration;
     return (
         <div className="doc-student">
-            {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>{alert.text}</div>}
+            {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>{alert.text}</div>}
             <div className="doc-student-summary card">
                 <div>
                     <h3>{r.fullName}</h3>
@@ -236,7 +238,19 @@ function StaffBoard() {
         setAlert(null);
         try {
             const result = await sendReminders(registrationId);
-            const text = `Reminder emails sent to ${result.emailsSent} of ${result.targeted} enrollee(s) with incomplete checklists.`;
+            // "Queued", not "sent" — the sweep hands the mail to the outbox and returns, so claiming
+            // delivery here would be a promise the response cannot keep. The two extra figures are
+            // what stop "0 queued" being ambiguous: it now says whether nobody needed chasing or
+            // everybody had already been chased today, and whether a second press has work to do.
+            const text = result.queued === 0 && result.skippedRecentlyReminded > 0
+                ? `No reminders queued — all ${result.skippedRecentlyReminded} enrollee(s) with `
+                    + 'incomplete checklists were already reminded recently.'
+                : `Queued reminders for ${result.queued} of ${result.targeted} enrollee(s) with `
+                    + 'incomplete checklists.'
+                    + (result.skippedRecentlyReminded > 0
+                        ? ` ${result.skippedRecentlyReminded} skipped as recently reminded.` : '')
+                    + (result.remaining > 0
+                        ? ` ${result.remaining} still to chase — press again to continue.` : '');
             setAlert({ kind: 'success', text });
             notifySuccess(text);
         } catch (err) {
@@ -289,7 +303,8 @@ function StaffBoard() {
 
             {manageOpen && <RequirementsModal onClose={() => setManageOpen(false)} />}
 
-            {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>{alert.text}</div>}
+            {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>{alert.text}</div>}
 
             {loading ? (
                 <p className="reg-empty">Loading…</p>
@@ -378,6 +393,17 @@ function StaffBoard() {
                                                                             <option key={o.value} value={o.value}>{o.label}</option>
                                                                         ))}
                                                                     </select>
+                                                                    {/* FR-DOC-03: who decided this row, and when. Absent until
+                                                                        someone has — a freshly seeded checklist has nothing to
+                                                                        say here, and inventing a name for it would be worse
+                                                                        than the blank. */}
+                                                                    {doc.updatedAtUtc && (
+                                                                        <span className="doc-provenance">
+                                                                            {doc.verifiedBy
+                                                                                ? `${doc.verifiedBy} · ${formatPHT(doc.updatedAtUtc)}`
+                                                                                : formatPHT(doc.updatedAtUtc)}
+                                                                        </span>
+                                                                    )}
                                                                 </label>
                                                             ))}
                                                         </div>

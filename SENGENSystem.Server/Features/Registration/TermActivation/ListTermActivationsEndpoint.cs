@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SENGENSystem.Server.Common.Paging;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 
@@ -17,6 +18,10 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
 
         private static async Task<IResult> HandleAsync(
             string? status,
+            int? page,
+            int? pageSize,
+            string? sort,
+            string? dir,
             AppDbContext db,
             CancellationToken cancellationToken)
         {
@@ -45,16 +50,37 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
                 query = query.Where(a => a.Status == parsed);
             }
 
-            var items = await query
-                .OrderByDescending(a => a.RequestedAtUtc)
-                .Take(500)
-                .ToListAsync(cancellationToken);
-
-            return Results.Ok(new
+            var desc = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
+            var ordered = (sort?.ToLowerInvariant()) switch
             {
-                count = items.Count,
-                activations = items.Select(TermActivationDto.From).ToList()
-            });
+                // Sorted on the number the student actually identifies themselves by, falling back
+                // to the internal registration number — the same rule the column displays.
+                "studentnumber" => desc
+                    ? query.OrderByDescending(a => a.StudentRegistration!.OfficialStudentNumber
+                        ?? a.StudentRegistration!.StudentNumber)
+                    : query.OrderBy(a => a.StudentRegistration!.OfficialStudentNumber
+                        ?? a.StudentRegistration!.StudentNumber),
+                "studentname" => desc
+                    ? query.OrderByDescending(a => a.StudentRegistration!.LastName)
+                    : query.OrderBy(a => a.StudentRegistration!.LastName),
+                "yearlevel" => desc
+                    ? query.OrderByDescending(a => a.StudentRegistration!.YearLevel)
+                    : query.OrderBy(a => a.StudentRegistration!.YearLevel),
+                "program" => desc
+                    ? query.OrderByDescending(a => a.StudentRegistration!.Program)
+                    : query.OrderBy(a => a.StudentRegistration!.Program),
+                "semestername" => desc
+                    ? query.OrderByDescending(a => a.Semester!.Name) : query.OrderBy(a => a.Semester!.Name),
+                "status" => desc ? query.OrderByDescending(a => a.Status) : query.OrderBy(a => a.Status),
+                "requestedatutc" => desc
+                    ? query.OrderByDescending(a => a.RequestedAtUtc) : query.OrderBy(a => a.RequestedAtUtc),
+                _ => query.OrderByDescending(a => a.RequestedAtUtc)
+            };
+
+            var result = await ordered.ThenBy(a => a.Id)
+                .ToPagedAsync(PageSpec.From(page, pageSize), cancellationToken);
+
+            return Results.Ok(result.Select(TermActivationDto.From).ToResponse("activations"));
         }
     }
 }

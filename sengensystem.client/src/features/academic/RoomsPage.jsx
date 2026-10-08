@@ -77,7 +77,7 @@ function RoomModal({ record, buildings, defaultBuildingId, onClose, onChanged })
 
     return (
         <SetupModal title={isCreate ? 'New room' : 'Edit room'} onClose={onClose} footer={footer}>
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             <form id="room-form" onSubmit={save} noValidate>
                 <div className="field">
                     <label htmlFor="room-name">Name</label>
@@ -185,7 +185,7 @@ export default function RoomsPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>

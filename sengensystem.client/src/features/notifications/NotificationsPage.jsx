@@ -99,7 +99,7 @@ function NotificationsPage() {
                 </button>
             </div>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {data && shown.length === 0 && !error && (
                 <div className="card notif-empty rise rise-2">

@@ -75,7 +75,7 @@ export default function FacultyLoadPage() {
                 </label>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="fl-empty">Loading…</p>

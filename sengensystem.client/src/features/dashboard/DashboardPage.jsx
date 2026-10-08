@@ -165,13 +165,13 @@ function StaffDashboard() {
         };
     }, []);
 
-    if (error) return <><DashHead /><div className="alert">{error}</div></>;
+    if (error) return <><DashHead /><div className="alert" role="alert">{error}</div></>;
     if (!data) return <><DashHead /><p className="dash-loading">Loading live metrics…</p></>;
     if (!data.semesterId) {
         return (
             <>
                 <DashHead />
-                <div className="alert">No semester has been set up yet — create and activate one under Academic setup.</div>
+                <div className="alert" role="alert">No semester has been set up yet — create and activate one under Academic setup.</div>
             </>
         );
     }
@@ -799,7 +799,7 @@ function StudentDashboard() {
         return () => { active = false; };
     }, []);
 
-    if (error) return <><DashHead /><div className="alert">{error}</div></>;
+    if (error) return <><DashHead /><div className="alert" role="alert">{error}</div></>;
     if (!link || !mine) return <><DashHead /><p className="dash-loading">Loading your enrollment status…</p></>;
 
     const r = link.registration;
@@ -898,7 +898,7 @@ function FacultyDashboard() {
         return () => { active = false; };
     }, []);
 
-    if (error) return <><DashHead /><div className="alert">{error}</div></>;
+    if (error) return <><DashHead /><div className="alert" role="alert">{error}</div></>;
     if (!sched) return <><DashHead /><p className="dash-loading">Loading your teaching week…</p></>;
 
     return (

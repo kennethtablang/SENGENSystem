@@ -24,8 +24,13 @@ namespace SENGENSystem.Server.Features.Auth.ForgotPassword
 
         public static IEndpointRouteBuilder MapForgotPassword(this IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/auth/forgot-password", RequestAsync);
-            app.MapPost("/api/auth/reset-password", ResetAsync);
+            // Rate-limited for the same reason as the 2FA pair: forgot-password emails a link to
+            // whatever address is named, so without a cap it is a mail bomb with someone else's
+            // mailbox as the target and this institution's account as the sender.
+            app.MapPost("/api/auth/forgot-password", RequestAsync)
+                .RequireRateLimiting(SENGENSystem.Server.Program.LoginRateLimitPolicy);
+            app.MapPost("/api/auth/reset-password", ResetAsync)
+                .RequireRateLimiting(SENGENSystem.Server.Program.LoginRateLimitPolicy);
             return app;
         }
 

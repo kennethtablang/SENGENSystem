@@ -60,7 +60,11 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                     faculty = Array.Empty<BoardFacultyDto>(),
                     pool = Array.Empty<PoolItemDto>(),
                     entries = Array.Empty<BoardEntryDto>(),
-                    hoursTracker = Array.Empty<SubjectHoursDto>()
+                    hoursTracker = Array.Empty<SubjectHoursDto>(),
+                    // No term, so nothing is locked — the board simply has nothing to show.
+                    isFinalized = false,
+                    isArchived = false,
+                    lockReason = (string?)null
                 });
             }
 
@@ -173,6 +177,13 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
 
             var faculty = facultyProfiles.Select(f => new BoardFacultyDto(f.Id, f.User?.FullName ?? "(unknown)")).ToList();
 
+            // Why the board is (or is not) editable, told up front rather than discovered by trying.
+            // Every edit path already refuses a finalized draft, an archived term, and a published
+            // row with a clear 409 — but a 409 arrives *after* someone has dragged a class across
+            // the screen, which is the wrong moment to learn the board was locked all along.
+            var isFinalized = await db.ScheduleAssignments.AsNoTracking()
+                .AnyAsync(a => a.SemesterId == semester.Id && a.IsFinalized && !a.IsPublished, ct);
+
             return Results.Ok(new
             {
                 semesterId = semester.Id,
@@ -183,7 +194,16 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 faculty,
                 pool,
                 entries = entryDtos,
-                hoursTracker
+                hoursTracker,
+                isFinalized,
+                isArchived = semester.IsArchived,
+                // One reason, in the order the server itself checks them, so the banner and the
+                // refusal a user would have hit cannot disagree about why.
+                lockReason = semester.IsArchived
+                    ? "This semester is archived — its schedule is read-only."
+                    : isFinalized
+                        ? "This schedule is finalized and locked. Reopen it on the Generate page to make changes."
+                        : null
             });
         }
 
@@ -286,7 +306,13 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 $"with {load.FacultyProfile?.User?.FullName} in {room.Name}, " +
                 $"{DayName(request.Day)} {Hhmm(request.StartMinutes)}–{Hhmm(request.EndMinutes)}.",
                 "ScheduleAssignment", assignment.Id.ToString());
-            await db.SaveChangesAsync(ct);
+            // A placement is checked against the rows read a moment ago — the room, faculty, and
+            // cohort clash tests above. A regenerate committing in between invalidates all three, so
+            // saving anyway would drop a class into a slot the board has just been told is free.
+            if (await ScheduleConcurrency.TrySaveAsync(db, "place this class", ct) is { } raced)
+            {
+                return raced;
+            }
 
             // Hydrate navigations for the response DTO without a re-query.
             assignment.Section = section;
@@ -380,7 +406,12 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 await ScheduleAmendments.RecordAsync(assignment, change, db, audit, notifier, principal, ct);
             }
 
-            await db.SaveChangesAsync(ct);
+            // Same reasoning as the placement leg — and here the row being moved may itself be gone,
+            // which is precisely the case the token catches.
+            if (await ScheduleConcurrency.TrySaveAsync(db, "move this class", ct) is { } raced)
+            {
+                return raced;
+            }
 
             assignment.Room = room;
             assignment.TimeSlot = timeSlot;
@@ -441,7 +472,13 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 "ScheduleAssignment", assignment.Id.ToString());
 
             db.ScheduleAssignments.Remove(assignment);
-            await db.SaveChangesAsync(ct);
+            // A delete races the same way a write does: if a regenerate already replaced this row,
+            // removing it would silently remove nothing while reporting success — and, when it was
+            // published, would email an amendment for a class that no longer exists.
+            if (await ScheduleConcurrency.TrySaveAsync(db, "remove this class", ct) is { } conflict)
+            {
+                return conflict;
+            }
 
             // After the commit, as with a move: the removal stands whatever the mail server does.
             // The recipients are looked up by section and faculty id, both of which outlive the row.

@@ -197,7 +197,7 @@ function EnlistmentPage() {
             </header>
 
             {eligibility && !eligibility.eligible && (
-                <div className="alert enl-gate">
+                <div className="alert enl-gate" role="status">
                     <p><strong>You are not yet cleared to enlist.</strong></p>
                     <ul>
                         {eligibility.blockers.map((b, i) => <li key={i}>{b}</li>)}
@@ -205,7 +205,7 @@ function EnlistmentPage() {
                 </div>
             )}
 
-            {plan?.notice && <div className="alert">{plan.notice}</div>}
+            {plan?.notice && <div className="alert" role="alert">{plan.notice}</div>}
 
             {hasPlan && (
                 <section className="card enl-plan">
@@ -264,7 +264,8 @@ function EnlistmentPage() {
             )}
 
             {alert && (
-                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>
+                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>
                     <p>{alert.text}</p>
                     {alert.reasons?.length > 0 && (
                         <ul>{alert.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>

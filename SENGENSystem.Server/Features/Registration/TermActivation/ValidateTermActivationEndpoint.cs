@@ -4,6 +4,7 @@ using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.AcademicRecords;
 
 namespace SENGENSystem.Server.Features.Registration.TermActivation
 {
@@ -84,7 +85,24 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
                 var isNewSchoolYear = activation.Semester is { } target
                     && registration.Semester is { } previous
                     && target.SchoolYearId != previous.SchoolYearId;
+
+                // Where there is academic history, the units the student actually earned decide the
+                // year — not the number of school years that have gone by. The calendar rule alone
+                // promoted on time served, so a student who failed half of last year moved up with
+                // everyone else and was then offered a year they had not finished.
+                //
+                // Only consulted when the school year turns over: within a school year nobody
+                // advances, and re-deriving mid-year could *demote* a student between their first
+                // and second semester, which is not a thing that happens.
+                var derived = (int?)null;
+                if (isNewSchoolYear)
+                {
+                    var history = await AcademicHistory.LoadAsync(db, registration.Id, cancellationToken);
+                    derived = await history.DeriveYearLevelAsync(db, registration, cancellationToken);
+                }
+
                 assignedYearLevel = request.YearLevel
+                    ?? derived
                     ?? YearLevelPolicy.OnTermActivation(registration.YearLevel, isNewSchoolYear);
 
                 if (assignedYearLevel != registration.YearLevel || request.YearLevel is not null)

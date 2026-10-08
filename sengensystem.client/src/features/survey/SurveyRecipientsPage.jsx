@@ -205,7 +205,7 @@ function SurveyRecipientsPage() {
             </header>
 
             {closed && (
-                <div className="alert survey-alert">
+                <div className="alert survey-alert" role="status">
                     Collection is currently <strong>closed</strong> — reopen it on the
                     {' '}<Link to="/survey-admin">results dashboard</Link> before inviting more respondents.
                 </div>

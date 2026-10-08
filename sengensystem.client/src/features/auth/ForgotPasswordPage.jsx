@@ -33,8 +33,8 @@ function ForgotPasswordPage() {
                     Enter your account email and we&rsquo;ll send you a link to choose a new password.
                 </p>
 
-                {sent && <div className="alert alert-success">{sent}</div>}
-                {error && <div className="alert">{error}</div>}
+                {sent && <div className="alert alert-success" role="status">{sent}</div>}
+                {error && <div className="alert" role="alert">{error}</div>}
 
                 <div className="field">
                     <label htmlFor="fp-email">Email</label>

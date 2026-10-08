@@ -151,7 +151,7 @@ export default function SubjectsCurriculumPage() {
             </aside>
 
             <section className="curr-main">
-                {error && <div className="alert">{error}</div>}
+                {error && <div className="alert" role="alert">{error}</div>}
 
                 {!selected ? (
                     <div className="curr-blank card">

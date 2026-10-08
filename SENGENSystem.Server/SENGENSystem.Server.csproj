@@ -11,6 +11,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The rules worth testing are the internal ones — AcademicHistory, EnlistmentPlanner,
+         YearLevelPolicy, LoginThrottle. They are internal because nothing outside the server should
+         call them, not because they are untestable, so the test assembly is let in rather than the
+         types being widened to public for the sake of a test runner. -->
+    <InternalsVisibleTo Include="SENGENSystem.Server.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
@@ -22,12 +30,22 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.9" />
     <PackageReference Include="QuestPDF" Version="2026.7.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\sengensystem.client\sengensystem.client.esproj">
+    <!-- Building the server also builds the SPA and runs `npm install`, which is what makes F5 in
+         Visual Studio start both halves — right for development, wrong everywhere else.
+
+         Building the *test* project transitively drags it in too, so a server-only CI job would
+         need the Microsoft.VisualStudio.JavaScript.SDK on the runner just to run xUnit. Pass
+         `-p:BuildClient=false` to skip it; the CI workflow does exactly that, and builds the client
+         in its own job where npm actually belongs. The default is unchanged, so nothing about the
+         local F5 experience moves. -->
+    <ProjectReference Include="..\sengensystem.client\sengensystem.client.esproj"
+                      Condition="'$(BuildClient)' != 'false'">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>

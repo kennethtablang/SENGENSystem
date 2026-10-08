@@ -5,6 +5,7 @@ using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.Registration;
 using SENGENSystem.Server.Features.Registration.TransfereeEvaluation;
+using SENGENSystem.Server.Common;
 
 namespace SENGENSystem.Server.Features.Reports.Prospectus
 {
@@ -199,7 +200,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 evaluator,
                 evaluation.EvaluatedAtUtc,
                 rows,
-                DateTime.Now);
+                InstitutionClock.Now);
 
             return Results.File(document.GeneratePdf(), Pdf,
                 $"sengen-evaluation-{Slug(registration.StudentNumber)}.pdf");
@@ -282,7 +283,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 registration.StudentType == StudentType.Transferee ? "Transferee" : "New student",
                 registration.Semester?.Name ?? "the active term",
                 rows,
-                DateTime.Now);
+                InstitutionClock.Now);
 
             return Results.File(document.GeneratePdf(), Pdf,
                 $"sengen-registration-{Slug(registration.StudentNumber)}.pdf");
@@ -325,7 +326,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 years,
                 student,
                 credited ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                DateTime.Now);
+                InstitutionClock.Now);
             return document.GeneratePdf();
 
             static ProspectusRow Row(Subject s) => new(

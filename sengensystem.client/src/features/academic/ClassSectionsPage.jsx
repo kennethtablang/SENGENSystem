@@ -90,7 +90,7 @@ function ClassSectionModal({ record, semesters, programs, curricula, defaultSeme
 
     return (
         <SetupModal title={isCreate ? 'New class' : 'Edit class'} onClose={onClose} footer={footer}>
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             <form id="class-section-form" onSubmit={save} noValidate>
                 <div className="field">
                     <label htmlFor="cs-semester">Semester / term</label>
@@ -247,7 +247,7 @@ export default function ClassSectionsPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>

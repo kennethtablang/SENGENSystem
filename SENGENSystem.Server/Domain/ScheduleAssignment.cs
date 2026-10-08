@@ -56,5 +56,20 @@ namespace SENGENSystem.Server.Domain
         public Guid? AmendedByUserId { get; set; }
 
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// Optimistic concurrency token. Until this existed, <see cref="Section"/> was the only
+        /// entity in the system carrying one, which left every schedule write racing: a regenerate
+        /// deletes the draft rows and re-inserts them while a board edit, a finalize, or a publish is
+        /// reading or writing the same rows, and the last writer simply won — silently, with no
+        /// indication to either person that the other had been there.
+        /// <para>
+        /// The failure is worse than a lost edit. Finalize and publish are decisions *about* a set of
+        /// rows, so a regenerate landing between the read and the write means the Registrar publishes
+        /// a timetable nobody finalized and nobody has seen. The token turns that into a 409 the
+        /// caller can retry against fresh data, the same discipline the seat counter already uses.
+        /// </para>
+        /// </summary>
+        public byte[] RowVersion { get; set; } = [];
     }
 }

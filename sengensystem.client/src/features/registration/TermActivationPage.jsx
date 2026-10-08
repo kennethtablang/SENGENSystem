@@ -126,10 +126,10 @@ function TermActivationPage() {
                         you finalize below.
                     </p>
 
-                    {error && <div className="alert">{error}</div>}
+                    {error && <div className="alert" role="alert">{error}</div>}
 
                     {found.alreadyFiled && (
-                        <div className="alert">
+                        <div className="alert" role="alert">
                             You already have a {found.existingStatus?.toLowerCase()} term activation on file
                             for {found.semesterName}. There is no need to file another.
                         </div>
@@ -230,7 +230,7 @@ function TermActivationPage() {
                     number and your last name; you'll check your year level and term on the next step.
                 </p>
 
-                {error && <div className="alert">{error}</div>}
+                {error && <div className="alert" role="alert">{error}</div>}
 
                 <div className="field">
                     <label htmlFor="studentNumber">Student number</label>

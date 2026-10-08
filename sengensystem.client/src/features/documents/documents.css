@@ -163,6 +163,19 @@
   min-width: 9.5rem;
 }
 
+/* FR-DOC-03: who last decided this row and when. Takes its own line below the label/select pair
+   rather than competing with them — it is provenance to be checked when something is queried, not
+   part of the decision being made. */
+.doc-grid-item {
+  flex-wrap: wrap;
+}
+
+.doc-provenance {
+  flex: 1 0 100%;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
 .doc-remind-one {
   margin-top: 0.9rem;
 }

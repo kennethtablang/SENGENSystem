@@ -3,6 +3,8 @@ using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.AcademicRecords;
+using SENGENSystem.Server.Features.EnrollmentCycle;
 using SENGENSystem.Server.Features.Registration;
 
 namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
@@ -42,16 +44,18 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
             }
             var registration = eligibility.Registration!;
 
-            // Institution-wide gate (FR-ENL, System Parameters): the Registrar can close online slot
-            // selection between periods without touching any individual's eligibility.
-            var settings = await db.GetSettingsAsync(cancellationToken);
-            if (!settings.EnlistmentOpen)
+            // Institution-wide gate (FR-CYC-01, FR-ENL-08): the term must actually be in the
+            // enlistment stage, and the Registrar's pause switch must be off. Previously only the
+            // switch was checked, so a term sitting in "Enrollment closed" still accepted seat
+            // requests — the ticker said one thing and the API did another.
+            var window = await EnrollmentCyclePolicy.CheckEnlistmentAsync(db, cancellationToken);
+            if (!window.Open)
             {
-                return Results.Json(new
-                {
-                    message = "Online enlistment is currently closed. Please check back once the Registrar reopens it."
-                }, statusCode: StatusCodes.Status403Forbidden);
+                return Results.Json(new { message = window.Reason },
+                    statusCode: StatusCodes.Status403Forbidden);
             }
+
+            var settings = await db.GetSettingsAsync(cancellationToken);
 
             var semester = await db.Semesters.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.IsActive, cancellationToken);
@@ -86,15 +90,49 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
                 }, statusCode: StatusCodes.Status403Forbidden);
             }
 
+            // FR-ENL-06 / F-10: the prerequisite chain, which until now was modeled, editable, and
+            // printed on the prospectus while being enforced nowhere. It is checked here rather than
+            // only at approval so the student learns at the moment they click, not days later from a
+            // Registrar — and it is checked at approval too, because a record can change in between.
+            //
+            // Falls open for a student with no academic history at all: see AcademicHistory
+            // .IsEnforceable for why that is the honest reading of an empty record rather than a
+            // loophole.
+            var history = await AcademicHistory.LoadAsync(db, registration.Id, cancellationToken);
+            if (history.IsEnforceable)
+            {
+                var unmet = await history.UnmetPrerequisitesAsync(db, section.SubjectId, cancellationToken);
+                if (unmet.Count > 0)
+                {
+                    var code = section.Subject?.Code ?? "this subject";
+                    audit.Record(AuditAction.PrerequisiteBlocked,
+                        $"{registration.StudentNumber} was refused a seat in {code} — unmet prerequisite(s): " +
+                        $"{string.Join(", ", unmet.Select(s => s.Code))}.",
+                        "StudentRegistration", registration.Id.ToString());
+                    await db.SaveChangesAsync(cancellationToken);
+
+                    return Results.Json(new
+                    {
+                        message = AcademicHistory.Refusal(code, unmet, aboutSelf: true),
+                        reasons = unmet.Select(s => $"{s.Code} — {s.Title}").ToList()
+                    }, statusCode: StatusCodes.Status409Conflict);
+                }
+            }
+
             var sectionSlots = await PublishedSlotsAsync(db, [section.Id], cancellationToken);
             if (sectionSlots.Count == 0)
             {
                 return Results.BadRequest(new { message = "This section's schedule has not been published yet." });
             }
 
+            // Only this term's live requests. Every check below — duplicate subject, the per-student
+            // unit ceiling, time overlap — is a statement about one semester's load, so carrying a
+            // previous term's approvals in would tell a returning student they "already have" the
+            // subject they are re-enrolling in and count last term's units against this term's cap.
             var active = await db.SlotRequests
                 .Include(r => r.Section).ThenInclude(s => s!.Subject)
                 .Where(r => r.StudentRegistrationId == registration.Id
+                    && r.Section!.SemesterId == semester.Id
                     && (r.Status == SlotRequestStatus.Requested || r.Status == SlotRequestStatus.Approved))
                 .ToListAsync(cancellationToken);
 

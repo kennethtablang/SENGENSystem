@@ -101,7 +101,7 @@ export default function CurriculumModal({ record, schoolYears, onClose, onChange
 
     return (
         <SetupModal title={isCreate ? 'New curriculum' : 'Edit curriculum'} onClose={onClose} footer={footer}>
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             {!isCreate && record.isArchived && (
                 <div className="alert alert-success" style={{ background: 'var(--sti-yellow-dim)', borderColor: 'var(--sti-yellow)', color: 'var(--text-1)' }}>
                     This curriculum is archived{record.archiveReason ? ` — ${record.archiveReason}` : ''}. It stays out of the

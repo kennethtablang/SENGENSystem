@@ -155,6 +155,18 @@ namespace SENGENSystem.Server.Domain
         // "did they take the seat back?" — which it could not while a cancellation was recorded as
         // a request. SlotDropped is the only action that returns a seat to a section.
         SlotCancelled = 73,
-        SlotDropped = 74
+        SlotDropped = 74,
+
+        // Academic history (FR-ENL-01/06) — the Registrar recording how a subject a student sat for
+        // ended. Kept apart from the transferee evaluation, which rules on subjects passed
+        // *elsewhere*: these are subjects taken here, and they are what prerequisites, repeats, and
+        // the year-level ladder are answered from.
+        AcademicRecordSaved = 75,
+        AcademicRecordImported = 76,
+
+        // A prerequisite gate refused a seat request or an approval. Audited because it is the one
+        // enlistment refusal a student cannot resolve themselves — the trail is how the Registrar
+        // finds out the rule fired and whether the history behind it is wrong.
+        PrerequisiteBlocked = 77
     }
 }

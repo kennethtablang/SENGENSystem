@@ -1,101 +1,55 @@
-const TOKEN_KEY = 'sengen.token';
+import { apiFetch } from '../shell/apiClient';
+import { getToken } from '../shell/token';
 
-export function getToken() {
-    return localStorage.getItem(TOKEN_KEY);
+/* Token storage moved to `shell/token.js` to break the import cycle with the shared client — see
+   that file. Re-exported here because seven modules already import these from this path. */
+export { getToken, setToken, clearToken } from '../shell/token';
+
+/* Every call below passes `auth: false`. These are the endpoints you use *to get* a token, so
+   sending one would be meaningless — and, more importantly, the shared client's global 401 handling
+   is deliberately switched off for `/api/auth/*`: login answers a wrong password with a 401, and
+   redirecting on that would replace "Invalid email or password" with a page reload, leaving the
+   user unable to discover they simply mistyped it. */
+
+export function registerAccount(data) {
+    return apiFetch('/api/auth/register', { method: 'POST', body: data, auth: false });
 }
 
-export function setToken(token) {
-    localStorage.setItem(TOKEN_KEY, token);
+export function loginAccount(data) {
+    return apiFetch('/api/auth/login', { method: 'POST', body: data, auth: false });
 }
 
-export function clearToken() {
-    localStorage.removeItem(TOKEN_KEY);
+export function verifyTwoFactor(data) {
+    return apiFetch('/api/auth/2fa/verify', { method: 'POST', body: data, auth: false });
 }
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        fieldErrors: payload?.errors || {}
-    };
-}
-
-export async function registerAccount(data) {
-    const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+export function resendTwoFactor(challengeToken) {
+    return apiFetch('/api/auth/2fa/resend', {
+        method: 'POST', body: { challengeToken }, auth: false
     });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
 }
 
-export async function loginAccount(data) {
-    const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
+export function forgotPassword(email) {
+    return apiFetch('/api/auth/forgot-password', { method: 'POST', body: { email }, auth: false });
 }
 
-export async function verifyTwoFactor(data) {
-    const response = await fetch('/api/auth/2fa/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
+export function resetPassword(data) {
+    return apiFetch('/api/auth/reset-password', { method: 'POST', body: data, auth: false });
 }
 
-export async function resendTwoFactor(challengeToken) {
-    const response = await fetch('/api/auth/2fa/resend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeToken })
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
+export function confirmEmailChange(token) {
+    return apiFetch('/api/profile/email/confirm', { method: 'POST', body: { token }, auth: false });
 }
 
-export async function forgotPassword(email) {
-    const response = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
-
-export async function resetPassword(data) {
-    const response = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
-
-export async function confirmEmailChange(token) {
-    const response = await fetch('/api/profile/email/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
-
+/**
+ * Resolves the signed-in user, or null.
+ *
+ * Deliberately swallows every failure rather than throwing: this runs on app start to decide
+ * whether there is a session at all, and a 401 here is the ordinary "not signed in" answer, not an
+ * error. It bypasses the shared client for that reason — `apiFetch` would clear the token and
+ * redirect to login, which is exactly right everywhere else and exactly wrong on the call whose
+ * job is to find out whether we are logged in.
+ */
 export async function fetchCurrentUser() {
     const token = getToken();
     if (!token) return null;

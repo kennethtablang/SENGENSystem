@@ -143,7 +143,7 @@ export default function SubjectModal({ record, curriculumId, candidates, onClose
 
     return (
         <SetupModal title={isCreate ? 'New subject' : 'Edit subject'} onClose={onClose} footer={footer} className="modal-lg">
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             {!isCreate && record.isArchived && (
                 <div className="alert alert-success" style={{ background: 'var(--sti-yellow-dim)', borderColor: 'var(--sti-yellow)', color: 'var(--text-1)' }}>
                     This subject is archived{record.archiveReason ? ` — ${record.archiveReason}` : ''}. It stays out of

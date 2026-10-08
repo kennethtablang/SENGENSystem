@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.Reports.Shared;
+using SENGENSystem.Server.Common;
 
 namespace SENGENSystem.Server.Features.Reports.RoomGrid
 {
@@ -61,7 +62,7 @@ namespace SENGENSystem.Server.Features.Reports.RoomGrid
                 .Where(a => a.TimeSlot is not null)
                 .ToList();
 
-            var bytes = Build(semester, rooms, meetings, DateTime.Now.DayOfWeek);
+            var bytes = Build(semester, rooms, meetings, InstitutionClock.Now.DayOfWeek);
             return Results.File(bytes, ReportsEndpoints.XlsxContentType, "sengen-room-grid-schedule.xlsx");
         }
 
@@ -104,7 +105,7 @@ namespace SENGENSystem.Server.Features.Reports.RoomGrid
             sheet.Cell(TitleRow, 1).Style.Font.FontSize = 14;
             sheet.Cell(SubtitleRow, 1).Value =
                 $"{semester.Name} · {Hhmm(GridStartMinutes)}–{Hhmm(GridEndMinutes)}"
-                + $" · generated {DateTime.Now:dd MMM yyyy HH:mm}";
+                + $" · generated {InstitutionClock.Now:dd MMM yyyy HH:mm}";
             sheet.Cell(SubtitleRow, 1).Style.Font.Italic = true;
 
             if (isToday)

@@ -9,6 +9,7 @@ import { confirmAction } from '../shell/confirm';
 import { humanize, formatPHT } from '../registration/options';
 import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
+import { useModalFocus } from '../shell/useModalFocus';
 import '../registration/registration.css';
 import './evaluation.css';
 
@@ -113,7 +114,8 @@ export default function TransfereeEvaluationPage() {
             </header>
 
             {alert && (
-                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>
+                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>
                     <p>{alert.text}</p>
                     {alert.reasons?.length > 0 && (
                         <ul className="eval-reasons">
@@ -236,15 +238,13 @@ function EvaluationSheet({ registrationId, onClose, onChanged, onAlert }) {
     }, [registrationId]);
 
     // Esc closes, matching every other modal on the system.
+    // Esc, the focus trap, and returning focus to the row action that opened this sheet.
+    const dialogRef = useModalFocus({ onEscape: onClose, enabled: !busy });
+
     useEffect(() => {
-        const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose(); };
-        window.addEventListener('keydown', onKey);
         document.body.style.overflow = 'hidden';
-        return () => {
-            window.removeEventListener('keydown', onKey);
-            document.body.style.overflow = '';
-        };
-    }, [busy, onClose]);
+        return () => { document.body.style.overflow = ''; };
+    }, []);
 
     // Live totals from the local draft, so crediting a subject moves the units and the derived
     // year level immediately — the Registrar sees the consequence of the decision as they make it.
@@ -408,6 +408,7 @@ function EvaluationSheet({ registrationId, onClose, onChanged, onAlert }) {
     return createPortal(
         <div className="modal-overlay" onClick={() => !busy && onClose()} role="presentation">
             <div
+                ref={dialogRef}
                 className="modal eval-modal"
                 role="dialog" aria-modal="true" aria-label="Transferee evaluation"
                 onClick={e => e.stopPropagation()}
@@ -418,7 +419,7 @@ function EvaluationSheet({ registrationId, onClose, onChanged, onAlert }) {
                 </header>
 
                 <div className="modal-body">
-                    {error && <div className="alert">{error}</div>}
+                    {error && <div className="alert" role="alert">{error}</div>}
                     {!sheet ? (
                         <p className="reg-empty">Loading the curriculum…</p>
                     ) : (
@@ -451,7 +452,7 @@ function EvaluationSheet({ registrationId, onClose, onChanged, onAlert }) {
                                     </div>
 
                                     {completed && (
-                                        <div className="alert alert-success eval-done">
+                                        <div className="alert alert-success eval-done" role="status">
                                             Completed {formatPHT(sheet.evaluatedAtUtc)} — entering as{' '}
                                             {yearLabel(sheet.assignedYearLevel)}. Reopen to correct it.
                                         </div>

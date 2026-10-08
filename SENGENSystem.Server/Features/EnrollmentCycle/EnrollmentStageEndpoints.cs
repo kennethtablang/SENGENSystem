@@ -13,19 +13,9 @@ namespace SENGENSystem.Server.Features.EnrollmentCycle
 
     public static class EnrollmentStageEndpoints
     {
-        /// <summary>
-        /// The cycle in order. Advancing means "the next one along this list". Registration (the
-        /// SIS) comes first: a student registers, then submits admission documents (which may keep
-        /// arriving even after enlistment opens), then enlists in subjects.
-        /// </summary>
-        private static readonly EnrollmentStage[] Order =
-        [
-            EnrollmentStage.Preparation,
-            EnrollmentStage.Registration,
-            EnrollmentStage.DocumentSubmission,
-            EnrollmentStage.Enlistment,
-            EnrollmentStage.Closed
-        ];
+        // The order and the wording live on EnrollmentCyclePolicy, because the slices that now
+        // *enforce* the stage need the same two answers this screen shows.
+        private static EnrollmentStage[] Order => EnrollmentCyclePolicy.Order;
 
         public static IEndpointRouteBuilder MapEnrollmentStage(this IEndpointRouteBuilder app)
         {
@@ -151,15 +141,6 @@ namespace SENGENSystem.Server.Features.EnrollmentCycle
             };
         }
 
-        /// <summary>Display names for the stages — the API owns the wording so every screen agrees.</summary>
-        private static string Label(EnrollmentStage stage) => stage switch
-        {
-            EnrollmentStage.Preparation => "Preparation",
-            EnrollmentStage.DocumentSubmission => "Document submission",
-            EnrollmentStage.Registration => "Registration",
-            EnrollmentStage.Enlistment => "Subject enlistment",
-            EnrollmentStage.Closed => "Enrollment closed",
-            _ => stage.ToString()
-        };
+        private static string Label(EnrollmentStage stage) => EnrollmentCyclePolicy.Label(stage);
     }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useModalFocus } from '../shell/useModalFocus';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../auth/useAuth';
 import { listUsers, createUser, updateUser, setUserActive, resetUserPassword } from './api';
@@ -49,12 +50,13 @@ function UserModal({ mode, user, currentUserId, actorRole, onClose, onChanged })
     const [pwBusy, setPwBusy] = useState(false);
     const [statusBusy, setStatusBusy] = useState(false);
 
+    // Esc, the focus trap, and returning focus to the row action that opened this.
+    const dialogRef = useModalFocus({ onEscape: onClose });
+
     useEffect(() => {
-        const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-        window.addEventListener('keydown', onKey);
         document.body.style.overflow = 'hidden';
-        return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
-    }, [onClose]);
+        return () => { document.body.style.overflow = ''; };
+    }, []);
 
     const set = (f) => (e) => setForm(prev => ({ ...prev, [f]: e.target.value }));
     const err = (name) => fieldErrors[name]?.[0];
@@ -121,14 +123,14 @@ function UserModal({ mode, user, currentUserId, actorRole, onClose, onChanged })
 
     return createPortal(
         <div className="modal-overlay" onClick={onClose} role="presentation">
-            <div className="modal" role="dialog" aria-modal="true" aria-labelledby="user-modal-title" onClick={e => e.stopPropagation()}>
+            <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby="user-modal-title" onClick={e => e.stopPropagation()}>
                 <header className="modal-head">
                     <h2 id="user-modal-title">{isCreate ? 'New user' : 'Edit user'}</h2>
                     <button type="button" className="modal-close" onClick={onClose} aria-label="Close">×</button>
                 </header>
 
                 <div className="modal-body">
-                    {error && <div className="alert">{error}</div>}
+                    {error && <div className="alert" role="alert">{error}</div>}
 
                     <form id="user-form" onSubmit={save} noValidate>
                         <div className="field-row">
@@ -298,7 +300,7 @@ function UserManagementPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="users-empty">Loading…</p>

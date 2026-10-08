@@ -157,13 +157,25 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                 return ScheduleGenerationResult.Fail(emptyDomainReasons, 0);
             }
 
-            // ---- Pigeonhole feasibility. One faculty member — or one student cohort — can
-            // occupy at most one time slot at a time, so needing more meetings than there are
-            // slots is impossible no matter how the search branches. Counted in meetings, not
-            // sections, because a lecture-laboratory subject needs two of them. Catching it here
-            // costs one pass and replaces a 20-second doomed search with a sentence that names
-            // the problem.
+            // ---- Pigeonhole feasibility. One faculty member — or one student cohort — can occupy
+            // at most one time at once, so demand exceeding the week's supply is impossible no
+            // matter how the search branches. Catching it here costs one pass and replaces a
+            // 20-second doomed search with a sentence that names the problem.
+            //
+            // Measured two ways, because counting meetings alone is not enough. Meetings are counted
+            // (a lecture-laboratory subject is two of them, not one), *and* so are minutes: a 3-hour
+            // laboratory consumes far more of a member's week than a 90-minute lecture, so two of
+            // them against three 90-minute periods is impossible while still passing "2 meetings ≤ 3
+            // slots". That case used to reach the search and fail there, which was correct but slow.
+            //
+            // Both tests are necessary conditions, never sufficient ones — they under-detect rather
+            // than over-detect. Minutes in particular ignore that a block anchored at a period start
+            // may straddle the next period, so real capacity is a little lower than the raw total.
+            // Erring that way is deliberate: a pre-check that rejected a feasible timetable would be
+            // far worse than one that occasionally lets an impossible one through to the search.
+            var totalSlotMinutes = problem.TimeSlots.Sum(t => t.EndMinutes - t.StartMinutes);
             var pigeonhole = new List<string>();
+
             foreach (var byFaculty in problem.Sections.GroupBy(s => s.FacultyProfileId))
             {
                 var count = byFaculty.Count();
@@ -173,8 +185,20 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                         $"{facultyById[byFaculty.Key].Label} is allocated {count} class meetings but only " +
                         $"{problem.TimeSlots.Count} time slots exist — they cannot all be placed. " +
                         "Add time slots or move sections to another member.");
+                    continue;
+                }
+
+                var requiredMinutes = byFaculty.Sum(s => s.RequiredMinutes);
+                if (requiredMinutes > totalSlotMinutes)
+                {
+                    pigeonhole.Add(
+                        $"{facultyById[byFaculty.Key].Label} is allocated {Hours(requiredMinutes)} of teaching " +
+                        $"across {count} class meeting(s), but the whole timetable only offers " +
+                        $"{Hours(totalSlotMinutes)} — they cannot all be placed. Add time slots or move " +
+                        "sections to another member.");
                 }
             }
+
             foreach (var byCohort in problem.Sections.GroupBy(s => s.CohortKey, StringComparer.OrdinalIgnoreCase))
             {
                 var count = byCohort.Count();
@@ -183,6 +207,16 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
                     pigeonhole.Add(
                         $"Cohort {byCohort.Key} has {count} class meetings but only {problem.TimeSlots.Count} " +
                         "time slots exist — they cannot all be placed without a clash.");
+                    continue;
+                }
+
+                var requiredMinutes = byCohort.Sum(s => s.RequiredMinutes);
+                if (requiredMinutes > totalSlotMinutes)
+                {
+                    pigeonhole.Add(
+                        $"Cohort {byCohort.Key} has {Hours(requiredMinutes)} of class across {count} " +
+                        $"meeting(s), but the whole timetable only offers {Hours(totalSlotMinutes)} — " +
+                        "they cannot all be placed without a clash.");
                 }
             }
             if (pigeonhole.Count > 0)
@@ -428,6 +462,9 @@ namespace SENGENSystem.Server.Features.Scheduling.Engine
         /// <see cref="TimeSlot"/>s (new ids); the endpoint persists each as an on-demand period,
         /// the same way the manual board does.
         /// </summary>
+        /// <summary>Minutes as hours for a diagnostic — "4.5 hours" reads better than "270 minutes".</summary>
+        private static string Hours(int minutes) => $"{minutes / 60.0:0.#} hours";
+
         private static List<TimeSlot> BuildContiguousBlocks(IReadOnlyList<TimeSlot> baseSlots, int requiredMinutes)
         {
             var blocks = new List<TimeSlot>();

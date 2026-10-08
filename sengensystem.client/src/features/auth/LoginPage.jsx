@@ -91,7 +91,7 @@ function LoginPage() {
                         We emailed a 6-digit sign-in code to <strong>{form.email}</strong>. It expires in 10 minutes.
                     </p>
 
-                    {error && <div className="alert">{error}</div>}
+                    {error && <div className="alert" role="alert">{error}</div>}
 
                     <div className="field">
                         <label htmlFor="code">Sign-in code</label>
@@ -137,11 +137,11 @@ function LoginPage() {
                 <p className="auth-subtitle">Use your SEN-GEN account email.</p>
 
                 {justRegistered && (
-                    <div className="alert alert-success">
+                    <div className="alert alert-success" role="status">
                         Account created. Sign in to continue.
                     </div>
                 )}
-                {error && <div className="alert">{error}</div>}
+                {error && <div className="alert" role="alert">{error}</div>}
 
                 <div className="field">
                     <label htmlFor="email">Email</label>

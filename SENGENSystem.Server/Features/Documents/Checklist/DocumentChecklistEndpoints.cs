@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Paging;
@@ -20,15 +21,24 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         string Label,
         string Status,
         bool GatesAuthorization,
-        IReadOnlyList<string> Statuses)
+        IReadOnlyList<string> Statuses,
+        // Who last decided this row and when (FR-DOC-03). Both null for a paper nobody has ruled on
+        // yet, which is the honest reading of a freshly seeded checklist rather than a missing value.
+        string? UpdatedAtUtc,
+        string? VerifiedBy)
     {
-        public static ChecklistDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
+        public static ChecklistDocumentDto From(
+            RegistrationDocument d, RequirementCatalog catalog, IReadOnlyDictionary<Guid, string> verifiers) =>
             new(d.Id,
                 d.RequirementCode,
                 catalog.Label(d.RequirementCode),
                 d.Status.ToString(),
                 catalog.GatesAuthorization(d.RequirementCode),
-                catalog.StatusesFor(d.RequirementCode).Select(s => s.ToString()).ToList());
+                catalog.StatusesFor(d.RequirementCode).Select(s => s.ToString()).ToList(),
+                d.UpdatedAtUtc is { } at
+                    ? DateTime.SpecifyKind(at, DateTimeKind.Utc).ToString("o")
+                    : null,
+                d.VerifiedByUserId is { } by ? verifiers.GetValueOrDefault(by) : null);
     }
 
     public record ChecklistRowDto(
@@ -46,7 +56,8 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         IReadOnlyList<string> MissingAuthorizationRequirements,
         IReadOnlyList<ChecklistDocumentDto> Documents)
     {
-        public static ChecklistRowDto From(StudentRegistration r, RequirementCatalog catalog)
+        public static ChecklistRowDto From(
+            StudentRegistration r, RequirementCatalog catalog, IReadOnlyDictionary<Guid, string> verifiers)
         {
             var documents = DocumentChecklist.Applicable(r, catalog);
             return new(
@@ -64,7 +75,7 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 DocumentChecklist.MissingAuthorizationRequirements(documents, catalog),
                 documents
                     .OrderBy(d => catalog.Order(d.RequirementCode))
-                    .Select(d => ChecklistDocumentDto.From(d, catalog))
+                    .Select(d => ChecklistDocumentDto.From(d, catalog, verifiers))
                     .ToList());
         }
     }
@@ -182,7 +193,19 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 .ToPagedAsync(PageSpec.From(page, pageSize), cancellationToken);
 
             var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
-            var list = paged.Items.Select(r => ChecklistRowDto.From(r, catalog)).ToList();
+
+            // Names for whoever decided the rows on this page. Resolved from the ids actually
+            // present rather than by joining every user — a term's checklists are worked by a
+            // handful of officers, so this is a short lookup however long the board gets.
+            var verifierIds = paged.Items
+                .SelectMany(r => r.Documents)
+                .Select(d => d.VerifiedByUserId)
+                .OfType<Guid>()
+                .Distinct()
+                .ToList();
+            var verifiers = await VerifierNamesAsync(db, verifierIds, cancellationToken);
+
+            var list = paged.Items.Select(r => ChecklistRowDto.From(r, catalog, verifiers)).ToList();
 
             // Counted in SQL across the whole board — not this page, and not the current view.
             var completeCount = await baseQuery
@@ -209,6 +232,7 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         private static async Task<IResult> UpdateStatusAsync(
             Guid documentId,
             UpdateDocumentStatusRequest request,
+            ClaimsPrincipal principal,
             AppDbContext db,
             AuditLog audit,
             CancellationToken cancellationToken)
@@ -249,6 +273,16 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             {
                 var previous = document.Status;
                 document.Status = status;
+                // FR-DOC-03: the row now carries its own provenance. The audit entry below says the
+                // same thing in prose, but it cannot be joined back to this row — so the board could
+                // show a paper as received with nothing on the row itself saying who had decided
+                // that, or when. Set together, on the one path that changes a status.
+                document.UpdatedAtUtc = DateTime.UtcNow;
+                document.VerifiedByUserId =
+                    Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier),
+                        out var officerId) && officerId != Guid.Empty
+                        ? officerId
+                        : null;
                 audit.Record(AuditAction.DocumentChecklistUpdated,
                     $"Set {catalog.Label(document.RequirementCode)} of {registration.StudentNumber} " +
                     $"from {previous} to {status}.",
@@ -261,6 +295,8 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             {
                 documentId = document.Id,
                 status = document.Status.ToString(),
+                updatedAtUtc = Iso(document.UpdatedAtUtc),
+                verifiedBy = await VerifierNameAsync(db, document.VerifiedByUserId, cancellationToken),
                 isComplete = DocumentChecklist.IsComplete(applicable),
                 submittedCount = DocumentChecklist.SubmittedCount(applicable),
                 totalCount = applicable.Count,
@@ -268,6 +304,31 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                     DocumentChecklist.MissingAuthorizationRequirements(applicable, catalog)
             });
         }
+
+        /// <summary>
+        /// Display names for the staff who decided a set of checklist rows. A user who has since
+        /// been deleted simply drops out of the map, and the row shows a timestamp with no name
+        /// rather than failing — the decision still happened.
+        /// </summary>
+        private static async Task<Dictionary<Guid, string>> VerifierNamesAsync(
+            AppDbContext db, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken)
+        {
+            if (userIds.Count == 0) return [];
+            return await db.Users.AsNoTracking()
+                .Where(u => userIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.FirstName + " " + u.LastName, cancellationToken);
+        }
+
+        private static async Task<string?> VerifierNameAsync(
+            AppDbContext db, Guid? userId, CancellationToken cancellationToken)
+        {
+            if (userId is not { } id) return null;
+            var names = await VerifierNamesAsync(db, [id], cancellationToken);
+            return names.GetValueOrDefault(id);
+        }
+
+        private static string? Iso(DateTime? value) =>
+            value is { } v ? DateTime.SpecifyKind(v, DateTimeKind.Utc).ToString("o") : null;
 
         /// <summary>Reader-friendly name for a status, for messages the officer sees.</summary>
         private static string Label(DocumentStatus status) => status switch

@@ -47,7 +47,7 @@ function ChangeEmailModal({ currentEmail, onClose }) {
 
                 <div className="modal-body">
                     {sentTo ? (
-                        <div className="alert alert-success">
+                        <div className="alert alert-success" role="status">
                             Confirmation link sent to <strong>{sentTo}</strong>. Your email changes the
                             moment you open it — until then, keep signing in with your current address.
                         </div>
@@ -93,7 +93,7 @@ function ChangeEmailModal({ currentEmail, onClose }) {
                                 {fieldErrors.confirmEmail && <p className="field-error">{fieldErrors.confirmEmail[0]}</p>}
                             </div>
 
-                            {error && <div className="alert">{error}</div>}
+                            {error && <div className="alert" role="alert">{error}</div>}
                         </>
                     )}
                 </div>

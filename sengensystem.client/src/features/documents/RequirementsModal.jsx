@@ -150,7 +150,7 @@ export default function RequirementsModal({ onClose }) {
 
     return (
         <SetupModal title="Admission requirements" onClose={onClose} footer={footer} className="req-modal">
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             <p className="req-lead">
                 These are the papers the Admission Office collects. Choose which programs and student types

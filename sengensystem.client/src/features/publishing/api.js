@@ -1,31 +1,9 @@
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        fieldErrors: payload?.errors || {}
-    };
-}
-
-async function authRequest(url, { method = 'GET', body } = {}) {
-    const response = await fetch(url, {
-        method,
-        headers: {
-            ...(body ? { 'Content-Type': 'application/json' } : {}),
-            Authorization: `Bearer ${getToken()}`
-        },
-        ...(body ? { body: JSON.stringify(body) } : {})
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
+/* Every call here goes through the shared client — one place for the auth header, the
+   ProblemDetails error shape, and the global 401 handling that signs a lapsed session out rather
+   than failing with a generic message on a page that will never work again. */
+const authRequest = apiFetch;
 
 // Full (draft + published) schedule for the active semester — powers the pre-publish review.
 export function getFullSchedule(semesterId) {

@@ -2,17 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import { getMySchedule } from './api';
-import { REF_DATES, toIso, hhmm, fmtHours, subjectColor, slotLabelFormat } from './calendarUtils';
+import { DAY_NAMES, REF_DATES, toIso, hhmm, fmtHours, subjectColor, slotLabelFormat } from './calendarUtils';
+import ScheduleTooltip from './ScheduleTooltip';
 import './board.css';
 import './myschedule.css';
-
-const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // FR-FAC-05: the signed-in user views their own finalized weekly timetable (read-only).
 export default function SchedulePage() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    /* Hover detail, the same card the Schedule board shows. It was board-only, which left the view
+       most people actually use — their own week — with no way to see a class's room, section, or
+       seat count without cross-referencing the day list below. */
+    const [tooltip, setTooltip] = useState(null);
 
     useEffect(() => {
         let active = true;
@@ -75,7 +78,7 @@ export default function SchedulePage() {
                 )}
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="myx-empty">Loading your schedule…</p>
@@ -110,6 +113,12 @@ export default function SchedulePage() {
                             editable={false}
                             selectable={false}
                             events={events}
+                            eventMouseEnter={(info) => setTooltip({
+                                x: info.jsEvent.clientX,
+                                y: info.jsEvent.clientY,
+                                e: info.event.extendedProps
+                            })}
+                            eventMouseLeave={() => setTooltip(null)}
                             eventContent={(arg) => {
                                 const e = arg.event.extendedProps;
                                 return (
@@ -149,6 +158,10 @@ export default function SchedulePage() {
                         ))}
                     </aside>
                 </div>
+            )}
+
+            {tooltip && (
+                <ScheduleTooltip x={tooltip.x} y={tooltip.y} entry={tooltip.e} />
             )}
         </div>
     );

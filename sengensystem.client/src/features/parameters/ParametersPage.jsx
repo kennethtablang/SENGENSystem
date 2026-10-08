@@ -87,9 +87,9 @@ function TimeSlotModal({ record, onClose, onChanged }) {
 
     return (
         <SetupModal title={isCreate ? 'New time slot' : 'Edit time slot'} onClose={onClose} footer={footer}>
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             {!isCreate && record.inUse && (
-                <div className="alert">
+                <div className="alert" role="alert">
                     This slot is used in the published schedule, so it can’t be changed or removed.
                     Add a new slot instead.
                 </div>
@@ -472,7 +472,7 @@ export default function ParametersPage() {
     const refresh = () => setReload(r => r + 1);
 
     if (loading) return <div className="setup-page"><p className="setup-empty">Loading…</p></div>;
-    if (error) return <div className="setup-page"><div className="alert">{error}</div></div>;
+    if (error) return <div className="setup-page"><div className="alert" role="alert">{error}</div></div>;
     if (!data) return null;
 
     const slotsByDay = DAYS

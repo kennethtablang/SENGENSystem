@@ -48,7 +48,7 @@ export default function ArchivedModal({ curricula, subjects, onClose, onRestored
             className="modal-lg"
             footer={<button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>}
         >
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {isEmpty ? (
                 <p className="arch-empty">

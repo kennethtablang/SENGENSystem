@@ -1,31 +1,8 @@
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        fieldErrors: payload?.errors || {}
-    };
-}
-
-async function authPut(url, data) {
-    const response = await fetch(url, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${getToken()}`
-        },
-        body: JSON.stringify(data)
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
+/* Every call goes through the shared client — see academic/api.js for the reasoning. */
+const authPut = (url, data) => apiFetch(url, { method: 'PUT', body: data });
+const authPost = (url, data) => apiFetch(url, { method: 'POST', body: data ?? {} });
 
 export function updateProfile(data) {
     return authPut('/api/profile', data);
@@ -33,19 +10,6 @@ export function updateProfile(data) {
 
 export function changePassword(data) {
     return authPut('/api/profile/password', data);
-}
-
-async function authPost(url, data) {
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${getToken()}`
-        },
-        body: JSON.stringify(data ?? {})
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
 }
 
 export function requestEmailChange(data) {

@@ -1,0 +1,86 @@
+/* The crash screen. Deliberately plain and self-contained: it renders when the app has already
+   failed once, so it leans on nothing that could itself be broken — no layout shell, no icons, no
+   context providers, and only tokens that index.css defines at :root. */
+
+.crash {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100svh;
+  padding: 2rem 1rem;
+  background: var(--bg, #f6f7f9);
+}
+
+.crash-card {
+  width: 100%;
+  max-width: 44rem;
+  padding: 1.5rem;
+  border: 1px solid var(--line, #dfe3e8);
+  border-top: 4px solid var(--sti-blue, #039);
+  border-radius: var(--radius, 8px);
+  background: var(--surface, #fff);
+}
+
+.crash-card h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.25rem;
+  color: var(--text-1, #14181f);
+}
+
+.crash-card > p {
+  margin: 0 0 1.1rem;
+  max-width: 62ch;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text-2, #414a56);
+}
+
+.crash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+}
+
+/* The anchor sits beside two real buttons, so it has to match their box rather than read as a link
+   dropped into a button row. */
+.crash-actions .btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.crash-detail {
+  border-top: 1px solid var(--line, #dfe3e8);
+  padding-top: 0.8rem;
+  font-size: 0.8rem;
+  color: var(--text-3, #6b7480);
+}
+
+.crash-detail summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+/* Long stacks scroll inside the panel — the page itself must never scroll sideways. */
+.crash-detail pre {
+  margin: 0 0 0.6rem;
+  padding: 0.7rem;
+  max-height: 16rem;
+  overflow: auto;
+  border-radius: var(--radius, 8px);
+  background: var(--surface-2, #f2f4f7);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-2, #414a56);
+}
+
+@media (prefers-color-scheme: dark) {
+  .crash {
+    background: var(--bg, #14181f);
+  }
+}

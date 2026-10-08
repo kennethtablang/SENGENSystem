@@ -60,7 +60,7 @@ export default function ProspectusPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {programs === null ? (
                 <p className="reg-empty">Loading curricula…</p>

@@ -19,7 +19,9 @@ namespace SENGENSystem.Server.Features.Auth.Login
     {
         public static IEndpointRouteBuilder MapLogin(this IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/auth/login", HandleAsync).AllowAnonymous();
+            app.MapPost("/api/auth/login", HandleAsync)
+                .AllowAnonymous()
+                .RequireRateLimiting(SENGENSystem.Server.Program.LoginRateLimitPolicy);
             return app;
         }
 
@@ -57,14 +59,45 @@ namespace SENGENSystem.Server.Features.Auth.Login
                 return Results.Json(new { message = "Invalid email or password." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
+            // Checked before the password is even verified: while a lockout is in force there is no
+            // answer a guesser can extract, correct or not. See LoginThrottle for why this exists
+            // alongside the IP rate limiter rather than instead of it.
+            var now = DateTime.UtcNow;
+            if (user.IsLockedOut(now))
+            {
+                audit.RecordFor(user, AuditAction.LoginFailed,
+                    "Sign-in refused — account is temporarily locked after repeated failures.",
+                    "User", user.Id.ToString());
+                await db.SaveChangesAsync(cancellationToken);
+                return Results.Json(
+                    new { message = LoginThrottle.Message(user.LockedOutUntilUtc!.Value, now) },
+                    statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
             var result = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
             if (result == PasswordVerificationResult.Failed)
             {
+                var justLocked = LoginThrottle.RegisterFailure(user, now);
                 audit.RecordFor(user, AuditAction.LoginFailed,
-                    "Failed sign-in — incorrect password.", "User", user.Id.ToString());
+                    justLocked
+                        ? $"Failed sign-in — incorrect password. Account locked for "
+                          + $"{LoginThrottle.LockoutDuration.TotalMinutes:N0} minutes after "
+                          + $"{LoginThrottle.MaxAttempts} consecutive failures."
+                        : "Failed sign-in — incorrect password.",
+                    "User", user.Id.ToString());
                 await db.SaveChangesAsync(cancellationToken);
-                return Results.Json(new { message = "Invalid email or password." }, statusCode: StatusCodes.Status401Unauthorized);
+
+                return justLocked
+                    ? Results.Json(
+                        new { message = LoginThrottle.Message(user.LockedOutUntilUtc!.Value, now) },
+                        statusCode: StatusCodes.Status429TooManyRequests)
+                    : Results.Json(new { message = "Invalid email or password." },
+                        statusCode: StatusCodes.Status401Unauthorized);
             }
+
+            // The password was right, so the failure streak ends here — a typo before a correct
+            // entry must not carry over and lock the account on some later day.
+            LoginThrottle.RegisterSuccess(user);
 
             if (result == PasswordVerificationResult.SuccessRehashNeeded)
             {

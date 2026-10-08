@@ -22,6 +22,8 @@ import TermActivationsPage from './features/registration/TermActivationsPage';
 import TermActivationControlPage from './features/registration/TermActivationControlPage';
 import AssignStudentNumberPage from './features/registration/AssignStudentNumberPage';
 import TransfereeEvaluationPage from './features/evaluation/TransfereeEvaluationPage';
+import AcademicRecordsPage from './features/academic-records/AcademicRecordsPage';
+import OutboxPage from './features/outbox/OutboxPage';
 import ProspectusPage from './features/evaluation/ProspectusPage';
 import MySubjectsPage from './features/evaluation/MySubjectsPage';
 import UserManagementPage from './features/users/UserManagementPage';
@@ -59,11 +61,11 @@ const builtRoutes = new Set([
     '/', '/profile', '/schedule', '/scheduling/generate', '/scheduling/review', '/scheduling/board', '/audit',
     '/registrations', '/term-activations', '/term-activation-control',
     '/assign-student-number', '/users', '/parameters',
-    '/evaluate-transferee', '/prospectus', '/my-subjects',
+    '/evaluate-transferee', '/academic-records', '/prospectus', '/my-subjects',
     '/school-years', '/semesters', '/buildings', '/rooms', '/class-sections', '/subjects', '/faculty-load',
     '/publishing', '/documents', '/pre-authorization', '/enlistment', '/approvals', '/pre-enrollment', '/reports',
     '/settings', '/help', '/notifications', '/reports/faculty-load', '/analytics/room-utilization',
-    '/survey-admin', '/survey-recipients', '/survey'
+    '/survey-admin', '/survey-recipients', '/survey', '/outbox'
 ]);
 
 function RequireAuth({ children }) {
@@ -117,10 +119,16 @@ function App() {
                 <Route path="/assign-student-number" element={<AssignStudentNumberPage />} />
                 {/* FR-EVAL: the Registrar rules on a transferee's credits — the gate before enlistment */}
                 <Route path="/evaluate-transferee" element={<TransfereeEvaluationPage />} />
+                {/* FR-ENL-01/06: what a student has already taken — what prerequisites, repeats,
+                    and the year-level ladder are answered from */}
+                <Route path="/academic-records" element={<AcademicRecordsPage />} />
                 {/* FR-RPT-05: printable subject listings, for staff and for the student themselves */}
                 <Route path="/prospectus" element={<ProspectusPage />} />
                 <Route path="/my-subjects" element={<MySubjectsPage />} />
                 <Route path="/users" element={<UserManagementPage />} />
+                {/* Operational visibility over transactional email — what went out,
+                    what failed, and a way to requeue it */}
+                <Route path="/outbox" element={<OutboxPage />} />
                 <Route path="/survey-admin" element={<SurveyAdminPage />} />
                 <Route path="/survey-recipients" element={<SurveyRecipientsPage />} />
                 {/* Signed-in participation: the bell notice the Super Admin pushed lands here */}

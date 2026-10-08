@@ -1,0 +1,152 @@
+/* Academic records (FR-ENL-01/06) — the verdict sheet and its bulk-import panel. Builds on
+   evaluation.css, which already styles the curriculum sheet this page reuses; only the parts that
+   differ live here. */
+
+/* The "nothing on file, so the gate is open" notice. Stated where the number is rather than left
+   to be discovered, because an empty backlog is the difference between the prerequisite rule
+   applying and not applying at all. */
+.arec-note {
+  margin-bottom: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--sti-gold, #ffd700);
+  border-radius: var(--radius);
+  background: var(--sti-gold-soft, hsl(45 100% 96%));
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.arec-open-gate {
+  margin-bottom: 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+/* ---- Import panel ---- */
+
+.arec-import {
+  margin-bottom: 0.9rem;
+  padding: 0.8rem 1rem;
+}
+
+.arec-import > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.arec-import h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.arec-import p {
+  margin: 0.15rem 0 0;
+  max-width: 60ch;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.arec-import-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.arec-import-body input[type='file'] {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.arec-report {
+  flex: 1 1 100%;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.arec-report p {
+  margin: 0;
+  color: var(--text-2);
+}
+
+/* Failed rows are the only part of an import report worth reading closely, so they get room to
+   be read rather than being truncated into the summary line. */
+.arec-report ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+/* ---- Sheet ---- */
+
+.arec-term {
+  display: block;
+  margin-bottom: 0.9rem;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.arec-term select {
+  display: block;
+  width: 100%;
+  max-width: 26rem;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.arec-term small {
+  display: block;
+  margin-top: 0.25rem;
+  max-width: 60ch;
+  color: var(--text-3);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.arec-item .eval-item-decide select {
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+/* Prerequisites and earlier attempts sit under the row: context for the verdict being set, not
+   part of the decision itself. */
+.arec-item-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.arec-prereq,
+.arec-attempt {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.arec-prereq {
+  font-weight: 600;
+}

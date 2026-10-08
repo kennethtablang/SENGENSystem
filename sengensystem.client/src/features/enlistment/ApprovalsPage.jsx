@@ -316,7 +316,8 @@ function ApprovalsPage() {
             )}
 
             {alert && (
-                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>
+                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>
                     <p>{alert.text}</p>
                     {alert.reasons?.length > 0 && (
                         <ul className="enl-skipped">

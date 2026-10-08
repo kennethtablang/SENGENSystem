@@ -77,7 +77,13 @@ namespace SENGENSystem.Server.Features.Scheduling.Finalize
                 audit.Record(AuditAction.ScheduleFinalized,
                     $"Finalized the {semester.Name} schedule ({draft.Count} draft row(s)) — locked and ready to publish.",
                     "Semester", semester.Id.ToString());
-                await db.SaveChangesAsync(ct);
+                // Finalizing is a statement about the rows read above — "these are signed off". A
+                // regenerate landing in between would sign off rows the Academic Head never saw, and
+                // the lock they think they applied would be holding a different timetable.
+                if (await ScheduleConcurrency.TrySaveAsync(db, "finalize this schedule", ct) is { } conflict)
+                {
+                    return conflict;
+                }
                 broadcaster.Announce("scheduling");
             }
 
@@ -118,7 +124,10 @@ namespace SENGENSystem.Server.Features.Scheduling.Finalize
             audit.Record(AuditAction.ScheduleReopened,
                 $"Reopened the {semester.Name} schedule for editing ({finalized.Count} row(s) unlocked).",
                 "Semester", semester.Id.ToString());
-            await db.SaveChangesAsync(ct);
+            if (await ScheduleConcurrency.TrySaveAsync(db, "reopen this schedule", ct) is { } reopenConflict)
+            {
+                return reopenConflict;
+            }
             broadcaster.Announce("scheduling");
 
             return Results.Ok(BuildResponse(semester, assignments));

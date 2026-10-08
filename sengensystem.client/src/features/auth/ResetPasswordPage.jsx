@@ -50,7 +50,7 @@ function ResetPasswordPage() {
                         : <>Resetting the password for <strong>{email}</strong>.</>}
                 </p>
 
-                {error && <div className="alert">{error}</div>}
+                {error && <div className="alert" role="alert">{error}</div>}
 
                 {linkBroken ? (
                     <p className="auth-switch">

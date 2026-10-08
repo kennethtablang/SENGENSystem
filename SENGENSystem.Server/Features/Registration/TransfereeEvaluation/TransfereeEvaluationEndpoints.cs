@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Notifications;
+using SENGENSystem.Server.Common.Paging;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 
@@ -19,9 +20,14 @@ namespace SENGENSystem.Server.Features.Registration.TransfereeEvaluation
     {
         public static IEndpointRouteBuilder MapTransfereeEvaluation(this IEndpointRouteBuilder app)
         {
+            // The Registrar owns the ruling and the Admission Officer works the same queue; the
+            // Academic Head is here because the ruling is a curriculum judgement — which of this
+            // catalog's subjects a transferee has already met — and they are the ones who answer
+            // for the curriculum. The two admin roles reach it through the claims transformation.
             var group = app.MapGroup("/api/transferee-evaluations")
                 .RequireAuthorization(policy => policy.RequireRole(
-                    nameof(UserRole.Registrar), nameof(UserRole.AdmissionOfficer), nameof(UserRole.SchoolAdmin)));
+                    nameof(UserRole.Registrar), nameof(UserRole.AdmissionOfficer),
+                    nameof(UserRole.AcademicHead), nameof(UserRole.SchoolAdmin)));
 
             group.MapGet("", ListAsync);
             group.MapGet("{registrationId:guid}", GetSheetAsync);
@@ -34,13 +40,24 @@ namespace SENGENSystem.Server.Features.Registration.TransfereeEvaluation
         // GET /api/transferee-evaluations — the queue. Every transferee registration, with how far
         // their evaluation has got, so "who is waiting on me?" is the first thing the page answers.
         private static async Task<IResult> ListAsync(
-            string? status, string? search, AppDbContext db, CancellationToken ct)
+            string? status, string? search, int? page, int? pageSize, string? sort, string? dir,
+            AppDbContext db, CancellationToken ct)
         {
             var query = db.StudentRegistrations.AsNoTracking()
                 .Where(r => r.StudentType == StudentType.Transferee
                     && r.Status != RegistrationStatus.Rejected)
                 .Include(r => r.Semester)
                 .AsQueryable();
+
+            // The queue is this term's work — matching the sidebar badge, which has always counted
+            // only the active term. Without this the page and its own badge disagree after a
+            // rollover, and the Registrar is shown transferees they settled terms ago. A search
+            // widens to every term so a past evaluation can still be reopened or reprinted.
+            if (string.IsNullOrWhiteSpace(search)
+                && await db.GetActiveSemesterIdAsync(ct) is { } activeSemesterId)
+            {
+                query = query.Where(r => r.SemesterId == activeSemesterId);
+            }
 
             if (!string.IsNullOrWhiteSpace(search))
             {
@@ -52,10 +69,65 @@ namespace SENGENSystem.Server.Features.Registration.TransfereeEvaluation
                     || (r.OfficialStudentNumber != null && r.OfficialStudentNumber.Contains(term)));
             }
 
-            var registrations = await query
-                .OrderByDescending(r => r.CreatedAtUtc)
-                .Take(500)
-                .ToListAsync(ct);
+            // The queue before the status chip narrows it — the headline tallies are counted against
+            // this, so switching the view from "All" to "Completed" cannot change what the term's
+            // outstanding work is reported to be.
+            var baseQuery = query;
+
+            // The evaluation status is a property of the (possibly absent) evaluation row, not of
+            // the registration, so filtering it used to happen in memory after the fetch. Paging
+            // makes that untenable — it would filter one page and report a total that counted the
+            // other statuses too — so the test moves into SQL as a subquery. "Pending" deliberately
+            // includes a transferee with no evaluation row at all: not started is the queue's most
+            // important case, and it has no row to carry a status.
+            if (!string.IsNullOrWhiteSpace(status)
+                && !string.Equals(status, "All", StringComparison.OrdinalIgnoreCase)
+                && Enum.TryParse<TransfereeEvaluationStatus>(status, ignoreCase: true, out var wanted))
+            {
+                query = wanted == TransfereeEvaluationStatus.Pending
+                    ? query.Where(r => !db.TransfereeEvaluations.Any(e =>
+                        e.StudentRegistrationId == r.Id && e.Status != TransfereeEvaluationStatus.Pending))
+                    : query.Where(r => db.TransfereeEvaluations.Any(e =>
+                        e.StudentRegistrationId == r.Id && e.Status == wanted));
+            }
+
+            var desc = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
+            var ordered = (sort?.ToLowerInvariant()) switch
+            {
+                "studentnumber" => desc
+                    ? query.OrderByDescending(r => r.OfficialStudentNumber ?? r.StudentNumber)
+                    : query.OrderBy(r => r.OfficialStudentNumber ?? r.StudentNumber),
+                "fullname" => desc
+                    ? query.OrderByDescending(r => r.LastName).ThenByDescending(r => r.FirstName)
+                    : query.OrderBy(r => r.LastName).ThenBy(r => r.FirstName),
+                "program" => desc ? query.OrderByDescending(r => r.Program) : query.OrderBy(r => r.Program),
+                "yearlevel" => desc ? query.OrderByDescending(r => r.YearLevel) : query.OrderBy(r => r.YearLevel),
+                // The last two live on the evaluation, not the registration, so they sort through a
+                // subquery. A transferee with no evaluation row yet sorts as 0 credited / Pending,
+                // which is what the row displays for them.
+                "creditedunits" => desc
+                    ? query.OrderByDescending(r => db.TransfereeEvaluations
+                        .Where(e => e.StudentRegistrationId == r.Id)
+                        .SelectMany(e => e.Items)
+                        .Where(i => i.Decision == SubjectCreditDecision.Credited)
+                        .Sum(i => i.Subject!.Units))
+                    : query.OrderBy(r => db.TransfereeEvaluations
+                        .Where(e => e.StudentRegistrationId == r.Id)
+                        .SelectMany(e => e.Items)
+                        .Where(i => i.Decision == SubjectCreditDecision.Credited)
+                        .Sum(i => i.Subject!.Units)),
+                "status" => desc
+                    ? query.OrderByDescending(r => db.TransfereeEvaluations
+                        .Where(e => e.StudentRegistrationId == r.Id)
+                        .Select(e => (int)e.Status).FirstOrDefault())
+                    : query.OrderBy(r => db.TransfereeEvaluations
+                        .Where(e => e.StudentRegistrationId == r.Id)
+                        .Select(e => (int)e.Status).FirstOrDefault()),
+                _ => query.OrderByDescending(r => r.CreatedAtUtc)
+            };
+
+            var paged = await ordered.ThenBy(r => r.Id).ToPagedAsync(PageSpec.From(page, pageSize), ct);
+            var registrations = paged.Items;
 
             var ids = registrations.Select(r => r.Id).ToList();
             var evaluations = await db.TransfereeEvaluations.AsNoTracking()
@@ -84,20 +156,22 @@ namespace SENGENSystem.Server.Features.Registration.TransfereeEvaluation
                     Iso(evaluation?.EvaluatedAtUtc));
             });
 
-            if (!string.IsNullOrWhiteSpace(status)
-                && !string.Equals(status, "All", StringComparison.OrdinalIgnoreCase))
-            {
-                rows = rows.Where(r => string.Equals(r.Status, status, StringComparison.OrdinalIgnoreCase));
-            }
-
             var list = rows.ToList();
-            return Results.Ok(new
-            {
-                count = list.Count,
-                pendingCount = list.Count(r => r.Status != nameof(TransfereeEvaluationStatus.Completed)),
-                completedCount = list.Count(r => r.Status == nameof(TransfereeEvaluationStatus.Completed)),
-                evaluations = list
-            });
+
+            // Counted over the whole queue rather than the page — and deliberately against the
+            // *unfiltered* queue (`baseQuery`), because these two are the summary the Registrar
+            // reads to see the term's remaining work, which must not change when they narrow the
+            // view to one status.
+            var completedCount = await baseQuery.CountAsync(r => db.TransfereeEvaluations.Any(e =>
+                e.StudentRegistrationId == r.Id
+                && e.Status == TransfereeEvaluationStatus.Completed), ct);
+            var totalInQueue = await baseQuery.CountAsync(ct);
+
+            var body = new Paged<EvaluationQueueRowDto>(list, paged.Total, paged.Page, paged.PageSize)
+                .ToResponse("evaluations");
+            body["pendingCount"] = totalInQueue - completedCount;
+            body["completedCount"] = completedCount;
+            return Results.Ok(body);
         }
 
         // GET /api/transferee-evaluations/{registrationId} — the sheet: every subject in the

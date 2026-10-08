@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getToken } from '../auth/api';
+import { getToken } from './token';
 import { subscribeToReports } from '../reports/live';
 import { NOTIFICATIONS_CHANGED } from '../notifications/meta';
 import { bellRefreshMs } from '../settings/prefs';
@@ -20,6 +20,11 @@ export function useNavBadges() {
     useEffect(() => {
         let active = true;
 
+        /* Deliberately kept off the shared client, for the same reason `fetchCurrentUser` is: this
+           polls every 60 seconds in the background, and routing its 401 through the global handler
+           would mean a session expiring while the user reads a page yanks them to the login screen
+           mid-sentence, triggered by a request they never made. A badge is best-effort — the next
+           thing they actually click will do the redirect, with their action as the cause. */
         const load = async () => {
             try {
                 const response = await fetch('/api/nav/badges', {

@@ -78,7 +78,8 @@ function TwoFactorCard({ user, updateUser }) {
             </p>
 
             {alert && (
-                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>{alert.text}</div>
+                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>{alert.text}</div>
             )}
 
             {!enabled && stage === 'idle' && (
@@ -158,7 +159,7 @@ function StudentRecordCard() {
         return (
             <section className="card profile-card">
                 <h3>Student record</h3>
-                <div className="alert">{error}</div>
+                <div className="alert" role="alert">{error}</div>
             </section>
         );
     }
@@ -337,7 +338,8 @@ function ProfilePage() {
                     </p>
 
                     {infoAlert && (
-                        <div className={infoAlert.kind === 'success' ? 'alert alert-success' : 'alert'}>
+                        <div className={infoAlert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={infoAlert.kind === 'success' ? 'status' : 'alert'}>
                             {infoAlert.text}
                         </div>
                     )}
@@ -382,7 +384,8 @@ function ProfilePage() {
                     </p>
 
                     {pwAlert && (
-                        <div className={pwAlert.kind === 'success' ? 'alert alert-success' : 'alert'}>
+                        <div className={pwAlert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={pwAlert.kind === 'success' ? 'status' : 'alert'}>
                             {pwAlert.text}
                         </div>
                     )}

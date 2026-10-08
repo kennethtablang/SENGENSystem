@@ -40,8 +40,8 @@ function ConfirmEmailPage() {
                 <p className="auth-subtitle">SEN-GEN account security</p>
 
                 {state.status === 'working' && <p>Confirming your new email address…</p>}
-                {state.status === 'done' && <div className="alert alert-success">{state.message}</div>}
-                {state.status === 'error' && <div className="alert">{state.message}</div>}
+                {state.status === 'done' && <div className="alert alert-success" role="status">{state.message}</div>}
+                {state.status === 'error' && <div className="alert" role="alert">{state.message}</div>}
 
                 <p className="auth-switch" style={{ marginTop: '1rem' }}>
                     {user

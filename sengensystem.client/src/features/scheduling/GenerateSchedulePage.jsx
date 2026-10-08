@@ -122,9 +122,18 @@ function ConstraintWeightsPanel({ weights, slots, disabled, onSaved }) {
         classStartMinutes: w.classStartMinutes ?? 7 * 60
     });
 
-    useEffect(() => {
-        if (weights) setDraft(snapshot(weights));
-    }, [weights]);
+    /* Re-seed the editable draft when the saved weights arrive or change.
+
+       Done during render rather than in an effect — React's "adjust state when a prop changes"
+       pattern, the same one useServerTable uses to reset its page. An effect here fired *after* a
+       render that had already painted the stale draft, so the panel flashed the previous values and
+       React flagged it as a cascading render. Comparing against the object identity we last seeded
+       from keeps this to one extra render pass rather than a loop. */
+    const [seededFrom, setSeededFrom] = useState(null);
+    if (weights && seededFrom !== weights) {
+        setSeededFrom(weights);
+        setDraft(snapshot(weights));
+    }
 
     if (!draft) return null;
 
@@ -587,7 +596,8 @@ function GenerateSchedulePage() {
             </header>
 
             {alert && (
-                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>
+                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>
                     <p>{alert.text}</p>
                     {alert.reasons?.length > 0 && (
                         <ul className="sched-reasons">

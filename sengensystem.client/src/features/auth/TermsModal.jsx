@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalFocus } from '../shell/useModalFocus';
 
 // State lives in the dialog, which mounts fresh every time the modal
 // opens — so "read to the end" is required on every viewing.
@@ -14,27 +15,25 @@ function TermsDialog({ onClose, onAgree }) {
         }
     }, []);
 
+    // Esc, the focus trap, and returning focus to the link that opened this.
+    const dialogRef = useModalFocus({ onEscape: onClose });
+
     useEffect(() => {
         // In case the terms fit without scrolling on very tall screens.
         const raf = requestAnimationFrame(checkScroll);
-
-        const onKey = e => {
-            if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', onKey);
         document.body.style.overflow = 'hidden';
         return () => {
             cancelAnimationFrame(raf);
-            window.removeEventListener('keydown', onKey);
             document.body.style.overflow = '';
         };
-    }, [onClose, checkScroll]);
+    }, [checkScroll]);
 
     // Rendered through a portal to <body> so the fixed overlay is positioned against the viewport
     // — not trapped inside any transformed/animated ancestor (e.g. the SIS form's entrance animation).
     return createPortal(
         <div className="modal-overlay" onClick={onClose} role="presentation">
             <div
+                ref={dialogRef}
                 className="modal"
                 role="dialog"
                 aria-modal="true"

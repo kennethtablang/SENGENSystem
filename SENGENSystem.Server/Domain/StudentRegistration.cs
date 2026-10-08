@@ -117,6 +117,15 @@ namespace SENGENSystem.Server.Domain
         /// <summary>FR-SIS-02: terms-and-conditions acknowledgment, persisted with its timestamp.</summary>
         public DateTime? TermsAcceptedAtUtc { get; set; }
 
+        /// <summary>
+        /// When this enrollee was last chased about missing papers. The reminder sweep had no memory
+        /// at all, so pressing "Send reminders" twice emailed every incomplete student twice — and
+        /// there was nothing to stop a well-meaning officer doing it daily. A minimum interval reads
+        /// off this (see <c>ReminderPolicy</c>); a named single-student reminder deliberately ignores
+        /// it, because chasing one person on purpose is not the thing being guarded against.
+        /// </summary>
+        public DateTime? LastRemindedAtUtc { get; set; }
+
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
         /// <summary>The admission-requirements checklist for this enrollee (FR-DOC).</summary>

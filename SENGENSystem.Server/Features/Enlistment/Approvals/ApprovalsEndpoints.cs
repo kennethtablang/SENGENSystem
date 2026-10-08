@@ -1,9 +1,11 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
+using SENGENSystem.Server.Common.Paging;
 using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.AcademicRecords;
 
 namespace SENGENSystem.Server.Features.Enlistment.Approvals
 {
@@ -50,6 +52,13 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
 
     public record RejectRequest(string? Reason);
 
+    /// <summary>
+    /// FR-ENL-04 reversal: release an already-approved seat. Rejection only applies to a request
+    /// still pending, so before this existed a mis-approval had no undo at all — the seat stayed
+    /// consumed for the rest of the term.
+    /// </summary>
+    public record DropSeatRequest(string? Reason);
+
     // FR-ENL-03 manual override: raise a section's seat cap so a short section can be completed.
     public record OverrideCapacityRequest(int Capacity, string? Reason);
 
@@ -83,6 +92,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             group.MapGet("", ListAsync);
             group.MapPost("{requestId:guid}/approve", ApproveAsync);
             group.MapPost("{requestId:guid}/reject", RejectAsync);
+            group.MapPost("{requestId:guid}/drop", DropAsync);
             group.MapPost("bulk-approve", BulkApproveAsync);
 
             // Overriding the cap is a broader authority than approving (FR-ENL-03) — the Academic
@@ -97,6 +107,10 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
         private static async Task<IResult> ListAsync(
             string? status,
             string? search,
+            int? page,
+            int? pageSize,
+            string? sort,
+            string? dir,
             AppDbContext db,
             CancellationToken cancellationToken)
         {
@@ -129,18 +143,45 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                     || r.Section!.SectionCode.Contains(term));
             }
 
-            var items = await query
-                .OrderBy(r => r.Status == SlotRequestStatus.Requested ? 0 : 1)
-                .ThenByDescending(r => r.RequestedAtUtc)
-                .Take(500)
-                .ToListAsync(cancellationToken);
-
-            return Results.Ok(new
+            var desc = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
+            var ordered = (sort?.ToLowerInvariant()) switch
             {
-                count = items.Count,
-                pendingCount = items.Count(r => r.Status == SlotRequestStatus.Requested),
-                requests = items.Select(ApprovalRowDto.From).ToList()
-            });
+                "studentname" => desc
+                    ? query.OrderByDescending(r => r.StudentRegistration!.LastName)
+                        .ThenByDescending(r => r.StudentRegistration!.FirstName)
+                    : query.OrderBy(r => r.StudentRegistration!.LastName)
+                        .ThenBy(r => r.StudentRegistration!.FirstName),
+                "subjectcode" => desc
+                    ? query.OrderByDescending(r => r.Section!.Subject!.Code)
+                    : query.OrderBy(r => r.Section!.Subject!.Code),
+                "sectioncode" => desc
+                    ? query.OrderByDescending(r => r.Section!.SectionCode)
+                    : query.OrderBy(r => r.Section!.SectionCode),
+                "seats" => desc
+                    ? query.OrderByDescending(r => r.Section!.Capacity - r.Section!.EnrolledCount)
+                    : query.OrderBy(r => r.Section!.Capacity - r.Section!.EnrolledCount),
+                "status" => desc ? query.OrderByDescending(r => r.Status) : query.OrderBy(r => r.Status),
+                "requestedatutc" => desc
+                    ? query.OrderByDescending(r => r.RequestedAtUtc)
+                    : query.OrderBy(r => r.RequestedAtUtc),
+                // Pending first, newest within that — the queue's own order.
+                _ => query.OrderBy(r => r.Status == SlotRequestStatus.Requested ? 0 : 1)
+                        .ThenByDescending(r => r.RequestedAtUtc)
+            };
+
+            var result = await ordered.ThenBy(r => r.Id)
+                .ToPagedAsync(PageSpec.From(page, pageSize), cancellationToken);
+
+            // Counted in SQL over the whole filtered queue, not over the rows in this response.
+            // Taken from the page it would have quietly become "pending on this page" the moment
+            // paging arrived — and this is the number the Registrar reads to judge the backlog, and
+            // the one the sidebar badge is checked against.
+            var pendingCount = await query
+                .CountAsync(r => r.Status == SlotRequestStatus.Requested, cancellationToken);
+
+            var body = result.Select(ApprovalRowDto.From).ToResponse("requests");
+            body["pendingCount"] = pendingCount;
+            return Results.Ok(body);
         }
 
         private static async Task<IResult> ApproveAsync(
@@ -150,7 +191,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             AuditLog audit,
             Notifier notifier,
             Features.Reports.Live.ReportsBroadcaster broadcaster,
-            IEmailSender email,
+            EmailOutbox outbox,
             CancellationToken cancellationToken)
         {
             var request = await db.SlotRequests
@@ -170,7 +211,13 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             }
 
             broadcaster.Announce("enlistment");
-            await SendApprovalEmailAsync(request, db, audit, email, cancellationToken);
+            // Queued on the same path as the bulk leg, so a single approval and a batch of 500
+            // deliver identically — one confirmation per approval, once.
+            QueueApprovalEmail(request, outbox);
+            audit.Record(AuditAction.NotificationDispatched,
+                $"Queued slot-approval confirmation to {request.StudentRegistration.Email}.",
+                "SlotRequest", request.Id.ToString());
+            await db.SaveChangesAsync(cancellationToken);
             return Results.Ok(ApprovalRowDto.From(request));
         }
 
@@ -190,7 +237,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             AuditLog audit,
             Notifier notifier,
             Features.Reports.Live.ReportsBroadcaster broadcaster,
-            IEmailSender email,
+            EmailOutbox outbox,
             CancellationToken cancellationToken)
         {
             var query = db.SlotRequests
@@ -280,11 +327,30 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                 broadcaster.Announce("enlistment");
             }
 
-            // Emails are best-effort and come after every approval is committed, so a mail outage
-            // can never undo a decision that has already consumed a seat.
-            foreach (var request in approved)
+            // Confirmations are queued, not sent. A 500-row sweep used to make 500 synchronous SMTP
+            // calls before the response returned, which is the half of F-12 that actually hurt: the
+            // Registrar's browser waited on a mail server for work that has nothing to do with the
+            // decision they just made. The outbox commits these with the approvals and the
+            // dispatcher delivers them afterwards.
+            //
+            // The *other* half of F-12 — "batch the saves" — is deliberately not done, and this is
+            // the reasoning. The per-request SaveChangesAsync inside TryApproveAsync is not
+            // incidental chattiness; it is the optimistic-concurrency retry that F-08 established
+            // for the seat counter, and RevertApproval depends on each row committing independently
+            // so one full section cannot poison the rest of the batch. Batching them would make a
+            // single lost race fail the whole run, which trades a real integrity guarantee for
+            // round trips — and would break the "approved 47 of 50, here is why three didn't"
+            // contract this endpoint promises. The transport was the problem; the integrity was not.
+            if (approved.Count > 0)
             {
-                await SendApprovalEmailAsync(request, db, audit, email, cancellationToken);
+                foreach (var request in approved)
+                {
+                    QueueApprovalEmail(request, outbox);
+                }
+                audit.Record(AuditAction.NotificationDispatched,
+                    $"Queued {approved.Count} slot-approval confirmation(s).",
+                    "SlotRequest", string.Empty);
+                await db.SaveChangesAsync(cancellationToken);
             }
 
             return Results.Ok(new
@@ -317,11 +383,40 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
 
             var section = request.Section!;
 
+            // Re-check the prerequisite chain at decision time (FR-ENL-06 / F-10). The request leg
+            // already refused an unmet prerequisite, so reaching here usually means the record
+            // changed in between — a verdict corrected, or an evaluation reopened — and the seat
+            // must not be granted on the strength of a check that is no longer true. Same helper,
+            // same fall-open rule; only the wording differs, because this reader is staff and the
+            // remedy is theirs.
+            var history = await AcademicHistory.LoadAsync(db, request.StudentRegistrationId, cancellationToken);
+            if (history.IsEnforceable)
+            {
+                var unmet = await history.UnmetPrerequisitesAsync(db, section.SubjectId, cancellationToken);
+                if (unmet.Count > 0)
+                {
+                    var code = section.Subject?.Code ?? "this subject";
+                    audit.Record(AuditAction.PrerequisiteBlocked,
+                        $"Approval of {request.StudentRegistration!.StudentNumber}'s seat in {code} was " +
+                        $"refused — unmet prerequisite(s): {string.Join(", ", unmet.Select(s => s.Code))}.",
+                        "SlotRequest", request.Id.ToString());
+                    return (false, AcademicHistory.Refusal(code, unmet, aboutSelf: false));
+                }
+            }
+
             // Re-check the overlap rule against the student's *approved* sections at decision
             // time (FR-ENL-07) — earlier approvals may have changed the picture.
+            //
+            // Scoped to the section's own term. Unscoped, a returning student's previous term's
+            // approvals were compared against this term's candidate, and since those rows are still
+            // published the comparison found a "clash" with a class that ended last semester — a
+            // false conflict whose only offered remedy was to reject a perfectly valid request.
+            // RequestSlot was corrected for the same reason (see its comment on the live-request
+            // query); this leg was missed at the time.
             var approvedSectionIds = await db.SlotRequests.AsNoTracking()
                 .Where(r => r.StudentRegistrationId == request.StudentRegistrationId
-                    && r.Status == SlotRequestStatus.Approved)
+                    && r.Status == SlotRequestStatus.Approved
+                    && r.Section!.SemesterId == section.SemesterId)
                 .Select(r => r.SectionId)
                 .ToListAsync(cancellationToken);
             if (approvedSectionIds.Count > 0)
@@ -425,9 +520,11 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             }
         }
 
-        /// <summary>Best-effort approval confirmation — the decision is already committed (FR-ENL-04).</summary>
-        private static async Task SendApprovalEmailAsync(
-            SlotRequest request, AppDbContext db, AuditLog audit, IEmailSender email, CancellationToken cancellationToken)
+        /// <summary>
+        /// Stages one approval confirmation on the outbox (FR-ENL-04). Keyed on the request id, so a
+        /// double-submitted approval cannot queue the same confirmation twice.
+        /// </summary>
+        private static void QueueApprovalEmail(SlotRequest request, EmailOutbox outbox)
         {
             var section = request.Section!;
             var (subject, body) = EnlistmentEmails.SlotApproved(
@@ -435,16 +532,11 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                 section.Subject?.Code ?? string.Empty,
                 section.Subject?.Title ?? string.Empty,
                 section.SectionCode);
-            var sent = await email.SendAsync(
+            outbox.Queue(
                 request.StudentRegistration!.Email, request.StudentRegistration.FullName,
-                subject, body, cancellationToken);
-            if (sent.Sent)
-            {
-                audit.Record(AuditAction.NotificationDispatched,
-                    $"Sent slot-approval confirmation to {request.StudentRegistration.Email}.",
-                    "SlotRequest", request.Id.ToString());
-                await db.SaveChangesAsync(cancellationToken);
-            }
+                subject, body,
+                kind: "EnlistmentApproval",
+                dedupeKey: $"slot-approved:{request.Id}");
         }
 
         private static async Task<IResult> RejectAsync(
@@ -510,6 +602,47 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                 await db.SaveChangesAsync(cancellationToken);
             }
 
+            return Results.Ok(ApprovalRowDto.From(request));
+        }
+
+        /// <summary>
+        /// POST {requestId}/drop — release an approved seat (FR-ENL-04). Rejection covers a request
+        /// that is still pending; this covers the one already granted, which previously had no undo:
+        /// a student approved into the wrong section stayed in it, and the seat stayed spent.
+        /// <para>
+        /// The seat itself is returned by <see cref="SeatRelease"/>, the single place allowed to
+        /// decrement the counter, so a staff drop and a student's own drop cannot diverge.
+        /// </para>
+        /// </summary>
+        private static async Task<IResult> DropAsync(
+            Guid requestId,
+            DropSeatRequest body,
+            ClaimsPrincipal principal,
+            AppDbContext db,
+            AuditLog audit,
+            Notifier notifier,
+            Features.Reports.Live.ReportsBroadcaster broadcaster,
+            CancellationToken cancellationToken)
+        {
+            var request = await db.SlotRequests
+                .Include(r => r.StudentRegistration)
+                .Include(r => r.Section).ThenInclude(s => s!.Subject)
+                .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+            if (request?.Section is null || request.StudentRegistration is null)
+            {
+                return Results.NotFound(new { message = "Request not found." });
+            }
+
+            var outcome = await SeatRelease.ReleaseAsync(
+                request, CurrentUserId(principal), body.Reason,
+                byStudent: false, db, audit, notifier, cancellationToken);
+            if (!outcome.Dropped)
+            {
+                return Results.Conflict(new { message = outcome.Reason });
+            }
+
+            broadcaster.Announce("enlistment");
             return Results.Ok(ApprovalRowDto.From(request));
         }
 

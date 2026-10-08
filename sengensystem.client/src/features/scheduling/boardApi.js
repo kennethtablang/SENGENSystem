@@ -1,37 +1,13 @@
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 
 // Schedule board (Academic Head / School Admin): drag faculty-allocated subjects onto a
 // weekly calendar. Placements are persisted as ScheduleAssignments (FR-SCHED-02, FR-FAC-02).
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        fieldErrors: payload?.errors || {}
-    };
-}
 
-function authHeaders(json) {
-    const h = { Authorization: `Bearer ${getToken()}` };
-    if (json) h['Content-Type'] = 'application/json';
-    return h;
-}
-
-async function send(method, url, body) {
-    const response = await fetch(url, {
-        method,
-        headers: authHeaders(!!body),
-        ...(body ? { body: JSON.stringify(body) } : {})
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.status === 204 ? null : response.json();
-}
+/* Every call here goes through the shared client — one place for the auth header, the
+   ProblemDetails error shape, and the global 401 handling that signs a lapsed session out rather
+   than failing with a generic message on a page that will never work again. */
+const send = (method, url, body) => apiFetch(url, { method, body });
 
 export const getBoard = (semesterId) =>
     send('GET', `/api/scheduling/board${semesterId ? `?semesterId=${semesterId}` : ''}`);

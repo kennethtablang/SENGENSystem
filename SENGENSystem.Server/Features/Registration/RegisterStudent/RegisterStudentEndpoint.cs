@@ -5,6 +5,7 @@ using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using SENGENSystem.Server.Features.Documents;
+using SENGENSystem.Server.Features.EnrollmentCycle;
 
 namespace SENGENSystem.Server.Features.Registration.RegisterStudent
 {
@@ -70,6 +71,16 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
             if (semester is null)
             {
                 return Results.BadRequest(new { message = "Registration is closed: no active semester is set." });
+            }
+
+            // FR-CYC-01: the term's stage decides whether the SIS is accepting submissions at all.
+            // Deliberately wider than enlistment — only Preparation (not open to students yet) and
+            // Closed (roster final) refuse, because late enrollees are ordinary and their documents
+            // and enlistment follow behind them.
+            var window = await EnrollmentCyclePolicy.CheckRegistrationAsync(db, cancellationToken);
+            if (!window.Open)
+            {
+                return Results.BadRequest(new { message = window.Reason });
             }
 
             var errors = new Dictionary<string, string[]>();

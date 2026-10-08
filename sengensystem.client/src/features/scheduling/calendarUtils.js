@@ -7,6 +7,19 @@ import { uses12HourTime } from '../settings/prefs';
 // real dates, so every event lives in this fixed week; the calendars hide the dates themselves.
 export const REF_DATES = ['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05', '2024-01-06'];
 
+/**
+ * Weekday names indexed by the server's day number (Monday = 1 … Saturday = 6), with a blank at 0
+ * so `DAY_NAMES[day]` needs no offset arithmetic at the call site.
+ *
+ * Lives here rather than being redeclared per page: it was copied into three files, which is the
+ * kind of duplication that stays harmless right up until someone abbreviates one of them and the
+ * board and the timetable start disagreeing about what day it is.
+ */
+export const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** The same days, abbreviated — for grids and chips where the full name will not fit. */
+export const DAY_ABBR = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 export function toIso(day, minutes) {
     const hh = String(Math.floor(minutes / 60)).padStart(2, '0');
     const mm = String(minutes % 60).padStart(2, '0');

@@ -1,33 +1,10 @@
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 import { pageParams } from '../shell/useServerTable';
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        reasons: payload?.reasons || [],
-        fieldErrors: payload?.errors || {}
-    };
-}
-
-async function authRequest(url, { method = 'GET', body } = {}) {
-    const response = await fetch(url, {
-        method,
-        headers: {
-            ...(body ? { 'Content-Type': 'application/json' } : {}),
-            Authorization: `Bearer ${getToken()}`
-        },
-        ...(body ? { body: JSON.stringify(body) } : {})
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
-}
+/* Every call here goes through the shared client — one place for the auth header, the
+   ProblemDetails error shape, and the global 401 handling that signs a lapsed session out
+   rather than failing with a generic message on a page that will never work again. */
+const authRequest = apiFetch;
 
 // FR-PRE-02/04: Admission Officer pre-authorization for online slot selection.
 
@@ -44,4 +21,21 @@ export function grantPreAuthorization(registrationId) {
 
 export function revokePreAuthorization(registrationId) {
     return authRequest(`/api/pre-authorization/${registrationId}`, { method: 'DELETE' });
+}
+
+// ---- FR-PRE-01: the .xlsx import ----
+// These two lived inline in PreEnrollmentPage with their own fetch and error handling, which is
+// how they escaped the shared client. Moved here so the page calls an api module like every other
+// page does, and so the import and template download get the same 401 handling as everything else.
+
+/** Uploads the workbook. FormData is passed through untouched so the browser sets its own boundary. */
+export function importPreEnrollment(file) {
+    const form = new FormData();
+    form.append('file', file);
+    return apiFetch('/api/pre-enrollment/import', { method: 'POST', body: form });
+}
+
+export async function fetchPreEnrollmentTemplate() {
+    const response = await apiFetch('/api/pre-enrollment/template', { raw: true });
+    return response.blob();
 }

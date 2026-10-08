@@ -168,7 +168,7 @@ function SisRegistrationPage() {
                     </p>
                 </div>
 
-                {error && <div className="alert">{error}</div>}
+                {error && <div className="alert" role="alert">{error}</div>}
 
                 <fieldset className="reg-section">
                     <legend>1 · Program</legend>

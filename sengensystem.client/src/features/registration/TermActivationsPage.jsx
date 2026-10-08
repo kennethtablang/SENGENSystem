@@ -90,7 +90,7 @@ function TermActivationsPage() {
                 </label>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="reg-empty">Loading…</p>

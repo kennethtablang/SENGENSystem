@@ -81,7 +81,7 @@ function SchoolYearModal({ record, onClose, onChanged }) {
 
     return (
         <SetupModal title={isCreate ? 'New school year' : 'Edit school year'} onClose={onClose} footer={footer}>
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             <form id="sy-form" onSubmit={save} noValidate>
                 <div className="field">
                     <label htmlFor="sy-name">Name</label>
@@ -157,7 +157,7 @@ export default function SchoolYearsPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>

@@ -137,7 +137,8 @@ function PreAuthorizationPage() {
             </header>
 
             {alert && (
-                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>
+                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>
                     <p>{alert.text}</p>
                     {alert.reasons?.length > 0 && (
                         <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem' }}>

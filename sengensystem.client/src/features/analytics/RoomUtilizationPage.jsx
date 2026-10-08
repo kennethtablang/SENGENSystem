@@ -245,7 +245,7 @@ function RoomUtilizationPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             <WindowNote window={data?.window} />
 

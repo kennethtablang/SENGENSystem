@@ -56,7 +56,7 @@ function ReviewSchedulePage() {
                 )}
             </header>
 
-            {alert && <div className="alert">{alert.text}</div>}
+            {alert && <div className="alert" role="alert">{alert.text}</div>}
 
             {loading ? (
                 <p className="sched-empty">Loading schedule…</p>

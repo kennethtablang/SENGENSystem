@@ -62,7 +62,7 @@ export default function MySubjectsPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {!state ? (
                 <p className="reg-empty">Loading…</p>

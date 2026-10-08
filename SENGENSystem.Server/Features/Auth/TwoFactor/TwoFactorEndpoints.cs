@@ -18,8 +18,14 @@ namespace SENGENSystem.Server.Features.Auth.TwoFactor
     {
         public static IEndpointRouteBuilder MapTwoFactor(this IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/auth/2fa/verify", VerifyAsync).AllowAnonymous();
-            app.MapPost("/api/auth/2fa/resend", ResendAsync).AllowAnonymous();
+            // Same limiter as sign-in. Verify is a 6-digit guessing surface (the per-challenge
+            // attempt cap bounds one challenge; this bounds how fast an attacker can burn through
+            // challenges), and resend sends an email each time — unlimited, that is a mail bomb
+            // aimed at whichever address the attacker names.
+            app.MapPost("/api/auth/2fa/verify", VerifyAsync).AllowAnonymous()
+                .RequireRateLimiting(SENGENSystem.Server.Program.LoginRateLimitPolicy);
+            app.MapPost("/api/auth/2fa/resend", ResendAsync).AllowAnonymous()
+                .RequireRateLimiting(SENGENSystem.Server.Program.LoginRateLimitPolicy);
             return app;
         }
 

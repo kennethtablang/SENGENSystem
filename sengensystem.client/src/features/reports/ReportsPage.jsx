@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 import { useAuth } from '../auth/useAuth';
 import { getDashboardMetrics } from '../dashboard/api';
 import { subscribeToReports } from './live';
@@ -145,11 +145,8 @@ function ReportsPage() {
             setLoading(refreshTick === 0); // live refreshes swap data silently, without a flash
             setError(null);
             try {
-                const response = await fetch(
-                    `/api/reports/${active}?semesterId=${encodeURIComponent(semesterId)}`,
-                    { headers: { Authorization: `Bearer ${getToken()}` } });
-                const payload = await response.json();
-                if (!response.ok) throw new Error(payload?.message || 'Could not load the report.');
+                const payload = await apiFetch(
+                    `/api/reports/${active}?semesterId=${encodeURIComponent(semesterId)}`);
                 if (activeFlag) {
                     setData(payload);
                     setUpdatedAt(new Date());
@@ -166,10 +163,9 @@ function ReportsPage() {
     async function exportXlsx() {
         setError(null);
         try {
-            const response = await fetch(
+            const response = await apiFetch(
                 `/api/reports/${active}?semesterId=${encodeURIComponent(semesterId)}&format=xlsx`,
-                { headers: { Authorization: `Bearer ${getToken()}` } });
-            if (!response.ok) throw new Error('Export failed.');
+                { raw: true });
             const blob = await response.blob();
             saveBlob(blob, `sengen-${active}.xlsx`);
             notifySuccess(`Exported ${reports.find(r => r.key === active)?.title ?? active} to Excel.`);
@@ -258,7 +254,7 @@ function ReportsPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.1rem' }}>
                 {reports.map(r => (

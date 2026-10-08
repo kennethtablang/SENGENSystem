@@ -47,7 +47,7 @@ function FirstLoginPasswordChange() {
                     Choose your own password to continue.
                 </p>
 
-                {error && <div className="alert">{error}</div>}
+                {error && <div className="alert" role="alert">{error}</div>}
 
                 <div className="field">
                     <label htmlFor="currentPassword">Temporary password</label>

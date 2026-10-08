@@ -84,7 +84,7 @@ export default function FacultyPreferencesModal({ faculty, onClose }) {
                 </>
             }
         >
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             {loading ? (
                 <p style={{ color: 'var(--text-3)', fontSize: '0.88rem' }}>Loading…</p>
             ) : (

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
+using SENGENSystem.Server.Common.Paging;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 
@@ -55,6 +56,10 @@ namespace SENGENSystem.Server.Features.Registration.AssignStudentNumber
             string? search,
             string? status,
             bool? unassignedOnly,
+            int? page,
+            int? pageSize,
+            string? sort,
+            string? dir,
             AppDbContext db,
             CancellationToken cancellationToken)
         {
@@ -81,10 +86,24 @@ namespace SENGENSystem.Server.Features.Registration.AssignStudentNumber
                 query = query.Where(r => r.OfficialStudentNumber != null);
             }
 
-            var items = await query
-                .OrderByDescending(r => r.CreatedAtUtc)
-                .Take(500)
-                .ToListAsync(cancellationToken);
+            var desc = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase);
+            var ordered = (sort?.ToLowerInvariant()) switch
+            {
+                "registrationnumber" => desc
+                    ? query.OrderByDescending(r => r.StudentNumber) : query.OrderBy(r => r.StudentNumber),
+                "fullname" => desc
+                    ? query.OrderByDescending(r => r.LastName).ThenByDescending(r => r.FirstName)
+                    : query.OrderBy(r => r.LastName).ThenBy(r => r.FirstName),
+                "program" => desc ? query.OrderByDescending(r => r.Program) : query.OrderBy(r => r.Program),
+                "status" => desc ? query.OrderByDescending(r => r.Status) : query.OrderBy(r => r.Status),
+                "numbering" => desc
+                    ? query.OrderByDescending(r => r.OfficialStudentNumber != null)
+                    : query.OrderBy(r => r.OfficialStudentNumber != null),
+                _ => query.OrderByDescending(r => r.CreatedAtUtc)
+            };
+
+            var paged = await ordered.ThenBy(r => r.Id)
+                .ToPagedAsync(PageSpec.From(page, pageSize), cancellationToken);
 
             // Whole-queue tallies, independent of the current view and search, so the page can
             // always say how many students are numbered and how many are still waiting.
@@ -92,14 +111,11 @@ namespace SENGENSystem.Server.Features.Registration.AssignStudentNumber
             var numberedCount = await db.StudentRegistrations
                 .CountAsync(r => r.OfficialStudentNumber != null, cancellationToken);
 
-            return Results.Ok(new
-            {
-                count = items.Count,
-                totalCount,
-                numberedCount,
-                pendingCount = totalCount - numberedCount,
-                registrations = items.Select(AssignableRegistrationDto.From).ToList()
-            });
+            var body = paged.Select(AssignableRegistrationDto.From).ToResponse("registrations");
+            body["totalCount"] = totalCount;
+            body["numberedCount"] = numberedCount;
+            body["pendingCount"] = totalCount - numberedCount;
+            return Results.Ok(body);
         }
 
         private static async Task<IResult> AssignAsync(

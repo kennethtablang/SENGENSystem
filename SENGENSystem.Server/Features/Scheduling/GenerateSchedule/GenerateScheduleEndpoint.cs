@@ -10,7 +10,16 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
     // and reviews the result before publishing (FR-SCHED-01/06, FR-FAC-04).
     // Seed is optional: omit it for a fresh random arrangement each run, or pass a specific one
     // to reproduce a previous timetable exactly (the value is returned on every response).
-    public record GenerateScheduleRequest(Guid? SemesterId, int? Seed = null);
+    //
+    // `ReplacePublished` is the answer to "yes, really rewrite it". Generation replaces the
+    // semester's whole timetable — it is not additive, and it never was meant to be. It used to
+    // clear only the unpublished draft, which meant regenerating a term whose schedule had already
+    // been published left every published row in place and stacked a second timetable on top of
+    // it: the board showed two classes in the same seat, and the counts double-read. Regenerating
+    // over published rows is now a deliberate, confirmed act (they are a promise already emailed to
+    // faculty and enrolled students), and anything less than confirmation is refused with a
+    // preflight describing exactly what would be discarded.
+    public record GenerateScheduleRequest(Guid? SemesterId, int? Seed = null, bool ReplacePublished = false);
 
     public record GenerateScheduleResponse(
         Guid SemesterId,
@@ -22,6 +31,10 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
         int AssignedCount,
         int Steps,
         int Seed,
+        // What this run swept away, so the page can say so rather than leave the Academic Head to
+        // infer it from a board that suddenly looks different.
+        int ReplacedCount,
+        int ReplacedPublishedCount,
         IReadOnlyList<ScheduleRowDto> Schedule,
         OptimizationSummaryDto Optimization);
 
@@ -89,6 +102,60 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 });
             }
 
+            // The published-rewrite gate. Generation always replaces the semester's whole timetable;
+            // when part of that timetable is already published, say so and make them mean it.
+            var publishedCount = await db.ScheduleAssignments
+                .CountAsync(a => a.SemesterId == semester.Id && a.IsPublished, cancellationToken);
+            if (publishedCount > 0 && !request.ReplacePublished)
+            {
+                var publishedSections = await db.ScheduleAssignments.AsNoTracking()
+                    .Where(a => a.SemesterId == semester.Id && a.IsPublished)
+                    .Select(a => a.SectionId)
+                    .Distinct()
+                    .CountAsync(cancellationToken);
+                // Students holding an approved seat are the people this actually lands on — their
+                // class times move under them and have to be re-published and re-notified.
+                var affectedStudents = await db.SlotRequests.AsNoTracking()
+                    .CountAsync(r => r.Status == SlotRequestStatus.Approved
+                        && r.Section!.SemesterId == semester.Id, cancellationToken);
+
+                return Results.Conflict(new
+                {
+                    message = $"{semester.Name} already has a published schedule. Regenerating discards it "
+                        + "and builds a completely new timetable — it does not add to what is there.",
+                    requiresConfirmation = true,
+                    publishedCount,
+                    publishedSections,
+                    affectedStudents,
+                    reasons = new[]
+                    {
+                        $"{publishedCount} published class placement(s) across {publishedSections} section(s) will be deleted.",
+                        affectedStudents > 0
+                            ? $"{affectedStudents} approved student enlistment(s) will have their class times replaced."
+                            : "No students hold an approved seat in this term yet.",
+                        "The new timetable comes back as an unpublished draft — you must publish it again "
+                            + "before students and faculty see it."
+                    }
+                });
+            }
+
+            // A new term starts with no section rows at all — they only ever came into existence
+            // when someone dropped a class onto the board by hand, so a freshly activated semester
+            // with a complete faculty load allocation still failed here with "no sections are
+            // configured" and no way forward short of manual placement. The allocation already says
+            // exactly which subject is delivered to which cohort, which is the same thing a section
+            // is; derive the missing ones from it so activate → allocate → generate carries a term
+            // over on its own (FR-SCHED-01, FR-FAC-01).
+            var created = await EnsureSectionsFromLoadAsync(db, semester.Id, cancellationToken);
+            if (created > 0)
+            {
+                audit.Record(AuditAction.ScheduleGenerated,
+                    $"Created {created} section(s) for {semester.Name} from the faculty load allocation "
+                    + "before generating its first schedule.",
+                    "Semester", semester.Id.ToString());
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
             // Ordering is not cosmetic here. The engine breaks scoring ties by input order, so
             // an unordered query would let SQL Server's row order decide the timetable — two
             // runs over identical data could differ, contradicting FR-SCHED-08. Every input the
@@ -101,7 +168,12 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
 
             if (sections.Count == 0)
             {
-                return Results.BadRequest(new { message = $"No sections are configured for {semester.Name}." });
+                return Results.BadRequest(new
+                {
+                    message = $"No sections are configured for {semester.Name}, and none could be derived "
+                        + "because nothing is allocated yet. Assign subjects to faculty on the Faculty load "
+                        + "page for this term, then generate."
+                });
             }
 
             // FR-SCHED-04: curriculum awareness — the offered sections must respect the
@@ -400,11 +472,16 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 });
             }
 
-            // Replace any previously generated-but-unpublished draft; never disturb published rows.
-            var existingDraft = await db.ScheduleAssignments
-                .Where(a => a.SemesterId == semester.Id && !a.IsPublished)
+            // Generation produces *the* timetable for the semester, so clear the semester's existing
+            // one entirely — published rows included, which the gate above already made the caller
+            // confirm. Clearing only the draft (the old behaviour) left published rows behind and
+            // stacked the new timetable on top of them, double-booking every room and cohort on the
+            // board. The replacement comes back as a fresh unpublished draft: publishing is the
+            // Registrar's act, and a regenerated timetable has not had it yet.
+            var replaced = await db.ScheduleAssignments
+                .Where(a => a.SemesterId == semester.Id)
                 .ToListAsync(cancellationToken);
-            db.ScheduleAssignments.RemoveRange(existingDraft);
+            db.ScheduleAssignments.RemoveRange(replaced);
 
             // The engine returns each section as one contiguous block covering its weekly hours,
             // which may span several base periods (e.g. a 3-hour subject over two 90-minute slots).
@@ -450,10 +527,28 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 $"{result.Assignments.Count} of {meetings.Count} class meetings across {sections.Count} sections " +
                 $"placed in {result.Steps:N0} search steps " +
                 $"({opt.PreferenceHonorRatePct}% of time preferences honored, " +
-                $"{opt.CohortIdleHours}h cohort idle time).",
+                $"{opt.CohortIdleHours}h cohort idle time)." +
+                // What it cost is part of the record: a regeneration that discarded a published
+                // timetable must be traceable to whoever confirmed it.
+                (replaced.Count == 0
+                    ? " No previous timetable existed."
+                    : $" Replaced {replaced.Count} existing placement(s)" +
+                      (publishedCount > 0
+                        ? $", {publishedCount} of them published — the term must be published again."
+                        : " (all unpublished draft).")),
                 "Semester", semester.Id.ToString());
 
-            await db.SaveChangesAsync(cancellationToken);
+            // Regeneration is the operation the other three race against: it deletes the existing
+            // placements and inserts a fresh set. If a board edit, a finalize, or a publish touched
+            // one of the rows being replaced while the engine was running — and the engine takes
+            // seconds, so the window is real — the delete now fails rather than discarding a decision
+            // somebody made in the meantime. The engine's own work is unaffected; only the write is
+            // refused, and the Academic Head can rerun it against the current state.
+            if (await ScheduleConcurrency.TrySaveAsync(db, "generate this schedule", cancellationToken)
+                is { } conflict)
+            {
+                return conflict;
+            }
             broadcaster.Announce("scheduling");
 
             var schedule = await LoadScheduleAsync(db, semester.Id, cancellationToken);
@@ -466,6 +561,8 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                 result.Assignments.Count,
                 result.Steps,
                 seed,
+                replaced.Count,
+                publishedCount,
                 schedule,
                 new OptimizationSummaryDto(
                     opt.PreferencesHonored,
@@ -481,6 +578,60 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
         }
 
         private static string Hhmm(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
+
+        /// <summary>
+        /// Creates a <see cref="Section"/> for every (subject, cohort) the semester's faculty load
+        /// allocation names but that has no section row yet, and returns how many were added.
+        /// Mirrors the board's own find-or-create — the two must agree on what a section is, or the
+        /// generator and the board would build different offerings from the same allocation.
+        /// Idempotent: a run where every allocation already has its section adds nothing.
+        /// </summary>
+        private static async Task<int> EnsureSectionsFromLoadAsync(
+            AppDbContext db, Guid semesterId, CancellationToken cancellationToken)
+        {
+            var allocations = await db.FacultyLoadAssignments.AsNoTracking()
+                .Where(l => l.SemesterId == semesterId)
+                .Include(l => l.Subject)
+                .Include(l => l.ClassSection)
+                .ToListAsync(cancellationToken);
+            if (allocations.Count == 0) return 0;
+
+            var existing = await db.Sections.AsNoTracking()
+                .Where(s => s.SemesterId == semesterId)
+                .Select(s => new { s.SubjectId, s.ProgramCode, s.YearLevel, s.Block })
+                .ToListAsync(cancellationToken);
+            var have = existing
+                .Select(s => (s.SubjectId, s.ProgramCode.ToUpperInvariant(), s.YearLevel, s.Block.ToUpperInvariant()))
+                .ToHashSet();
+
+            var capacity = await db.GetSectionCapacityCapAsync(cancellationToken);
+            var added = 0;
+
+            foreach (var load in allocations)
+            {
+                // An allocation with no cohort or a deleted subject cannot describe a section; the
+                // existing validation downstream reports those far better than a silent skip would.
+                if (load.ClassSection is not { } cohort || load.Subject is null) continue;
+
+                var key = (load.SubjectId, cohort.ProgramCode.ToUpperInvariant(), cohort.YearLevel,
+                    cohort.SectionName.ToUpperInvariant());
+                if (!have.Add(key)) continue;
+
+                db.Sections.Add(new Section
+                {
+                    SubjectId = load.SubjectId,
+                    SemesterId = semesterId,
+                    SectionCode = $"{cohort.ProgramCode}-{cohort.YearLevel}{cohort.SectionName}-{load.Subject.Code}",
+                    ProgramCode = cohort.ProgramCode,
+                    YearLevel = cohort.YearLevel,
+                    Block = cohort.SectionName,
+                    Capacity = capacity
+                });
+                added++;
+            }
+
+            return added;
+        }
 
         /// <summary>
         /// FR-SCHED-04: validates the semester's offerings against `SubjectPrerequisite` edges.

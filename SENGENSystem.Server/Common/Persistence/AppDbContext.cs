@@ -55,11 +55,15 @@ namespace SENGENSystem.Server.Common.Persistence
 
         public DbSet<TermActivation> TermActivations => Set<TermActivation>();
 
+        public DbSet<StudentSubjectRecord> StudentSubjectRecords => Set<StudentSubjectRecord>();
+
         public DbSet<SlotRequest> SlotRequests => Set<SlotRequest>();
 
         public DbSet<FacultyTimePreference> FacultyTimePreferences => Set<FacultyTimePreference>();
 
         public DbSet<Notification> Notifications => Set<Notification>();
+
+        public DbSet<OutboxEmail> OutboxEmails => Set<OutboxEmail>();
 
         public DbSet<SystemSettings> SystemSettings => Set<SystemSettings>();
 
@@ -317,6 +321,10 @@ namespace SENGENSystem.Server.Common.Persistence
 
             modelBuilder.Entity<ScheduleAssignment>(assignment =>
             {
+                // Generate / board-edit / finalize / publish all write these rows, and until this
+                // token existed they could interleave with no complaint from anyone — see the
+                // property's own note for why a lost publish is the worst of those outcomes.
+                assignment.Property(a => a.RowVersion).IsRowVersion();
                 assignment.HasOne(a => a.Section)
                     .WithMany()
                     .HasForeignKey(a => a.SectionId)
@@ -495,6 +503,33 @@ namespace SENGENSystem.Server.Common.Persistence
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
+            modelBuilder.Entity<StudentSubjectRecord>(record =>
+            {
+                record.Property(r => r.Verdict).HasConversion<string>().HasMaxLength(20).IsRequired();
+                record.Property(r => r.Remarks).HasMaxLength(500);
+                // One verdict per student per subject per term. Not unique on (student, subject)
+                // alone: a failed subject is retaken, and both attempts belong in the history.
+                record.HasIndex(r => new { r.StudentRegistrationId, r.SubjectId, r.SemesterId }).IsUnique();
+                // The hot read is "everything this student has passed", asked on every prerequisite
+                // check and every plan resolution.
+                record.HasIndex(r => new { r.StudentRegistrationId, r.Verdict });
+                record.HasOne(r => r.StudentRegistration)
+                    .WithMany()
+                    .HasForeignKey(r => r.StudentRegistrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                // Subjects are archived rather than deleted, and a term is never deleted once it has
+                // history — Restrict on both so a catalog or calendar edit cannot quietly erase the
+                // record a prerequisite decision was made from.
+                record.HasOne(r => r.Subject)
+                    .WithMany()
+                    .HasForeignKey(r => r.SubjectId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                record.HasOne(r => r.Semester)
+                    .WithMany()
+                    .HasForeignKey(r => r.SemesterId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<FacultyTimePreference>(pref =>
             {
                 pref.HasIndex(p => p.FacultyProfileId);
@@ -540,6 +575,22 @@ namespace SENGENSystem.Server.Common.Persistence
                     .WithMany()
                     .HasForeignKey(n => n.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<OutboxEmail>(mail =>
+            {
+                mail.Property(m => m.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+                mail.Property(m => m.ToEmail).HasMaxLength(256).IsRequired();
+                mail.Property(m => m.ToName).HasMaxLength(200);
+                mail.Property(m => m.Subject).HasMaxLength(300).IsRequired();
+                mail.Property(m => m.Kind).HasMaxLength(60);
+                mail.Property(m => m.DedupeKey).HasMaxLength(200);
+                mail.Property(m => m.LastError).HasMaxLength(500);
+                // The dispatcher's only query: pending rows that are due, oldest first.
+                mail.HasIndex(m => new { m.Status, m.NextAttemptAtUtc });
+                // The dedupe lookup, over pending rows only — a key may legitimately repeat once
+                // its earlier email has been sent, because the next term's reminder is a new email.
+                mail.HasIndex(m => m.DedupeKey).HasFilter("[Status] = 'Pending'");
             });
 
             modelBuilder.Entity<TermActivation>(act =>

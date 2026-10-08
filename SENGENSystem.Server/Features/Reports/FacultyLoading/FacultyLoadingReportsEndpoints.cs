@@ -4,6 +4,7 @@ using QuestPDF.Fluent;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Common;
 
 namespace SENGENSystem.Server.Features.Reports.FacultyLoading
 {
@@ -250,7 +251,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
         {
             var reports = await FacultyLoadingPdfData.BuildAsync(semester, db, onlyFacultyProfileId, ct);
             var signatories = await FacultyLoadingSignatories.LoadAsync(db, ct);
-            var document = new FacultyLoadingPdfDocument(semester, reports, signatories, DateTime.Now);
+            var document = new FacultyLoadingPdfDocument(semester, reports, signatories, InstitutionClock.Now);
             return document.GeneratePdf();
         }
 
@@ -277,7 +278,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                 .Where(a => a.TimeSlot is not null)
                 .ToList();
 
-            var bytes = FacultyScheduleGridWorkbook.Build(faculty, semester, meetings, DateTime.Now);
+            var bytes = FacultyScheduleGridWorkbook.Build(faculty, semester, meetings, InstitutionClock.Now);
             var slug = (faculty.User?.LastName ?? "faculty").ToLowerInvariant().Replace(' ', '-');
             return Results.File(bytes, ReportsEndpoints.XlsxContentType, $"sengen-schedule-grid-{slug}.xlsx");
         }
@@ -369,7 +370,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             Memo(4, "TO", r.Name, r.EmployeeId == "—" ? null : $"Employee ID {r.EmployeeId}");
             Memo(5, "THRU", sig.ProgramHead, "Program Head");
             Memo(6, "FROM", sig.AcademicHead, "Academic Head");
-            Memo(7, "DATE", DateTime.Now.ToString("dd MMMM yyyy"), null);
+            Memo(7, "DATE", InstitutionClock.Now.ToString("dd MMMM yyyy"), null);
 
             ws.Cell(9, 1).Value = "Please be informed that you are assigned the following:";
 

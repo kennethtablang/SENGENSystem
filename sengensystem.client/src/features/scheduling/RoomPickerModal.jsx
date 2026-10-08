@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { hhmm } from './calendarUtils';
+import { useModalFocus } from '../shell/useModalFocus';
+import { DAY_NAMES, hhmm } from './calendarUtils';
 
 /* Room selection for a drop made in the "All rooms" view (FR-SCHED-02). The board can show every
    room's schedule at once, but a placement has to land in one specific room — so instead of
@@ -12,8 +13,6 @@ import { hhmm } from './calendarUtils';
        subject requires, lecture hours a lecture room), or
      · it is already booked over the dropped time window.
    The server re-checks both — this only spares the officer a refused drop. */
-
-const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /** Overlap on the same day: start < otherEnd && otherStart < end. */
 const overlaps = (entry, day, start, end) =>
@@ -38,11 +37,8 @@ function unavailableReason(room, meeting, entries, day, start, end) {
 export default function RoomPickerModal({ request, rooms, entries, busy, onPick, onCancel }) {
     const { day, startMinutes, endMinutes, meeting } = request;
 
-    useEffect(() => {
-        const onKey = (e) => { if (e.key === 'Escape' && !busy) onCancel(); };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [busy, onCancel]);
+    // Esc, the focus trap, and returning focus to the calendar cell that opened this.
+    const dialogRef = useModalFocus({ onEscape: onCancel, enabled: !busy });
 
     // Rooms that can take the class first, each keeping its own reason when it can't. Within a
     // group the smallest room leads: the snuggest fit is the one worth defaulting to.
@@ -62,6 +58,7 @@ export default function RoomPickerModal({ request, rooms, entries, busy, onPick,
     return createPortal(
         <div className="modal-overlay" onClick={() => !busy && onCancel()} role="presentation">
             <div
+                ref={dialogRef}
                 className="modal room-picker"
                 role="dialog"
                 aria-modal="true"

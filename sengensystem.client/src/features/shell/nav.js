@@ -91,6 +91,16 @@ export const navGroups = [
                     + 'this sets the subjects they still take and the year level they enter at.'
             },
             {
+                to: '/academic-records',
+                label: 'Academic records',
+                icon: 'history',
+                // The Registrar owns the record; the Academic Head is here because it is read
+                // against their curriculum and they answer when a prerequisite refuses a seat.
+                roles: ['Registrar', 'AcademicHead'],
+                desc: 'Record how each subject a student sat for ended — passed, failed, or dropped. '
+                    + 'Prerequisites, repeat subjects, and year-level advancement are all answered from this.'
+            },
+            {
                 to: '/prospectus',
                 label: 'Curriculum prospectus',
                 icon: 'book',
@@ -296,6 +306,16 @@ export const navGroups = [
                 desc: 'Unit-load limits, allowable time slots, and section capacities.'
             },
             {
+                to: '/outbox',
+                label: 'Email outbox',
+                icon: 'send',
+                // Operational, not academic — it answers "is the system delivering?", so it sits
+                // with the admins rather than with the staff who trigger the sends.
+                roles: [],
+                desc: 'Every notification queued, delivered, or permanently failed — and a way to '
+                    + 'retry the failures after a mail outage.'
+            },
+            {
                 to: '/audit',
                 label: 'Audit trail',
                 icon: 'shield',
@@ -391,5 +411,6 @@ export const iconPaths = {
     help: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01',
     signout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
     star: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01z',
-    scale: 'M12 3v18M7 21h10M3 7h18M6.5 7 3 14h7zM17.5 7 14 14h7zM3 14a3.5 3.5 0 0 0 7 0M14 14a3.5 3.5 0 0 0 7 0'
+    scale: 'M12 3v18M7 21h10M3 7h18M6.5 7 3 14h7zM17.5 7 14 14h7zM3 14a3.5 3.5 0 0 0 7 0M14 14a3.5 3.5 0 0 0 7 0',
+    history: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3.5 2'
 };

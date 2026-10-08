@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.AcademicRecords;
 using SENGENSystem.Server.Features.Registration;
 using SENGENSystem.Server.Features.Registration.TransfereeEvaluation;
 
@@ -26,7 +27,12 @@ namespace SENGENSystem.Server.Features.Enlistment
         int Units,
         int YearLevel,
         // True for a subject carried over from an earlier year (a transferee's ruled "to take").
-        bool IsBackSubject);
+        bool IsBackSubject,
+        // True for a subject this student sat for and did not pass. Distinct from IsBackSubject:
+        // a retake can be from the student's *own* current year, and the two read differently to
+        // the student — "you still owe this from an earlier year" versus "you are taking this
+        // again". Always false for a student with no academic history on file.
+        bool IsRepeat);
 
     internal sealed record EnlistmentPlan(
         Domain.Curriculum? Curriculum,
@@ -96,6 +102,12 @@ namespace SENGENSystem.Server.Features.Enlistment
 
             var yearLevel = YearLevelPolicy.Clamp(registration.YearLevel);
 
+            // What this student has already earned and what they still owe. For a student with no
+            // records on file both sets are empty, and every clause below that reads them is a
+            // no-op — so the plan of a school that has not backfilled any history is exactly what
+            // it was before academic records existed.
+            var history = await AcademicHistory.LoadAsync(db, registration.Id, cancellationToken);
+
             var candidates = await db.Subjects.AsNoTracking()
                 .Where(s => s.CurriculumId == curriculum.Id
                     && !s.IsArchived
@@ -108,8 +120,24 @@ namespace SENGENSystem.Server.Features.Enlistment
                 // Their own year's load, plus only those earlier-year subjects the Registrar ruled
                 // they must still take. Without that second clause an evaluated transferee placed
                 // in year 2 would never be offered the year-1 subject they were told to retake.
-                .Where(s => (s.YearLevel == yearLevel || toTake.Contains(s.Id)) && !credited.Contains(s.Id))
-                .Select(s => new PlannedSubject(s.Id, s.Code, s.Title, s.Units, s.YearLevel, s.YearLevel < yearLevel))
+                //
+                // The third clause is the repeat: a subject they sat for and did not pass comes
+                // back, whatever year it belongs to. Without it the plan offered a student their
+                // year level's subjects and nothing else, so someone who failed last term was shown
+                // this term's list and never the subject they actually owed — they could not enlist
+                // in their own repeat.
+                .Where(s => (s.YearLevel == yearLevel
+                        || toTake.Contains(s.Id)
+                        || history.OwedSubjectIds.Contains(s.Id))
+                    && !credited.Contains(s.Id)
+                    // And what they have already passed drops out. This matters most for a student
+                    // repeating a year: without it they would be offered the whole year again,
+                    // including the subjects they cleared.
+                    && !history.HasPassed(s.Id))
+                .Select(s => new PlannedSubject(
+                    s.Id, s.Code, s.Title, s.Units, s.YearLevel,
+                    s.YearLevel < yearLevel,
+                    history.OwedSubjectIds.Contains(s.Id)))
                 .ToList();
 
             return new EnlistmentPlan(curriculum, yearLevel, semester.Term, subjects);

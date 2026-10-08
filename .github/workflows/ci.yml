@@ -1,0 +1,84 @@
+name: CI
+
+# Runs on every push and pull request to the default branch. The point is narrow and worth stating:
+# this repository has no type-checking on the client (Vite/rolldown transpiles without checking), so
+# `npm run build` passing means very little on its own — `eslint` is the real safety net for the
+# JavaScript, and `dotnet test` is the real one for the server. Both must run, and both must fail
+# the build, or the checks are theatre.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  # Lets a run be triggered by hand from the Actions tab without pushing anything.
+  workflow_dispatch:
+
+# A new push supersedes an in-flight run on the same ref — no value in finishing a check against
+# code that has already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Server — build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # `-p:BuildClient=false` drops the server's ProjectReference to the client .esproj. Without
+      # it this job would need the Microsoft.VisualStudio.JavaScript.SDK on the runner and would run
+      # `npm install` just to execute xUnit — verified locally: with the flag, the build mentions
+      # neither esproj nor npm. The client gets its own job below, where npm belongs.
+      - name: Restore
+        run: dotnet restore SENGENSystem.Server.Tests/SENGENSystem.Server.Tests.csproj -p:BuildClient=false
+
+      - name: Build
+        run: dotnet build SENGENSystem.Server.Tests/SENGENSystem.Server.Tests.csproj --no-restore -c Release -p:BuildClient=false
+
+      # The suite is pure unit coverage — policy and the CSP engine, all in memory — so it needs no
+      # SQL Server here. Anything that genuinely depends on the database (the seat-count CHECK, the
+      # filtered unique index, the rowversion tokens) is deliberately *not* covered by these tests;
+      # see the Testing section of tofix.md. Adding a SQL service container is the next step if
+      # integration tests are written.
+      - name: Test
+        run: dotnet test SENGENSystem.Server.Tests/SENGENSystem.Server.Tests.csproj --no-build -c Release -p:BuildClient=false --verbosity normal
+
+  client:
+    name: Client — lint & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sengensystem.client
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: sengensystem.client/package-lock.json
+
+      # `ci` rather than `install`: it installs exactly the lockfile and fails if package.json and
+      # the lock have drifted, which is the check you want on a build machine.
+      - name: Install
+        run: npm ci
+
+      # Runs before the build on purpose. Lint is the step that actually catches the mistakes the
+      # build cannot see — an undefined identifier, an unreachable branch, a hook misuse — so
+      # failing here first gives the clearer signal.
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

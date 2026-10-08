@@ -134,7 +134,7 @@ function SemesterModal({ record, schoolYears, defaultYearId, onClose, onChanged 
 
     return (
         <SetupModal title={isCreate ? 'New semester' : 'Edit semester'} onClose={onClose} footer={footer}>
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
             <form id="sem-form" onSubmit={save} noValidate>
                 <div className="field">
                     <label htmlFor="sem-year">School year</label>
@@ -245,7 +245,7 @@ export default function SemestersPage() {
                 </div>
             </header>
 
-            {error && <div className="alert">{error}</div>}
+            {error && <div className="alert" role="alert">{error}</div>}
 
             {loading ? (
                 <p className="setup-empty">Loading…</p>

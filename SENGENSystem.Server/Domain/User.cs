@@ -64,8 +64,36 @@ namespace SENGENSystem.Server.Domain
         /// <summary>Wrong-code attempts against the current code; the challenge is voided past the cap.</summary>
         public int TwoFactorAttempts { get; set; }
 
+        // ---- Brute-force lockout ----
+
+        /// <summary>
+        /// Consecutive failed sign-ins since the last success. Reset to zero the moment the correct
+        /// password is given, so an ordinary typo never accumulates toward a lockout across sessions.
+        /// </summary>
+        public int FailedLoginCount { get; set; }
+
+        /// <summary>
+        /// When set and in the future, sign-in is refused whatever the password.
+        ///
+        /// <para>
+        /// This is the <i>per-account</i> half of the brute-force defence and it exists because the
+        /// IP rate limiter alone does not cover the attack that matters: guessing one account from
+        /// many addresses. The limiter stops one source hammering many accounts; this stops many
+        /// sources hammering one. Neither is sufficient alone, which is why both are here.
+        /// </para>
+        ///
+        /// <para>
+        /// A lockout is temporary by design. A permanent one hands any attacker who knows a staff
+        /// email a denial-of-service against that person, which trades a hard attack for an easy one.
+        /// </para>
+        /// </summary>
+        public DateTime? LockedOutUntilUtc { get; set; }
+
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
         public string FullName => $"{FirstName} {LastName}";
+
+        /// <summary>Whether a lockout is currently in force.</summary>
+        public bool IsLockedOut(DateTime utcNow) => LockedOutUntilUtc is { } until && until > utcNow;
     }
 }

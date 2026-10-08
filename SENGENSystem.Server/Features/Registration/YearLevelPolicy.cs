@@ -50,7 +50,17 @@ namespace SENGENSystem.Server.Features.Registration
         /// the safe direction to be wrong in, since it under-places rather than over-places.
         /// </para>
         /// </summary>
-        public static int FromCreditedUnits(int creditedUnits, IReadOnlyDictionary<int, int> unitsByYear)
+        public static int FromCreditedUnits(int creditedUnits, IReadOnlyDictionary<int, int> unitsByYear) =>
+            FromEarnedUnits(creditedUnits, unitsByYear);
+
+        /// <summary>
+        /// The general form of the rule above: the year any quantity of <i>earned</i> units places a
+        /// student in. Credited-from-elsewhere units and passed-here units are the same currency —
+        /// a transferee credited 30 units and a continuing student who passed 30 units of the same
+        /// ladder are in the same year — so both go through this one calculation rather than two
+        /// that could drift apart.
+        /// </summary>
+        public static int FromEarnedUnits(int earnedUnits, IReadOnlyDictionary<int, int> unitsByYear)
         {
             var year = MinYearLevel;
             var cumulative = 0;
@@ -61,17 +71,24 @@ namespace SENGENSystem.Server.Features.Registration
                 // student through a gap in the catalog.
                 if (yearUnits <= 0) break;
                 cumulative += yearUnits;
-                if (creditedUnits < cumulative) break;
+                if (earnedUnits < cumulative) break;
                 year = candidate + 1;
             }
             return Clamp(year);
         }
 
         /// <summary>
-        /// The year a returning student moves into when activated for a term. Advancing turns on
-        /// the <i>school year</i> changing, not the semester: a student activating for the second
-        /// semester of the year they are already in stays in that year. A final-year student stays
-        /// at the top of the ladder rather than running off it.
+        /// The year a returning student moves into when activated for a term, <b>when nothing is
+        /// known about what they passed</b>. Advancing turns on the <i>school year</i> changing, not
+        /// the semester: a student activating for the second semester of the year they are already
+        /// in stays in that year. A final-year student stays at the top of the ladder rather than
+        /// running off it.
+        /// <para>
+        /// This is the calendar rule, and it is a fallback rather than the primary answer: it
+        /// promotes on time served, so a student who failed half of last year advances with everyone
+        /// else. Where academic history exists, <see cref="FromEarnedUnits"/> is asked instead — see
+        /// <c>AcademicHistory.DeriveYearLevelAsync</c>, which decides between the two.
+        /// </para>
         /// </summary>
         public static int OnTermActivation(int currentYearLevel, bool isNewSchoolYear) =>
             Clamp(isNewSchoolYear ? currentYearLevel + 1 : currentYearLevel);

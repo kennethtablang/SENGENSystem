@@ -41,6 +41,8 @@ namespace SENGENSystem.Server.Features.Enlistment.Browse
         int Units,
         int YearLevel,
         bool IsBackSubject,
+        // A subject the student sat for and did not pass, now offered again.
+        bool IsRepeat,
         int SectionCount,
         int SeatsAvailable,
         // Approved · Requested · Open (sections to pick from) · NoSection (nothing published yet).
@@ -84,9 +86,13 @@ namespace SENGENSystem.Server.Features.Enlistment.Browse
                 .Include(a => a.FacultyProfile).ThenInclude(f => f!.User)
                 .ToListAsync(cancellationToken);
 
+            // Scoped to the term being browsed — matched by section id below, so a previous term's
+            // rows could never light up a card, but they would inflate the plan's "already
+            // requested" reading for a subject a returning student is taking again.
             var myRequests = eligibility.Registration is { } reg
                 ? await db.SlotRequests.AsNoTracking()
                     .Where(r => r.StudentRegistrationId == reg.Id
+                        && r.Section!.SemesterId == semester.Id
                         && (r.Status == SlotRequestStatus.Requested || r.Status == SlotRequestStatus.Approved))
                     .ToListAsync(cancellationToken)
                 : [];
@@ -150,6 +156,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Browse
                     subject.Units,
                     subject.YearLevel,
                     subject.IsBackSubject,
+                    subject.IsRepeat,
                     forSubject.Count,
                     forSubject.Sum(s => s.Available),
                     mine ?? (forSubject.Count == 0 ? "NoSection" : "Open"));

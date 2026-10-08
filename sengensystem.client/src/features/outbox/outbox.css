@@ -1,0 +1,35 @@
+/* Email outbox — operational visibility over transactional mail. */
+
+/* The count worth acting on, given its own banner rather than left to be discovered by filtering.
+   A permanent failure means someone was never told something the system decided to tell them, so
+   it should be the first thing on the page when it is non-zero — and carry its own remedy. */
+.outbox-failed-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.9rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--sti-gold, #ffd700);
+  border-radius: var(--radius);
+  background: var(--sti-gold-soft, hsl(45 100% 96%));
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+/* The last error sits under the subject: it is the answer to "why not", and truncating it would
+   throw away the only diagnostic the row carries. Wraps and scrolls rather than clipping. */
+.outbox-error {
+  display: block;
+  margin-top: 0.25rem;
+  max-height: 4.5rem;
+  overflow-y: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--text-3);
+  word-break: break-word;
+}

@@ -3,6 +3,7 @@ using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Notifications;
 using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
+using SENGENSystem.Server.Features.Scheduling;
 
 namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
 {
@@ -16,7 +17,8 @@ namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
         int PublishedNow,
         int AlreadyPublished,
         int Total,
-        int EmailsSent);
+        // Accepted for sending, not delivered — the notices are queued and go out in the background.
+        int EmailsQueued);
 
     public static class PublishScheduleEndpoint
     {
@@ -34,7 +36,7 @@ namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
             AuditLog audit,
             Notifier notifier,
             Features.Reports.Live.ReportsBroadcaster broadcaster,
-            IEmailSender email,
+            EmailOutbox outbox,
             CancellationToken cancellationToken)
         {
             var semester = await db.Semesters.FirstOrDefaultAsync(s => s.Id == semesterId, cancellationToken);
@@ -106,38 +108,66 @@ namespace SENGENSystem.Server.Features.Publishing.PublishSchedule
                 $"The {semester.Name} timetable is now official. Your approved subjects appear in My schedule.",
                 "/schedule");
 
-            await db.SaveChangesAsync(cancellationToken);
+            // The assignments were read at the top of this handler; if a regenerate replaced them in
+            // between, publishing would make official a timetable nobody has seen — and, since the
+            // emails below follow the commit, announce it to every faculty member and confirmed
+            // student before anyone noticed. The concurrency token turns that into a 409. Wrapping
+            // this save rather than an earlier one keeps the publish, its audit entry, and its bell
+            // notices in one transaction, exactly as before.
+            if (await ScheduleConcurrency.TrySaveAsync(db, "publish this schedule", cancellationToken)
+                is { } conflict)
+            {
+                return conflict;
+            }
             broadcaster.Announce("publishing");
 
-            // Publication emails are best-effort: the publish itself is already committed.
-            // Faculty are notified about their whole published schedule, not just the delta.
-            var emailsSent = 0;
-
+            // Publication notices go through the outbox, for the same reason the reminder sweep and
+            // the bulk approval do — and this is the path where the cost of not doing so was
+            // actually observed. One press of Publish sent every faculty member and every confirmed
+            // student their notice synchronously, inside the request: an announcement to the whole
+            // institution, unbounded, unrecallable, and with the caller's browser holding the
+            // connection open until the mail server had finished with it.
+            //
+            // Queueing does not make an accidental publish recoverable — the rows are committed and
+            // the mail is on its way — but it does bound the request, make every recipient visible
+            // in one table, and record a failure instead of swallowing it.
+            //
+            // Keyed per semester and recipient, so publishing a term that is already partly
+            // published cannot tell the same person twice about the same timetable.
+            var queued = 0;
             foreach (var user in facultyRecipients)
             {
                 var classCount = assignments.Count(a => a.FacultyProfile?.UserId == user!.Id);
                 var (subject, body) = PublishingEmails.FacultySchedulePublished(user!, semester.Name, classCount);
-                var result = await email.SendAsync(user!.Email, user.FullName, subject, body, cancellationToken);
-                if (result.Sent) emailsSent++;
+                if (outbox.Queue(user!.Email, user.FullName, subject, body,
+                        kind: "SchedulePublished",
+                        dedupeKey: $"published:{semester.Id}:faculty:{user.Id}"))
+                {
+                    queued++;
+                }
             }
 
             foreach (var registration in studentRecipients.DistinctBy(r => r.Email))
             {
                 var (subject, body) = PublishingEmails.StudentSchedulePublished(registration, semester.Name);
-                var result = await email.SendAsync(registration.Email, registration.FullName, subject, body, cancellationToken);
-                if (result.Sent) emailsSent++;
+                if (outbox.Queue(registration.Email, registration.FullName, subject, body,
+                        kind: "SchedulePublished",
+                        dedupeKey: $"published:{semester.Id}:student:{registration.Id}"))
+                {
+                    queued++;
+                }
             }
 
-            if (emailsSent > 0)
+            if (queued > 0)
             {
                 audit.Record(AuditAction.NotificationDispatched,
-                    $"Sent schedule publication notices for {semester.Name} to {emailsSent} recipient(s).",
+                    $"Queued schedule publication notices for {semester.Name} to {queued} recipient(s).",
                     "Semester", semester.Id.ToString());
                 await db.SaveChangesAsync(cancellationToken);
             }
 
             return Results.Ok(new PublishScheduleResponse(
-                semester.Id, semester.Name, drafts.Count, alreadyPublished, assignments.Count, emailsSent));
+                semester.Id, semester.Name, drafts.Count, alreadyPublished, assignments.Count, queued));
         }
     }
 }

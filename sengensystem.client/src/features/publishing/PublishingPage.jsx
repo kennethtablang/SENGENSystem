@@ -117,7 +117,7 @@ function PublishingPage() {
             const result = await publishSchedule(semesterId);
             const text = result.publishedNow > 0
                 ? `Published ${result.publishedNow} class${result.publishedNow === 1 ? '' : 'es'} for ${result.semesterName}. ` +
-                  `Notification emails sent to ${result.emailsSent} recipient${result.emailsSent === 1 ? '' : 's'}.`
+                  `Notification emails queued for ${result.emailsQueued} recipient${result.emailsQueued === 1 ? '' : 's'}.`
                 : 'This schedule is already fully published — nothing to do.';
             setAlert({ kind: 'success', text });
             notifySuccess(text);
@@ -162,7 +162,8 @@ function PublishingPage() {
             </header>
 
             {alert && (
-                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}>
+                <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
+                    role={alert.kind === 'success' ? 'status' : 'alert'}>
                     <p>{alert.text}</p>
                 </div>
             )}

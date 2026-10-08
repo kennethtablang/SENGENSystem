@@ -1,65 +1,29 @@
-import { getToken } from '../auth/api';
+import { apiFetch } from '../shell/apiClient';
 import { pageParams } from '../shell/useServerTable';
 
-async function parseError(response) {
-    let payload = null;
-    try {
-        payload = await response.json();
-    } catch {
-        // non-JSON error body
-    }
-    return {
-        status: response.status,
-        message: payload?.message || payload?.title || 'Something went wrong. Please try again.',
-        fieldErrors: payload?.errors || {}
-    };
-}
-
-function authHeaders(json) {
-    const h = { Authorization: `Bearer ${getToken()}` };
-    if (json) h['Content-Type'] = 'application/json';
-    return h;
-}
+/* Every call goes through the shared client — see academic/api.js for the reasoning. */
 
 // FR-AUTH-07: School Admin account management.
-export async function listUsers({ role, status, ...page } = {}) {
+export function listUsers({ role, status, ...page } = {}) {
     const params = pageParams(page);
     if (role && role !== 'All') params.set('role', role);
     if (status && status !== 'All') params.set('status', status);
     const qs = params.toString() ? `?${params}` : '';
-    const response = await fetch(`/api/users${qs}`, { headers: authHeaders() });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
+    return apiFetch(`/api/users${qs}`);
 }
 
-export async function createUser(data) {
-    const response = await fetch('/api/users', {
-        method: 'POST', headers: authHeaders(true), body: JSON.stringify(data)
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
+export function createUser(data) {
+    return apiFetch('/api/users', { method: 'POST', body: data });
 }
 
-export async function updateUser(id, data) {
-    const response = await fetch(`/api/users/${id}`, {
-        method: 'PUT', headers: authHeaders(true), body: JSON.stringify(data)
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
+export function updateUser(id, data) {
+    return apiFetch(`/api/users/${id}`, { method: 'PUT', body: data });
 }
 
-export async function setUserActive(id, isActive) {
-    const response = await fetch(`/api/users/${id}/active`, {
-        method: 'POST', headers: authHeaders(true), body: JSON.stringify({ isActive })
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
+export function setUserActive(id, isActive) {
+    return apiFetch(`/api/users/${id}/active`, { method: 'POST', body: { isActive } });
 }
 
-export async function resetUserPassword(id, newPassword) {
-    const response = await fetch(`/api/users/${id}/password`, {
-        method: 'POST', headers: authHeaders(true), body: JSON.stringify({ newPassword })
-    });
-    if (!response.ok) throw await parseError(response);
-    return response.json();
+export function resetUserPassword(id, newPassword) {
+    return apiFetch(`/api/users/${id}/password`, { method: 'POST', body: { newPassword } });
 }
