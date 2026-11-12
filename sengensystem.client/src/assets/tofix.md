@@ -24,7 +24,11 @@ security batch, and the first automated tests; (5) 5 August 2026 — F-07, F-12,
 (F-05, F-14, F-15, institution name, 500 detail), F-03, F-04, the seat reconcile, and every
 remaining engineering-time P2/P3 item; (12) 9 October 2026 — SQL Server integration tests (local
 and CI), the institution name on email, and the reminder email's enlistment claim; (13) 9 October
-2026 — approval-path and report integration tests.*
+2026 — approval-path and report integration tests; (14) 9 October 2026 — the last inline bulk
+mail moved to the outbox, and endpoint tests for everything built in pass 11; (15) 9 October 2026 —
+the first walk of the survey, Super Admin, and settings slices; (16) 9 October 2026 — an
+authorization sweep of every route; (17) 12 November 2026 — build/lint warnings, secrets out of
+`appsettings.json`, and the four remaining engineering-time P3 report items.*
 
 > **A note on stale findings.** Pass (8) tested the P3 "a 2-hour subject rounds up to a 3h block"
 > claim before budgeting to fix it, and found the engine had already been corrected — the finding had
@@ -32,10 +36,10 @@ and CI), the institution name on email, and the reminder email's enlistment clai
 > real and worse than described. Both are now pinned by tests. Re-verify an old finding before
 > planning work against it; this file is a record of what *was* true.
 
-> **Note on coverage.** This analysis predates the ISO 25010 survey module, the Super Admin role,
-> and the appearance/behaviour settings. Those three slices have not been walked, so they have no
-> findings here — `SurveyAdminEndpoints` is mentioned only to explain why its cap was left alone.
-> Worth a pass of their own, particularly Super Admin against the note on elevation breadth below.
+> **Note on coverage.** The ISO 25010 survey module, the Super Admin role, and the
+> appearance/behaviour settings postdated the original analysis and went unwalked until pass 15 —
+> see *Done — 9 October 2026, fourth pass*. The Super Admin walk found the most serious defect in
+> this file.
 
 ---
 
@@ -807,18 +811,209 @@ over nothing. The tests now arrange the class, seat, and curriculum they print.
 
 Tests: 152 (up from 142), of which 27 run against SQL Server.
 
-## P0 — correctness / data integrity · 5 of 6 done
+## Done — 9 October 2026, third pass
 
-The one remaining P0 is not engineering time — it needs real secret values.
+**Found while looking for the last unrecorded mail** — `tofix.md` said only password reset and 2FA
+codes still went out inline. A search for every `IEmailSender` caller found more, and three were
+the bulk shape F-07 and F-12 had already fixed elsewhere:
+
+| What it was | Where the fix lives |
+|---|---|
+| **Moving or removing a published class on the board emailed its teacher and every enrolled student inline** — up to forty SMTP calls inside the drag, failures logged and forgotten | `ScheduleAmendments.QueueNoticesAsync` — queued on the outbox; the edit still commits first, so it stands whatever happens to its notices |
+| **Survey invitations and reminders were sent one by one after the commit**, inside the request | Queued in the same save as the invitations, so an invitation and its email cannot disagree |
+| **Rejection notices were sent inline while approval notices were queued** — a failed rejection was simply lost, on the decision a student most needs to hear about | Queued with the rejection, keyed per request |
+
+**Deliberately still inline**, and now said so rather than left as an open item: password reset,
+2FA codes, email-change confirmation, and the new-account credentials. Each carries a live secret —
+a reset link, a code, a temporary password — and the outbox stores bodies; queuing them would write
+working credentials into a table. They are single messages to a person who is waiting for them,
+which is the case inline delivery is right for. Registration and term-activation notices are also
+single and inline; moving them is possible but buys little.
+
+**Tests added** (all through the real endpoints against SQL Server):
+
+- *My SIS* — a pending SIS is corrected in capitals and the account's name follows; a confirmed one
+  is locked (409); program and email are not student-editable and required fields cannot be
+  blanked; staff are refused the student route.
+- *The Registrar's queue* — an enrolled marker on the row, and a likely duplicate flagged on the row
+  and listed in the detail.
+- *Seat reconcile* — drift is listed, corrected on purpose, and audited once; more approvals than
+  seats is refused rather than written.
+- *The request leg* — an eligible student gets a request (and no seat until approval); a second
+  section of the same subject, a time clash, and the unit ceiling are each refused.
+- *Bulk approval* — three of four granted, the fourth skipped with "is full", counts at capacity.
+- *A student's own drop* — the seat comes back and the drop is audited (F-08).
+- *The outbox paths above* — a moved published class queues a notice per enrolled student; a
+  rejection queues its notice with the decision.
+
+**Two problems the new tests caused, both fixed in the tests** — worth recording because each looks
+like an app bug at first sight:
+
+- **The login rate limiter tripped.** The app allows 20 sign-ins a minute per address and every
+  test client shares one; past twenty tests the suite got 429s. The limiter was right. Tokens are
+  now issued once per account, and test students get one minted by the app's own
+  `JwtTokenService`.
+- **A flaky board test.** The helper took "the first room" with no ordering, and SQL Server
+  sometimes returned a kitchen laboratory — which the board correctly treats as a laboratory
+  meeting and refuses to move into a lecture context. The helper now picks a lecture room
+  deterministically; four consecutive full runs are green.
+
+Mutation-checked: turning off the request leg's unit ceiling and stopping a drop from returning the
+seat each fail exactly their test.
+
+Tests: 167 (up from 152), of which 42 run against SQL Server.
+
+## Done — 9 October 2026, fourth pass
+
+The three slices that had never been walked. **The Super Admin walk found the most serious defect in
+this file**, and it was the note on elevation breadth below that pointed at it.
+
+### Super Admin — the top account could be taken over from below **[security]**
+
+Every user-management guard protected the School Admin and none protected the Super Admin above it.
+Creation was the only path that checked for SuperAdmin; reset, edit, and activation did not. So an
+**Academic Head** — who has user-management access for staff — could:
+
+- reset the Super Admin's password and sign in as them (verified against the old code: **200 OK**);
+- change its email, then claim it through "forgot password";
+- deactivate it;
+- or simply **assign themselves the SuperAdmin role** through their own account's edit.
+
+A School Admin could do the same. **Fixed** with one rule in one place,
+`Common/Auth/AccountAuthority.cs`: *you may act on an account, or hand out a role, only at or below
+your own rank* (Super Admin › School Admin › everyone else). All four user-management endpoints
+ask it, so a new endpoint or a new role cannot reopen the gap by omission. The last active Super
+Admin is now protected from demotion and deactivation the way the last School Admin already was.
+
+Two related hardenings:
+
+- **Default seed passwords must be changed.** Both admin accounts fall back to `ChangeMe123!` when
+  no seed password is configured — a password readable in source control, on the two most powerful
+  accounts. An account seeded with the default is now flagged to change it at first sign-in; a
+  configured password is left alone. (The existing dev database was seeded long ago and is
+  unaffected.)
+- **"Must change password" is enforced by the server.** It was honoured by the client's first-login
+  screen alone, so the same token could call any endpoint and never change the password.
+  `Common/Auth/PasswordChangeGate.cs` refuses every authenticated `/api` call except the auth
+  endpoints and the password change while the flag is set — reading the account, not a token claim,
+  because the client keeps its token across the change.
+
+### Survey
+
+| What it was | Fix |
+|---|---|
+| **CSV formula injection** — respondents' free text (on an anonymous link) went raw into the export the Super Admin opens in Excel, so `=HYPERLINK(...)` in a comment ran as a formula | Cells starting `= + - @`, tab, or CR are prefixed with `'`; the export writes no legitimate value starting with those |
+| An over-long answer reached SQL Server and came back as a **500** on a public form | Validated against the column limits first, with a field error |
+| Two submits at once (double click, two tabs) — the unique index kept the second out, but as a **500** | Answered with the same 409 as an already-answered survey |
+| "Invited by" and "last changed by" always read "Super Admin" — the name is in the JWT `name` claim, which `Identity.Name` does not read | Reads the claim, as `AuditLog` already did |
+
+A smaller one, left as is: re-sending an invitation refreshes its token, so an earlier invitation
+still waiting in the outbox would arrive with a dead link. The dispatcher drains in seconds, so the
+window is narrow; worth revisiting only if invitations are re-sent in quick succession.
+
+### Settings (client)
+
+| What it was | Fix |
+|---|---|
+| **A blocked browser store crashed the app shell on every page** — `AppLayout` read the sidebar state from `localStorage` during render, and storage throws in private windows or under the site-data policies common on managed school machines | `features/shell/storage.js`: every read and write goes through it and cannot throw; the token falls back to memory for the tab, so signing in still works |
+| Saving a preference with storage blocked threw and took the Settings page down | Same module |
+| **On a shared office PC, the last user's landing page applied to the next person** — preferences are per browser, so a Registrar's "Enlistment approvals" landed a student on a page their role cannot use | The landing page is honoured only if it is on the signed-in user's own page list; otherwise the dashboard |
+| The preferences export revoked its object URL after 0 ms — the pitfall `saveBlob` guards against | Uses `saveBlob` |
+
+**Verified**: 13 new tests (9 integration, 4 unit). Against the old code, 7 of the 9 integration
+tests fail — including the takeover itself, which returns 200 there — and removing the password gate
+fails its test. The storage fallback was exercised with a `localStorage` that throws on every call.
+
+Tests: 180 (up from 167), of which 51 run against SQL Server.
+
+## Done — 9 October 2026, fifth pass — authorization sweep
+
+The Super Admin finding was a check that existed on some paths and not others, so every route was
+swept rather than trusting that it was the only one. Four questions, each answered by a script over
+the endpoint mappings rather than by reading:
+
+1. **Which routes declare no authorization at all?** (There is no fallback policy, so these are
+   public.) Three: forgot-password, reset-password, and email confirmation — all public by design,
+   each gated by a one-time token. No controllers exist to hide others.
+2. **Which are anonymous?** Nine, each intentional: sign-in, 2FA, self-registration, the public
+   SIS, term activation (lookup and request), and the emailed survey link.
+3. **Which admit any signed-in user?** Sixteen, all acting on the caller's own data. The one that
+   takes an id — marking a notification read — was verified in an earlier pass to 404 on another
+   user's notice.
+4. **Which student- or faculty-facing routes take an id?** One — a student cancelling or dropping a
+   seat — and it checks ownership, answering 404 so a request's existence is not confirmed to
+   someone it does not belong to. Now pinned by a test.
+
+Mass assignment was checked on the two self-service writes: the profile update changes names only,
+and self-registration hard-codes the Student role.
+
+**The sweep's finding: the anonymous forms had no rate limit.** Login, 2FA, and password reset did;
+nothing else did. Two of them mattered:
+
+- **The public SIS sends an email to whatever address is typed**, so a script could make the
+  school's Gmail sender mail arbitrary addresses by the thousand — and get that account suspended,
+  taking every real notice down with it.
+- **The term-activation lookup answers "does this student number and surname match?"**, so
+  unlimited guesses enumerate the student body.
+
+**Fixed** with a second limiter policy, `PublicFormRateLimitPolicy` (30 a minute per address),
+on self-registration, the SIS, both term-activation routes, the survey link, and email
+confirmation. Looser than sign-in's 20 on purpose: on registration day a computer lab behind one
+campus address can file many SISes in the same minute, and turning away a real enrollee costs far
+more than the margin gives a script. The client already words a 429 ("Too many attempts. Wait a
+moment and try again."), so nothing changed there.
+
+Tests: 182 (up from 180).
+
+## Done — 12 November 2026
+
+**Errors and warnings first.** The server and client both built and all 182 tests were green, so
+there were no failing builds — but there were nine warnings, now zero:
+
+| What it was | Fix |
+|---|---|
+| `CS8602` possible null dereference — `LinkAccountEndpoint` trimmed `request.StudentNumber` after a blank check the compiler cannot see through | Null-forgiving with the reason stated (`LinkAccountEndpoint.cs:191`) |
+| `react-hooks/exhaustive-deps` × 7 — `rows` / `entries` rebuilt as a new `[]` every render, so five `useMemo`s in `FacultyAssignModal` and two in `SchedulePage` recomputed every render | Each wrapped in its own `useMemo` keyed on the payload |
+| `react-hooks/exhaustive-deps` — `EnlistmentPage`'s mount-only load | Documented as mount-only; later reloads are explicit |
+
+**Secrets out of `appsettings.json`** (the last P0). The JWT signing key, the seed admin
+password, and the SMTP identity now live only in `appsettings.Development.json`; the base file
+carries an empty key. `JwtOptions.EnsureUsableKey` runs at startup and **refuses to start** on a
+missing key, a key under 32 characters, or — outside Development — the development key itself, so a
+deployment that forgets `Jwt__Key` fails loudly rather than signing tokens with a key anyone can read.
+A deployment that sets no seed password gets `ChangeMe123!` with the forced change (pass 15). The
+SMTP password was already user-secrets only. The test host supplies its own key and seed password.
+
+**The four engineering-time P3 report items**, one migration (`AddReportFidelityFields`):
+
+| What it was | Fix |
+|---|---|
+| **"Class No." was `SectionCode`** | `Section.ClassNumber` — minted by a SQL Server sequence (`ClassNumbers`, from 1001) as a column default, unique-indexed. Sections survive regeneration, so a class keeps its number for the term. Existing rows are back-filled in a stable order and the sequence restarted past them (verified on a scratch database with rows in it) |
+| **Program Head not modeled** | `User.ProgramHeadOf` — a *designation* on a faculty or Academic Head account, not a new role, so it grants no access and touches no authorization path. One head per program (unique index). Set per program on **System parameters → Faculty-loading memo**; the memo's THRU line names the member's program head and falls back to the Academic Head where none is designated, so nothing changes until someone is designated |
+| **Lab-credit factor not modeled** (Teaching vs Contact hrs) | `SystemSettings.LabTeachingCreditFactor` (0.25–1.0, default **1.0** = the old hour-for-hour behaviour), on the same card. The memo gains a **TEACHING HRS** column and total: lecture hours + laboratory hours × factor. A meeting's LEC/LAB now follows its room, as on the board, so a lecture-laboratory subject's two meetings print as one LEC and one LAB instead of both "LAB" |
+| **In-memory aggregation in the report endpoints** | The faculty-load summary and room utilization now `GROUP BY` in SQL (the window clipping is written as conditionals so it translates to `CASE` on any SQL Server, not only those with `GREATEST`/`LEAST`). The confirmation memo filters in SQL and indexes meetings once by (faculty, subject, cohort) instead of rescanning every meeting per allocation. Left in memory deliberately: soft-constraint scoring, which is engine logic over preferences rather than a sum |
+
+The factor is institutional rather than per subject: STI credits laboratory by one rule, and a
+per-subject override can be added later without touching the memo.
+
+**Verified**: 12 new tests — 7 for the key guard (unit) and 5 against SQL Server: class numbers are
+distinct and printed; a 3h lecture + 3h laboratory reads 6 contact / 6 teaching at 1.0 and 6 / 5.25 at
+0.75; the factor is bounded on the endpoint; designating, replacing, and clearing a Program Head
+(and refusing a student or an unknown program); and the SQL aggregates equal a hand count of the
+meetings, including the 08:00–17:00 clipping. Client lint: 0 problems.
+
+Tests: 194 (up from 182).
+
+## P0 — correctness / data integrity · 6 of 6 done
 
 - [x] **F-08** Seats can never be released — `EnrolledCount` only increments; no drop/revoke path
 - [x] **F-09** Approval-time overlap check is not term-scoped → false conflicts for returning students
 - [x] **F-01** `EnrollmentStage` gates nothing; the banner and the API can disagree
 - [x] **F-20** Queues cap at 500/1000 with client-side search → records silently invisible
 - [x] **F-11** No record of completed subjects — prerequisites, year-level advance, and repeats all rest on it **[decided: verdicts, not grades]**
-- [ ] Secrets committed to `appsettings.json` (JWT key, seed admin password, SMTP identity)
+- [x] Secrets committed to `appsettings.json` (JWT key, seed admin password, SMTP identity) — moved to Development config / environment; the app refuses to start on a missing, short, or published key (pass 17). **Deployer still owes**: a fresh `Jwt__Key` and seed passwords in the production environment
 
-## P1 — workflow gaps & hardening · 12 of 13 done
+## P1 — workflow gaps & hardening · 14 of 15 done
 
 **Everything remaining at P1 is a decision.** No engineering-time item is left at this priority.
 
@@ -833,7 +1028,9 @@ The one remaining P0 is not engineering time — it needs real secret values.
 - [x] No global 401/expiry handling on the client
 - [x] No security response headers (nosniff, frame-ancestors/CSP, Referrer-Policy)
 - [x] No top-level React error boundary
-- [x] No automated tests at all — 152 now: unit, the CSP engine, and 27 against SQL Server
+- [x] No automated tests at all — 194 now: unit, the CSP engine, and 56 against SQL Server
+- [x] **Super Admin takeover from below** (pass 15) — reset / edit / deactivate / self-promote, fixed by one rank rule
+- [x] "Must change password" enforced only by the client (pass 15) — now a server gate
 - [ ] JWT in `localStorage` + 8-hour lifetime **[decision]** — considered in pass 11 and left as is
 
 > **These were not theoretical.** During the previous pass a single `POST /publishing/{id}/publish`
@@ -876,20 +1073,22 @@ The one remaining P0 is not engineering time — it needs real secret values.
 - [x] No `/health` endpoint (pass 7); sparse operational logging (pass 11, request logging)
 - [x] No timeout/cancel on client downloads
 
-## P3 — scheduling engine & reports · 7 of 12 done
+## P3 — scheduling engine & reports · 11 of 12 done
+
+The one remaining P3 is a decision, not engineering time.
 
 - [x] Time-grid granularity — **the finding was stale**; the engine already places exact-length blocks
 - [x] No UI to re-enter a seed and reproduce a past arrangement
 - [ ] Determinism per-seed vs. absolute **[decision]** — now *tested* in both directions (same seed → same timetable; different seeds → different ones), so the current answer is locked in and provable. Whether it is the *wanted* answer is still a product call.
 - [x] Pigeonhole pre-check counted meetings only — now counts teaching minutes as well
 - [x] Raw exception detail exposed to the Academic Head on a 500 — **decided: trace id only**
-- [ ] Program Head role not modeled (memo reuses Academic Head for THRU and FROM)
-- [ ] STI lab-credit factor not modeled (Teaching vs Contact hrs)
+- [x] Program Head role not modeled (memo reuses Academic Head for THRU and FROM) — a per-program **designation** (`User.ProgramHeadOf`), not a role; falls back to the Academic Head (pass 17)
+- [x] STI lab-credit factor not modeled (Teaching vs Contact hrs) — `LabTeachingCreditFactor` on System parameters, TEACHING HRS column on the memo (pass 17)
 - [x] Institution/branch name hardcoded "STI" — **decided: configurable** (System parameters)
-- [ ] "Class No." is a proxy (`SectionCode`)
+- [x] "Class No." is a proxy (`SectionCode`) — `Section.ClassNumber`, minted by a database sequence (pass 17)
 - [x] Per-faculty schedule grid lacks the instructor detail + colour-coding (it had colour, from a
       third palette; now the board's, plus the class grid's block layout and legend)
-- [ ] In-memory aggregation in the **report** endpoints (the list endpoints were fixed with F-20)
+- [x] In-memory aggregation in the **report** endpoints (the list endpoints were fixed with F-20) — summary and room-utilization sums are SQL `GROUP BY`s; the memo uses a keyed lookup (pass 17)
 - [x] No CI pipeline
 
 ---
@@ -962,12 +1161,15 @@ through the system, and that a decision on a row leaves no structured trace.
 
 ## Reports — Confirmation of Faculty Loading
 
-- **Program Head not modeled.** No Program Head role exists, so the memo's **THRU** and **FROM** both
-  use the active Academic Head (Noted = School Admin). Add a Program Head role/field if the form
-  needs a distinct signatory.
-- **STI lab-credit factor missing.** The official form shows Teaching hrs < Contact hrs for labs
-  (per-subject crediting). We store only Units + Hours, so the report shows Units (credited load) +
-  Contact hours (meeting duration). Add a per-subject teaching-credit factor for an exact match.
+- ~~**Program Head not modeled.**~~ — **fixed** (pass 17). `User.ProgramHeadOf` designates a faculty
+  member or Academic Head as head of one program; System parameters → *Faculty-loading memo* sets
+  it per program. A designation rather than a role on purpose: a Program Head signs a memo, and a
+  role would have meant a new claim on every authorization path for no new access. THRU names the
+  member's program head; with none designated it falls back to the Academic Head, as before.
+- ~~**STI lab-credit factor missing.**~~ — **fixed** (pass 17). `SystemSettings.LabTeachingCreditFactor`
+  (0.25–1.0, default 1.0 — the old behaviour) credits each laboratory meeting's contact hours at that
+  factor; the memo prints CONTACT HRS and TEACHING HRS side by side, with totals. Institutional
+  rather than per subject, since STI applies one rule; a per-subject override could layer on later.
   `Features/Reports/FacultyLoading/FacultyLoadingPdfModels.cs`.
 - ~~**[decision] Institution/branch name hardcoded.**~~ — **configurable** (pass 11):
   `SystemSettings.InstitutionName`, default "STI College Alaminos", set on System parameters and
@@ -977,8 +1179,11 @@ through the system, and that a decision on a row leaves no structured trace.
   that `SmtpEmailSender` fills from settings at send time. Send time rather than build time because
   the builders are static, queued mail can wait in the outbox, and every message — inline or
   queued — leaves through that one sender.
-- **Class No. proxy.** "Class No." maps to `Section.SectionCode` (no real STI class number exists in
-  the data).
+- ~~**Class No. proxy.**~~ — **fixed** (pass 17). No STI class number existed in the data, so SEN-GEN
+  now mints one: `Section.ClassNumber`, a SQL Server sequence default (from 1001), unique-indexed.
+  The database assigns it so two creators can never collide, and sections persist across
+  regeneration, so the number is stable for the term. If STI's own class numbers are ever imported,
+  they can be written into this column (it is a plain int; the default only fills it when omitted).
 - **"No. of students" inherits the `EnrolledCount` drift** described in F-08 — it uses
   `Section.EnrolledCount`, falling back to `Capacity` when enrollment is 0
   (`FacultyLoadingPdfModels.cs:167`). Confirm this matches how the registrar reads the figure, and
@@ -1086,15 +1291,21 @@ through the system, and that a decision on a row leaves no structured trace.
 - **Elevation breadth.** `SchoolAdminClaimsTransformation` grants a School Admin every role's claims.
   It is deliberate and documented, but it means a single compromised School Admin account is total
   system access, and per-endpoint role checks give no defence in depth. Worth an explicit note in the
-  security section of the paper.
+  security section of the paper. **This note is what led to the pass-15 finding**: account
+  management had per-endpoint guards that protected one admin role and forgot the one above it —
+  now a single rank rule, `AccountAuthority`.
 
 ## Configuration & secrets
 
-- **Secrets committed to `appsettings.json`** (and `.gitignore` does not exclude it): the JWT signing
-  `Key` (still the literal `"CHANGE-THIS-DEV-ONLY-SIGNING-KEY-…"`), the seed **admin email +
-  password** (`admin@stialaminos.local` / `Admin@Sengen2026`), and the SMTP account identity. Before
-  any real deployment: move these to user-secrets / environment variables / a secrets manager,
-  generate a fresh 32+ char JWT key, and force a change of the seeded admin password on first login.
+- ~~**Secrets committed to `appsettings.json`**~~ — **fixed** (pass 17). `appsettings.json` now holds
+  no secret: an empty `Jwt:Key`, no seed password, no SMTP identity. The development values moved to
+  `appsettings.Development.json`, which only Development loads. `JwtOptions.EnsureUsableKey` refuses
+  to start the app on a key that is missing, shorter than 32 characters, or — outside Development —
+  the published development key. The seeded-admin forced change landed in pass 15. **For a real
+  deployment**, set `Jwt__Key` (a fresh random secret), `Seed__AdminPassword` /
+  `Seed__SuperAdminPassword`, and `Email__User` / `Email__FromAddress` / `Email__Password` in the
+  environment or a secrets manager. The values that *were* committed stay in git history, so treat
+  the old dev key and `Admin@Sengen2026` as public.
 - **Per-environment config.** `Email.ClientBaseUrl` (`https://localhost:51683`) and the LocalDB
   connection string are baked in; production values must come from environment config.
 
@@ -1127,12 +1338,12 @@ through the system, and that a decision on a row leaves no structured trace.
   publishing all queue their mail on `OutboxEmail` and return; `OutboxDispatcher` delivers it in
   bounded batches of 25 with exponential backoff. The reminder sweep is additionally capped at 200
   rows per press and refuses to chase the same enrollee inside 20 hours.
-- **In-memory aggregation — reports only, now.** The *list* endpoints were fixed with F-20 (their
-  filters, sorts, and summary counts run in SQL). The **report** paths still `ToListAsync()` and then
-  group/filter in memory (`BuildRowsAsync`, grid workbook, soft-constraints). Correct and fine at
-  institutional scale, but push grouping/sums into SQL if volumes grow.
-  `Features/Reports/FacultyLoading/FacultyLoadingReportsEndpoints.cs`,
-  `Features/Scheduling/SoftConstraints/*`.
+- ~~**In-memory aggregation — reports only, now.**~~ — **fixed** (pass 17). `BuildRowsAsync` (faculty-load
+  summary) and `RoomUtilizationRowsAsync` aggregate with SQL `GROUP BY`s — one row per member or room
+  comes back instead of every meeting. The confirmation memo filters in SQL and finds each
+  allocation's meetings through a keyed lookup rather than a scan per allocation. The grid
+  workbooks and soft-constraint scoring still read the term's meetings into memory, deliberately:
+  they *lay out* or *score* each meeting rather than sum them, so every row is needed anyway.
 - ~~**No request timeout/cancellation on client downloads.**~~ — **done** (pass 11): `apiDownload`
   is now the one download path (five local copies folded into it), with a 120 s timeout that covers
   the body as well as the headers and an optional cancel signal. The faculty-load reports page — home
@@ -1191,9 +1402,11 @@ through the system, and that a decision on a row leaves no structured trace.
   twice, and an approval notice arriving twice reads as the system malfunctioning), and a **Pending**
   one cannot either, because it is already going to be attempted.
 
-  **Still open:** single interactive mail (password reset, 2FA code) goes inline via `IEmailSender`
-  and remains best-effort — the right trade for latency, since the user is waiting on it, but it
-  leaves that narrow path unrecorded.
+  ~~**Still open:** single interactive mail goes inline~~ — **resolved** (pass 14): every *bulk*
+  path is now on the outbox (board amendments, survey invitations and reminders, and rejections were
+  found still inline and moved). What stays inline is deliberate: messages carrying a live secret
+  (reset link, 2FA code, email-change link, temporary password) must not be written to a table of
+  stored bodies, and each is one message to a person waiting for it.
 
 ## Client resilience
 

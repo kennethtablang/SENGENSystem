@@ -1,3 +1,4 @@
+import { readItem, writeItem, removeItem } from './storage';
 /* Where the bearer token lives.
 
    Split out of `auth/api.js` to break a genuine import cycle: `apiClient` needs the token to build
@@ -16,13 +17,13 @@
 const TOKEN_KEY = 'sengen.token';
 
 export function getToken() {
-    return localStorage.getItem(TOKEN_KEY);
+    return readItem(TOKEN_KEY);
 }
 
 export function setToken(token) {
-    localStorage.setItem(TOKEN_KEY, token);
+    writeItem(TOKEN_KEY, token);
 }
 
 export function clearToken() {
-    localStorage.removeItem(TOKEN_KEY);
+    removeItem(TOKEN_KEY);
 }

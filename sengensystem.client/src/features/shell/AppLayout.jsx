@@ -9,6 +9,7 @@ import { iconPaths, searchableItems, visibleGroups, visibleMinor } from './nav';
 import { useNavBadges } from './useNavBadges';
 import { confirmsSignout, showsBadges } from '../settings/prefs';
 import './shell.css';
+import { readItem, writeItem } from './storage';
 
 const roleLabels = {
     Student: 'Student',
@@ -171,21 +172,21 @@ function AppLayout() {
     };
 
     const [navOpen, setNavOpen] = useState(false);
-    const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sengen.sidebar') === 'collapsed');
+    const [collapsed, setCollapsed] = useState(() => readItem('sengen.sidebar') === 'collapsed');
 
     // Close the off-canvas sidebar when a nav link is used (mobile).
     const closeNav = () => setNavOpen(false);
 
     // The Settings page can flip the sidebar preference too — stay in sync with it.
     useEffect(() => {
-        const sync = () => setCollapsed(localStorage.getItem('sengen.sidebar') === 'collapsed');
+        const sync = () => setCollapsed(readItem('sengen.sidebar') === 'collapsed');
         window.addEventListener('sengen:sidebar', sync);
         return () => window.removeEventListener('sengen:sidebar', sync);
     }, []);
 
     const toggleCollapsed = () => {
         setCollapsed(prev => {
-            localStorage.setItem('sengen.sidebar', prev ? 'expanded' : 'collapsed');
+            writeItem('sengen.sidebar', prev ? 'expanded' : 'collapsed');
             return !prev;
         });
     };

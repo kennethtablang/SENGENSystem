@@ -27,6 +27,14 @@ namespace SENGENSystem.Server.Domain
 
         public string SectionCode { get; set; } = string.Empty; // e.g. "BSCS-1A-CS101"
 
+        /// <summary>
+        /// The class number printed as "Class No." on the faculty-loading memo — a short, stable,
+        /// institution-unique number minted by the database (sequence <c>ClassNumbers</c>, from
+        /// 1001) when the offering is created. Sections are kept across regenerations, so a class
+        /// keeps its number for the life of the term.
+        /// </summary>
+        public int ClassNumber { get; set; }
+
         public string ProgramCode { get; set; } = string.Empty;
 
         public int YearLevel { get; set; }

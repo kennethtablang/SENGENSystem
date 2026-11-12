@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
@@ -44,12 +45,11 @@ namespace SENGENSystem.Server.Features.UserManagement.ResetUserPassword
                 return Results.NotFound(new { message = "User not found." });
             }
 
-            // Privilege guard: only a School Admin may reset a School Admin's password.
-            if (user.Role == UserRole.SchoolAdmin && !http.User.IsInRole(nameof(UserRole.SchoolAdmin)))
+            // Privilege guard (AccountAuthority): a password reset is a takeover of the account,
+            // so it is allowed only at or below the caller's own rank.
+            if (AccountAuthority.RefuseManaging(http.User, user) is { } refusal)
             {
-                return Results.Json(
-                    new { message = "Only a School Admin can reset a School Admin account's password." },
-                    statusCode: StatusCodes.Status403Forbidden);
+                return AccountAuthority.Forbidden(refusal);
             }
 
             user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword!);

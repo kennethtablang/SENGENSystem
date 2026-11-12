@@ -40,7 +40,8 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
     {
         public static IEndpointRouteBuilder MapRequestTermActivation(this IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/registration/term-activation", HandleAsync).AllowAnonymous();
+            app.MapPost("/api/registration/term-activation", HandleAsync).AllowAnonymous()
+                .RequireRateLimiting(SENGENSystem.Server.Program.PublicFormRateLimitPolicy);
             return app;
         }
 

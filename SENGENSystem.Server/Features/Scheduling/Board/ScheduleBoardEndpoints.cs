@@ -333,7 +333,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             AppDbContext db,
             AuditLog audit,
             Notifier notifier,
-            IEmailSender email,
+            EmailOutbox outbox,
             System.Security.Claims.ClaimsPrincipal principal,
             CancellationToken ct)
         {
@@ -417,9 +417,10 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             assignment.Room = room;
             assignment.TimeSlot = timeSlot;
 
-            // After the commit: the edit stands whatever the mail server does.
-            var emailsSent = wasPublished
-                ? await ScheduleAmendments.EmailAsync(assignment, change, db, email, ct)
+            // After the commit: the edit stands whatever happens to its notices, which are queued
+            // on the outbox and delivered in the background (ScheduleAmendments.QueueNoticesAsync).
+            var noticesQueued = wasPublished
+                ? await ScheduleAmendments.QueueNoticesAsync(assignment, change, db, outbox, ct)
                 : 0;
 
             return Results.Ok(new
@@ -427,7 +428,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 entry = ToEntryDto(assignment),
                 amended = wasPublished,
                 change = wasPublished ? change : null,
-                notifiedCount = emailsSent
+                notifiedCount = noticesQueued
             });
         }
 
@@ -439,7 +440,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             AppDbContext db,
             AuditLog audit,
             Notifier notifier,
-            IEmailSender email,
+            EmailOutbox outbox,
             System.Security.Claims.ClaimsPrincipal principal,
             CancellationToken ct)
         {
@@ -481,13 +482,13 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 return conflict;
             }
 
-            // After the commit, as with a move: the removal stands whatever the mail server does.
+            // After the commit, as with a move: the removal stands whatever happens to its notices.
             // The recipients are looked up by section and faculty id, both of which outlive the row.
-            var emailsSent = wasPublished
-                ? await ScheduleAmendments.EmailAsync(assignment, change, db, email, ct)
+            var noticesQueued = wasPublished
+                ? await ScheduleAmendments.QueueNoticesAsync(assignment, change, db, outbox, ct)
                 : 0;
 
-            return Results.Ok(new { removed = true, amended = wasPublished, notifiedCount = emailsSent });
+            return Results.Ok(new { removed = true, amended = wasPublished, notifiedCount = noticesQueued });
         }
 
         // ---- helpers ----

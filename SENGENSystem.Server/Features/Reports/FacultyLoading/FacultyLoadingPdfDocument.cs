@@ -102,7 +102,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             {
                 col.Spacing(4);
                 col.Item().Element(e => MemoRow(e, "TO", r.Name, r.EmployeeId == "—" ? null : $"Employee ID {r.EmployeeId}"));
-                col.Item().Element(e => MemoRow(e, "THRU", signatories.ProgramHead, "Program Head"));
+                col.Item().Element(e => MemoRow(e, "THRU", signatories.ProgramHeadFor(r.ProgramCode), "Program Head"));
                 col.Item().Element(e => MemoRow(e, "FROM", signatories.AcademicHead, "Academic Head"));
                 col.Item().Element(e => MemoRow(e, "DATE", generatedAt.ToString("dd MMMM yyyy"), null));
             });
@@ -147,6 +147,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                     c.ConstantColumn(64);   // Room
                     c.ConstantColumn(38);   // Units
                     c.ConstantColumn(48);   // Contact hrs
+                    c.ConstantColumn(50);   // Teaching hrs
                     c.ConstantColumn(44);   // Students
                 });
 
@@ -162,6 +163,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                     Head(header.Cell(), "ROOM");
                     Head(header.Cell(), "UNITS", true);
                     Head(header.Cell(), "CONTACT HRS", true);
+                    Head(header.Cell(), "TEACHING HRS", true);
                     Head(header.Cell(), "NO. OF STUDENTS", true);
                 });
 
@@ -188,6 +190,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
 
                     Body(table.Cell(), line.ShowSubjectInfo && line.Units > 0 ? line.Units.ToString() : "", true);
                     Body(table.Cell(), line.IsUnscheduled ? "" : Num(line.ContactHours), true);
+                    Body(table.Cell(), line.IsUnscheduled ? "" : Num(line.TeachingHours), true);
                     Body(table.Cell(), line.ShowSubjectInfo && line.StudentCount > 0 ? line.StudentCount.ToString() : "", true);
                 }
 
@@ -202,6 +205,9 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                     footer.Cell().Background(HeaderFill).BorderTop(1).BorderColor(Line)
                         .PaddingVertical(4).PaddingHorizontal(5).AlignRight()
                         .Text(Num(r.TotalContactHours)).FontSize(9).Bold();
+                    footer.Cell().Background(HeaderFill).BorderTop(1).BorderColor(Line)
+                        .PaddingVertical(4).PaddingHorizontal(5).AlignRight()
+                        .Text(Num(r.TotalTeachingHours)).FontSize(9).Bold();
                     footer.Cell().Background(HeaderFill).BorderTop(1).BorderColor(Line);
                 });
             });

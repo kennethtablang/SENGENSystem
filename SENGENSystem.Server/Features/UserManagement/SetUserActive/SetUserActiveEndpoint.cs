@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Auth;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
@@ -36,12 +37,10 @@ namespace SENGENSystem.Server.Features.UserManagement.SetUserActive
                 return Results.NotFound(new { message = "User not found." });
             }
 
-            // Privilege guard: only a School Admin may activate/deactivate a School Admin account.
-            if (user.Role == UserRole.SchoolAdmin && !principal.IsInRole(nameof(UserRole.SchoolAdmin)))
+            // Privilege guard (AccountAuthority): only at or below the caller's own rank.
+            if (AccountAuthority.RefuseManaging(principal, user) is { } refusal)
             {
-                return Results.Json(
-                    new { message = "Only a School Admin can change a School Admin account's status." },
-                    statusCode: StatusCodes.Status403Forbidden);
+                return AccountAuthority.Forbidden(refusal);
             }
 
             if (!request.IsActive)
@@ -52,10 +51,9 @@ namespace SENGENSystem.Server.Features.UserManagement.SetUserActive
                     return Results.BadRequest(new { message = "You can't deactivate your own account." });
                 }
 
-                if (user.Role == UserRole.SchoolAdmin
-                    && !await UpdateUserEndpoint.HasOtherActiveAdminAsync(db, user.Id, cancellationToken))
+                if (await AccountAuthority.IsLastActiveAdminAsync(db, user, cancellationToken))
                 {
-                    return Results.BadRequest(new { message = "You can't deactivate the last active School Admin." });
+                    return Results.BadRequest(new { message = $"You can't deactivate the last active {user.Role}." });
                 }
             }
 

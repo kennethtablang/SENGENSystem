@@ -188,7 +188,7 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
             var existing = await db.StudentRegistrations
                 .FirstOrDefaultAsync(r => r.UserId == user.Id, cancellationToken);
 
-            var studentNumber = request.StudentNumber.Trim();
+            var studentNumber = request.StudentNumber!.Trim(); // validated non-blank above
             var registration = await db.StudentRegistrations
                 .Include(r => r.Semester)
                 .Include(r => r.Documents)

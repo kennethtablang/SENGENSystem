@@ -8,7 +8,7 @@ import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import {
     getParameters, setSectionCapacityCap, updateSettings,
     createTimeSlot, updateTimeSlot, deleteTimeSlot,
-    setFacultyLoadLimit
+    setFacultyLoadLimit, setProgramHead
 } from './api';
 import '../academic/academic.css';
 import './parameters.css';
@@ -340,6 +340,107 @@ function InstitutionCard({ data, onChanged }) {
     );
 }
 
+// ---------------- Faculty-loading memo ----------------
+
+// How laboratory hours are credited on the Confirmation of Faculty Loading ("Teaching hrs"),
+// and who signs its "THRU: Program Head" line for each program.
+function FacultyLoadingCard({ data, programHeads, onChanged }) {
+    const [factor, setFactor] = useState(String(data.labTeachingCreditFactor));
+    const [saving, setSaving] = useState(false);
+    const [fieldError, setFieldError] = useState('');
+    const [busyProgram, setBusyProgram] = useState(null);
+
+    const parsed = Number(factor);
+    const dirty = Number.isFinite(parsed) && Math.abs(parsed - data.labTeachingCreditFactor) > 0.0001;
+
+    async function saveFactor(e) {
+        e.preventDefault();
+        setFieldError(''); setSaving(true);
+        try {
+            await updateSettings({ labTeachingCreditFactor: parsed });
+            notifySuccess('Laboratory credit factor saved.');
+            onChanged();
+        } catch (ex) {
+            notifyError(ex.message);
+            setFieldError(ex.fieldErrors?.labTeachingCreditFactor?.[0] || ex.message);
+        } finally { setSaving(false); }
+    }
+
+    async function changeHead(programCode, userId) {
+        setBusyProgram(programCode);
+        try {
+            await setProgramHead(programCode, userId || null);
+            notifySuccess(userId ? `Program Head of ${programCode} saved.` : `Program Head of ${programCode} cleared.`);
+            onChanged();
+        } catch (ex) {
+            notifyError(ex.message);
+        } finally { setBusyProgram(null); }
+    }
+
+    return (
+        <section className="card param-card">
+            <header className="param-card-head">
+                <div>
+                    <h3>Faculty-loading memo</h3>
+                    <p className="setup-sub">
+                        How the Confirmation of Faculty Loading credits laboratory hours, and who signs
+                        it as Program Head for each program.
+                    </p>
+                </div>
+            </header>
+
+            <form className="param-cap-form" onSubmit={saveFactor} noValidate>
+                <div className="field">
+                    <label htmlFor="lab-credit-factor">Laboratory teaching-credit factor</label>
+                    <input id="lab-credit-factor" type="number" step="0.05"
+                        min={data.minLabTeachingCreditFactor} max={data.maxLabTeachingCreditFactor}
+                        value={factor} onChange={e => setFactor(e.target.value)} />
+                    {fieldError && <p className="field-error">{fieldError}</p>}
+                </div>
+                <button className="btn btn-primary" type="submit" disabled={saving || !dirty}>
+                    {saving && <span className="spinner" aria-hidden="true" />}
+                    {saving ? 'Saving…' : 'Save factor'}
+                </button>
+                <p className="param-hint">
+                    Teaching hrs = lecture hours + laboratory hours × this factor. 1 credits laboratory
+                    hour for hour; 0.75 credits a 3-hour laboratory as 2.25 teaching hours.
+                </p>
+            </form>
+
+            <h4 className="param-subhead">Program Heads</h4>
+            {programHeads.programs.length === 0 ? (
+                <p className="param-hint">No programs are set up yet.</p>
+            ) : (
+                <table className="setup-table">
+                    <thead>
+                        <tr><th scope="col">Program</th><th scope="col">Program Head (signs “THRU”)</th></tr>
+                    </thead>
+                    <tbody>
+                        {programHeads.programs.map(p => (
+                            <tr key={p.programCode}>
+                                <td><strong>{p.programCode}</strong></td>
+                                <td>
+                                    <select aria-label={`Program Head of ${p.programCode}`}
+                                        value={p.headUserId || ''}
+                                        disabled={busyProgram === p.programCode}
+                                        onChange={e => changeHead(p.programCode, e.target.value)}>
+                                        <option value="">— None (the Academic Head signs) —</option>
+                                        {programHeads.candidates.map(c => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.name}{c.role === 'AcademicHead' ? ' (Academic Head)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </section>
+    );
+}
+
 // ---------------- Scheduling engine budgets ----------------
 
 function EngineBudgetsCard({ data, onChanged }) {
@@ -553,6 +654,9 @@ export default function ParametersPage() {
             </header>
 
             <InstitutionCard key={`inst-${data.institution.name}`} data={data.institution} onChanged={refresh} />
+
+            <FacultyLoadingCard key={`fl-${data.facultyLoading.labTeachingCreditFactor}`}
+                data={data.facultyLoading} programHeads={data.programHeads} onChanged={refresh} />
 
             <SeatCapCard key={data.sectionCapacity.cap} data={data.sectionCapacity} onChanged={refresh} />
 

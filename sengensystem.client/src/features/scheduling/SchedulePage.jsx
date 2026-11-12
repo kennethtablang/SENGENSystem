@@ -33,7 +33,7 @@ export default function SchedulePage() {
         return () => { active = false; };
     }, []);
 
-    const entries = data?.entries ?? [];
+    const entries = useMemo(() => data?.entries ?? [], [data]);
     const isStudent = data?.role === 'Student';
 
     const events = useMemo(() => entries.map(e => {

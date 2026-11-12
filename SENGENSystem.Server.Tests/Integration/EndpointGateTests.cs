@@ -105,9 +105,9 @@ namespace SENGENSystem.Server.Tests.Integration
                 {
                     SemesterId = term.Id,
                     Section = section,
-                    RoomId = await db.Rooms.Select(r => r.Id).FirstAsync(),
-                    TimeSlotId = await db.TimeSlots.Select(t => t.Id).FirstAsync(),
-                    FacultyProfileId = await db.FacultyProfiles.Select(p => p.Id).FirstAsync(),
+                    RoomId = await db.Rooms.Where(r => r.Kind == RoomKind.LectureRoom).OrderBy(r => r.Name).Select(r => r.Id).FirstAsync(),
+                    TimeSlotId = await db.TimeSlots.OrderBy(t => t.Day).ThenBy(t => t.StartMinutes).Select(t => t.Id).FirstAsync(),
+                    FacultyProfileId = await db.FacultyProfiles.OrderBy(p => p.EmployeeId).Select(p => p.Id).FirstAsync(),
                     IsFinalized = false
                 };
                 db.AddRange(term, subject, section, assignment);

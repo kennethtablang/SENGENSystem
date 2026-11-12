@@ -90,6 +90,18 @@ namespace SENGENSystem.Server.Domain
         /// </summary>
         public int ClassDayStartMinutes { get; set; } = 7 * 60;
 
+        /// <summary>
+        /// How much one contact hour of laboratory counts toward a faculty member's teaching hours
+        /// on the faculty-loading memo (STI credits laboratory below lecture, so Teaching hrs can
+        /// be less than Contact hrs). 1.0 — the default — credits laboratory hour for hour, which
+        /// is what the memo printed before this was configurable. Lecture is always 1.0.
+        /// </summary>
+        public double LabTeachingCreditFactor { get; set; } = DefaultLabTeachingCreditFactor;
+
+        public const double DefaultLabTeachingCreditFactor = 1.0;
+        public const double MinLabTeachingCreditFactor = 0.25;
+        public const double MaxLabTeachingCreditFactor = 1.0;
+
         // ---- Institution identity ----
 
         /// <summary>

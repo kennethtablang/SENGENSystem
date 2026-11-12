@@ -180,20 +180,36 @@ namespace SENGENSystem.Server.Features.Reports
         {
             // Only the part of a class that falls inside the 08:00–17:00 window counts toward
             // utilization, so early/late meetings cannot inflate the percentage.
-            var assignments = (await db.ScheduleAssignments.AsNoTracking()
-                .Where(a => a.SemesterId == semester.Id)
-                .Include(a => a.TimeSlot)
+            // Aggregated per room in SQL (a GROUP BY over the term's meetings). The clipping is
+            // written as conditionals rather than Math.Min/Max so it translates to CASE on every
+            // SQL Server version, not only those with GREATEST/LEAST.
+            var byRoom = (await db.ScheduleAssignments.AsNoTracking()
+                .Where(a => a.SemesterId == semester.Id && a.TimeSlot != null)
+                .Select(a => new
+                {
+                    a.RoomId,
+                    Start = a.TimeSlot!.StartMinutes,
+                    End = a.TimeSlot.EndMinutes
+                })
+                .Select(m => new
+                {
+                    m.RoomId,
+                    Minutes = m.End - m.Start,
+                    ClippedStart = m.Start > WindowStartMinutes ? m.Start : WindowStartMinutes,
+                    ClippedEnd = m.End < WindowEndMinutes ? m.End : WindowEndMinutes
+                })
+                .GroupBy(m => m.RoomId)
+                .Select(g => new
+                {
+                    RoomId = g.Key,
+                    Classes = g.Count(),
+                    Minutes = g.Sum(m => m.Minutes),
+                    WindowMinutes = g.Sum(m => m.ClippedEnd > m.ClippedStart ? m.ClippedEnd - m.ClippedStart : 0)
+                })
                 .ToListAsync(ct))
-                .Where(a => a.TimeSlot is not null)
-                .ToList();
-            var byRoom = assignments.GroupBy(a => a.RoomId).ToDictionary(
-                g => g.Key,
-                g => (
-                    Classes: g.Count(),
-                    Hours: g.Sum(a => a.TimeSlot!.EndMinutes - a.TimeSlot.StartMinutes) / 60.0,
-                    WindowHours: g.Sum(a => Math.Max(0,
-                        Math.Min(a.TimeSlot!.EndMinutes, WindowEndMinutes)
-                        - Math.Max(a.TimeSlot.StartMinutes, WindowStartMinutes))) / 60.0));
+                .ToDictionary(
+                    x => x.RoomId,
+                    x => (Classes: x.Classes, Hours: x.Minutes / 60.0, WindowHours: x.WindowMinutes / 60.0));
 
             var rows = (await db.Rooms.AsNoTracking()
                 .Include(r => r.Building)

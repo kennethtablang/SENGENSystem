@@ -25,3 +25,7 @@ export const deleteTimeSlot = (id) => send('DELETE', `/api/parameters/time-slots
 // ---------- Faculty unit-load ceilings ----------
 export const setFacultyLoadLimit = (id, maxLoadUnits) =>
     send('PUT', `/api/parameters/faculty/${id}/load-limit`, { maxLoadUnits });
+
+// ---------- Faculty-loading memo: Program Head per program (null clears it) ----------
+export const setProgramHead = (programCode, userId) =>
+    send('PUT', `/api/parameters/program-heads/${encodeURIComponent(programCode)}`, { userId });

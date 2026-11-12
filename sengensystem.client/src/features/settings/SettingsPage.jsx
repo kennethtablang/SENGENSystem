@@ -5,6 +5,7 @@ import { searchableItems } from '../shell/nav';
 import { defaultPrefs, getPrefs, savePrefs, exportPrefs } from './prefs';
 import { notifySuccess } from '../shell/notify';
 import './settings.css';
+import { readItem, writeItem } from '../shell/storage';
 
 function Segmented({ ariaLabel, value, options, onChange }) {
     return (
@@ -66,7 +67,7 @@ function SettingsPage() {
     const [tab, setTab] = useState('appearance');
     const [prefs, setPrefs] = useState(getPrefs);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(
-        () => localStorage.getItem('sengen.sidebar') === 'collapsed'
+        () => readItem('sengen.sidebar') === 'collapsed'
     );
     const [saved, setSaved] = useState(false);
     const savedTimer = useRef(null);
@@ -87,7 +88,7 @@ function SettingsPage() {
     };
 
     const setSidebar = collapsed => {
-        localStorage.setItem('sengen.sidebar', collapsed ? 'collapsed' : 'expanded');
+        writeItem('sengen.sidebar', collapsed ? 'collapsed' : 'expanded');
         window.dispatchEvent(new Event('sengen:sidebar'));
         setSidebarCollapsed(collapsed);
         flashSaved();

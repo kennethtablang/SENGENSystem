@@ -22,7 +22,8 @@ namespace SENGENSystem.Server.Features.Auth.Register
     {
         public static IEndpointRouteBuilder MapRegister(this IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/auth/register", HandleAsync).AllowAnonymous();
+            app.MapPost("/api/auth/register", HandleAsync).AllowAnonymous()
+                .RequireRateLimiting(SENGENSystem.Server.Program.PublicFormRateLimitPolicy);
             return app;
         }
 

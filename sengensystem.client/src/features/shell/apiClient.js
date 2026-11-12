@@ -60,7 +60,8 @@ export async function parseError(response) {
         message: payload?.message || payload?.title || authMessage || 'Something went wrong. Please try again.',
         /* ProblemDetails carries its lead in `detail`; the 422 and validation paths carry row-by-row
            `reasons`. Prefer explicit reasons, but fall back to `detail` so an unexpected 500 still
-           shows the exception summary rather than just a bare title. */
+           shows its explanation and trace reference rather than just a bare title. (Since pass 11
+           the server keeps the exception text itself in its log; the reference finds it.) */
         reasons: payload?.reasons?.length ? payload.reasons : (payload?.detail ? [payload.detail] : []),
         reference: payload?.reference || null,
         fieldErrors: payload?.errors || {},

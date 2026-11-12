@@ -53,7 +53,8 @@ namespace SENGENSystem.Server.Features.Registration.RegisterStudent
     {
         public static IEndpointRouteBuilder MapRegisterStudent(this IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/registration", HandleAsync).AllowAnonymous();
+            app.MapPost("/api/registration", HandleAsync).AllowAnonymous()
+                .RequireRateLimiting(SENGENSystem.Server.Program.PublicFormRateLimitPolicy);
             return app;
         }
 

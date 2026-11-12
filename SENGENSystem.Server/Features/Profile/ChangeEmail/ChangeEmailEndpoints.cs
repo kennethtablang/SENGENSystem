@@ -26,7 +26,8 @@ namespace SENGENSystem.Server.Features.Profile.ChangeEmail
         {
             app.MapPost("/api/profile/email/request", RequestAsync).RequireAuthorization();
             // Anonymous on purpose: the user may open the link on a device where they are not signed in.
-            app.MapPost("/api/profile/email/confirm", ConfirmAsync);
+            app.MapPost("/api/profile/email/confirm", ConfirmAsync)
+                .RequireRateLimiting(SENGENSystem.Server.Program.PublicFormRateLimitPolicy);
             return app;
         }
 

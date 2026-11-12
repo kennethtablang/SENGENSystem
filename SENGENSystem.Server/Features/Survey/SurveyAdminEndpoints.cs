@@ -104,7 +104,7 @@ namespace SENGENSystem.Server.Features.Survey
             AppDbContext db,
             AuditLog audit,
             Notifier notifier,
-            IEmailSender email,
+            EmailOutbox outbox,
             IOptions<EmailOptions> emailOptions,
             CancellationToken ct)
         {
@@ -208,20 +208,23 @@ namespace SENGENSystem.Server.Features.Survey
                 }
             }
 
-            audit.Record(AuditAction.SurveyInvitationsSent,
-                $"Sent the ISO 25010 rating survey to {created + resent} selected user(s) " +
-                $"({created} new, {resent} resent, {skipped} already answered).");
-            await db.SaveChangesAsync(ct);
-
-            // Best-effort delivery: invitations are committed, so a mail hiccup doesn't lose them.
+            // Queued on the outbox in the same save as the invitations, so an invitation and its
+            // email cannot disagree: before, they were sent one SMTP call at a time after the
+            // commit, inside the request, and a failure was swallowed without a trace. Now each is
+            // a row the dispatcher retries and the Outbox page shows.
             if (sendEmail)
             {
                 foreach (var (user, token) in outgoing)
                 {
                     var (subject, body) = AccountEmails.SurveyInvitation(user, $"{baseUrl}/survey/{Uri.EscapeDataString(token)}");
-                    await email.SendAsync(user.Email, user.FullName, subject, body, ct);
+                    outbox.Queue(user.Email, user.FullName, subject, body, kind: "SurveyInvitation");
                 }
             }
+
+            audit.Record(AuditAction.SurveyInvitationsSent,
+                $"Sent the ISO 25010 rating survey to {created + resent} selected user(s) " +
+                $"({created} new, {resent} resent, {skipped} already answered).");
+            await db.SaveChangesAsync(ct);
 
             return Results.Ok(new { created, resent, skipped, targeted = users.Count, pushed = pushNotification, emailed = sendEmail });
         }
@@ -234,7 +237,7 @@ namespace SENGENSystem.Server.Features.Survey
             AppDbContext db,
             AuditLog audit,
             Notifier notifier,
-            IEmailSender email,
+            EmailOutbox outbox,
             IOptions<EmailOptions> emailOptions,
             CancellationToken ct)
         {
@@ -286,17 +289,18 @@ namespace SENGENSystem.Server.Features.Survey
                 }
             }
 
-            audit.Record(AuditAction.SurveyRemindersSent,
-                $"Sent survey reminders to {pending.Count} pending respondent(s).");
-            await db.SaveChangesAsync(ct);
-
+            // Queued with the reminder itself, for the same reasons as the invitations above.
             foreach (var (invite, token) in outgoing)
             {
                 var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == invite.UserId, ct);
                 if (user is null) continue;
                 var (subject, body) = AccountEmails.SurveyInvitation(user, $"{baseUrl}/survey/{Uri.EscapeDataString(token)}");
-                await email.SendAsync(user.Email, user.FullName, subject, body, ct);
+                outbox.Queue(user.Email, user.FullName, subject, body, kind: "SurveyReminder");
             }
+
+            audit.Record(AuditAction.SurveyRemindersSent,
+                $"Sent survey reminders to {pending.Count} pending respondent(s).");
+            await db.SaveChangesAsync(ct);
 
             return Results.Ok(new { reminded = pending.Count });
         }
@@ -609,17 +613,38 @@ namespace SENGENSystem.Server.Features.Survey
                 .Select(r => r!.Value)
                 .ToHashSet();
 
+        // The token carries the name as the JWT "name" claim, which Identity.Name does not read —
+        // so this used to fall through to "Super Admin" every time, and "invited by" / "last
+        // changed by" never named anyone. AuditLog already reads it this way.
         private static string ActorName(ClaimsPrincipal principal) =>
-            principal.Identity?.Name ?? principal.FindFirstValue(ClaimTypes.Name) ?? "Super Admin";
+            principal.Identity?.Name
+            ?? principal.FindFirstValue(ClaimTypes.Name)
+            ?? principal.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Name)
+            ?? "Super Admin";
 
         private static string? Trimmed(string? value, int max) =>
             string.IsNullOrWhiteSpace(value) ? null
             : value.Trim().Length > max ? value.Trim()[..max]
             : value.Trim();
 
-        private static string Csv(string value)
+        /// <summary>
+        /// One CSV cell, quoted when it must be — and defused when it would run as a formula.
+        /// <para>
+        /// The free-text columns (name, position, department, suggestions, comments) are typed by
+        /// respondents on an anonymous link and opened by the Super Admin in Excel. A cell starting
+        /// with <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, tab, or carriage return is evaluated as a
+        /// formula there — <c>=HYPERLINK(...)</c> to exfiltrate the sheet, or worse — so it is
+        /// prefixed with an apostrophe, which Excel shows as plain text. Numbers this export writes
+        /// itself never start with those characters, so no real value is altered.
+        /// </para>
+        /// </summary>
+        internal static string Csv(string value)
         {
             var v = value ?? "";
+            if (v.Length > 0 && "=+-@\t\r".Contains(v[0]))
+            {
+                v = "'" + v;
+            }
             return v.Contains(',') || v.Contains('"') || v.Contains('\n') || v.Contains('\r')
                 ? $"\"{v.Replace("\"", "\"\"")}\""
                 : v;

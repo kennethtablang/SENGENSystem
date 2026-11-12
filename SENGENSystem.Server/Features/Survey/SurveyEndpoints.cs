@@ -32,7 +32,8 @@ namespace SENGENSystem.Server.Features.Survey
             app.MapGet("/api/survey/mine", GetMineAsync).RequireAuthorization();
             app.MapPost("/api/survey/mine", SubmitMineAsync).RequireAuthorization();
             app.MapGet("/api/survey/{token}", GetAsync).AllowAnonymous();
-            app.MapPost("/api/survey/{token}", SubmitAsync).AllowAnonymous();
+            app.MapPost("/api/survey/{token}", SubmitAsync).AllowAnonymous()
+                .RequireRateLimiting(SENGENSystem.Server.Program.PublicFormRateLimitPolicy);
             return app;
         }
 
@@ -172,6 +173,23 @@ namespace SENGENSystem.Server.Features.Survey
                 errors["answers"] = ["Please answer every question (rate each from 1 to 5)."];
             }
 
+            // The columns have limits (AppDbContext); an over-long answer used to reach SQL Server
+            // and come back as a 500 "string would be truncated" on a public form. Say so instead.
+            void Limit(string key, string? value, int max, string label)
+            {
+                if (value is not null && value.Trim().Length > max)
+                {
+                    errors[key] = [$"{label} is too long — keep it under {max} characters."];
+                }
+            }
+            Limit("respondentName", name, 200, "Your name");
+            Limit("position", request.Position, 120, "Position");
+            Limit("sex", request.Sex, 20, "Sex");
+            Limit("department", request.Department, 120, "Department");
+            Limit("yearsUsing", request.YearsUsing, 40, "Years using");
+            Limit("suggestions", request.Suggestions, 4000, "Suggestions");
+            Limit("furtherComments", request.FurtherComments, 4000, "Further comments");
+
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -200,7 +218,17 @@ namespace SENGENSystem.Server.Features.Survey
 
             audit.RecordAnonymous(AuditAction.SurveyResponseSubmitted,
                 "Submitted the ISO 25010 rating survey.", name, "SurveyResponse", response.Id.ToString());
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Two submits racing past the CompletedAtUtc check above (a double click, or the
+                // link and the bell notice open in two tabs): the unique index on the response's
+                // invitation keeps the second out. It used to surface as a 500.
+                return Results.Conflict(new { message = "This survey has already been answered. Thank you!" });
+            }
 
             return Results.Ok(new { message = "Thank you! Your evaluation has been recorded." });
         }

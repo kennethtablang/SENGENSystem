@@ -22,6 +22,9 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.HasSequence<int>("ClassNumbers")
+                .StartsAt(1001L);
+
             modelBuilder.Entity("SENGENSystem.Server.Domain.AdmissionRequirement", b =>
                 {
                     b.Property<Guid>("Id")
@@ -626,6 +629,11 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Property<int>("Capacity")
                         .HasColumnType("int");
 
+                    b.Property<int>("ClassNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValueSql("NEXT VALUE FOR [ClassNumbers]");
+
                     b.Property<int>("EnrolledCount")
                         .HasColumnType("int");
 
@@ -655,6 +663,9 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClassNumber")
+                        .IsUnique();
 
                     b.HasIndex("SemesterId");
 
@@ -1337,6 +1348,11 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasColumnType("nvarchar(120)")
                         .HasDefaultValue("STI College Alaminos");
 
+                    b.Property<double>("LabTeachingCreditFactor")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("float")
+                        .HasDefaultValue(1.0);
+
                     b.Property<int>("MaxEnlistmentUnitsPerStudent")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
@@ -1607,6 +1623,10 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("ProgramHeadOf")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -1636,6 +1656,10 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique();
+
+                    b.HasIndex("ProgramHeadOf")
+                        .IsUnique()
+                        .HasFilter("[ProgramHeadOf] IS NOT NULL");
 
                     b.ToTable("Users");
                 });

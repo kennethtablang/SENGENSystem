@@ -294,7 +294,7 @@ export default function ScheduleBoardPage() {
             const result = await moveEntry(e.id, { roomId: targetRoomId, day, startMinutes, endMinutes });
             setEntries(prev => prev.map(x => x.assignmentId === e.id ? result.entry : x));
             notifySuccess(result.amended
-                ? `Class rescheduled — ${result.notifiedCount} notice(s) sent to the faculty member and enrolled students.`
+                ? `Class rescheduled — ${result.notifiedCount} notice(s) queued for the faculty member and enrolled students.`
                 : 'Class rescheduled.');
         } catch (err) {
             info.revert();
@@ -320,7 +320,7 @@ export default function ScheduleBoardPage() {
         try {
             const result = await removeEntry(info.event.id);
             notifySuccess(result?.amended
-                ? `${e.subjectCode} removed — ${result.notifiedCount} notice(s) sent to the faculty member and enrolled students.`
+                ? `${e.subjectCode} removed — ${result.notifiedCount} notice(s) queued for the faculty member and enrolled students.`
                 : `${e.subjectCode} (${e.cohortLabel}) returned to the pool.`);
             await refresh();
         } catch (err) {

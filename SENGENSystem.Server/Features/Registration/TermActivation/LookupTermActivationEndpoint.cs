@@ -19,7 +19,8 @@ namespace SENGENSystem.Server.Features.Registration.TermActivation
     {
         public static IEndpointRouteBuilder MapLookupTermActivation(this IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/registration/term-activation/lookup", HandleAsync).AllowAnonymous();
+            app.MapPost("/api/registration/term-activation/lookup", HandleAsync).AllowAnonymous()
+                .RequireRateLimiting(SENGENSystem.Server.Program.PublicFormRateLimitPolicy);
             return app;
         }
 

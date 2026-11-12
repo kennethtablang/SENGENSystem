@@ -7,7 +7,7 @@ import LoginPage from './features/auth/LoginPage';
 import FirstLoginPasswordChange from './features/auth/FirstLoginPasswordChange';
 import AppLayout from './features/shell/AppLayout';
 import ComingSoon from './features/shell/ComingSoon';
-import { allNavItems } from './features/shell/nav';
+import { allNavItems, searchableItems } from './features/shell/nav';
 import { getPrefs } from './features/settings/prefs';
 import './App.css';
 
@@ -85,11 +85,21 @@ function RequireAuth({ children }) {
     return children;
 }
 
+/* The landing page chosen in Settings → Behavior, if this user may open it. Preferences live in
+   the browser, not the account, so on a shared office computer the last person's choice is still
+   there when the next person signs in — a Registrar's "Enlistment approvals" would otherwise drop a
+   student onto a page their role cannot use. Anything not on this role's own page list falls back
+   to the dashboard. */
+function landingFor(user) {
+    const landing = getPrefs().landing;
+    if (!landing || landing === '/') return '/';
+    return searchableItems(user.role).some(item => item.to === landing) ? landing : '/';
+}
+
 function RedirectIfAuthed({ children }) {
     const { user, loading } = useAuth();
     if (loading) return <p style={{ padding: '2rem' }}>Loading…</p>;
-    // Land on the page chosen in Settings → Behavior (defaults to the dashboard).
-    return user ? <Navigate to={getPrefs().landing || '/'} replace /> : children;
+    return user ? <Navigate to={landingFor(user)} replace /> : children;
 }
 
 function App() {

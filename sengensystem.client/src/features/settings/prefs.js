@@ -3,6 +3,9 @@
 // plumbing needed. Server round-trips are deliberately avoided: these are device-level
 // display choices, not account data.
 
+import { saveBlob } from '../shell/download';
+import { readItem, writeItem } from '../shell/storage';
+
 const KEY = 'sengen.prefs';
 
 export const defaultPrefs = {
@@ -40,14 +43,16 @@ export const defaultPrefs = {
 
 export function getPrefs() {
     try {
-        return { ...defaultPrefs, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+        return { ...defaultPrefs, ...JSON.parse(readItem(KEY) ?? '{}') };
     } catch {
         return { ...defaultPrefs };
     }
 }
 
 export function savePrefs(next) {
-    localStorage.setItem(KEY, JSON.stringify(next));
+    // Through shell/storage, which cannot throw: a blocked store used to take the Settings page
+    // down mid-change. The choice applies either way; it is just not remembered past this tab.
+    writeItem(KEY, JSON.stringify(next));
     applyPrefs(next);
 }
 
@@ -131,15 +136,9 @@ export function marksReadOnOpen() {
     return getPrefs().markReadOnOpen !== false;
 }
 
-// Download the current preferences as a JSON file (Settings → Data).
+// Download the current preferences as a JSON file (Settings → Data). Through the shared saveBlob,
+// which defers revoking the object URL — revoking it immediately can cut the download short.
 export function exportPrefs() {
     const blob = new Blob([JSON.stringify(getPrefs(), null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'sengen-preferences.json';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    saveBlob(blob, 'sengen-preferences.json');
 }

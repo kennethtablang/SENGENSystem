@@ -22,7 +22,11 @@ namespace SENGENSystem.Server.Features.SystemParameters
         int? MinSectionEnrollment,
         int? ScheduleTimeBudgetSeconds,
         int? ScheduleMaxStepsThousands,
-        string? InstitutionName);
+        string? InstitutionName,
+        double? LabTeachingCreditFactor = null);
+
+    /// <summary>Designates (or, with a null id, clears) the head of one program.</summary>
+    public record ProgramHeadRequest(Guid? UserId);
 
     public static class SystemParametersEndpoints
     {
@@ -53,6 +57,7 @@ namespace SENGENSystem.Server.Features.SystemParameters
             group.MapPut("/time-slots/{id:guid}", UpdateTimeSlotAsync);
             group.MapDelete("/time-slots/{id:guid}", DeleteTimeSlotAsync);
             group.MapPut("/faculty/{id:guid}/load-limit", SetLoadLimitAsync);
+            group.MapPut("/program-heads/{programCode}", SetProgramHeadAsync);
             return app;
         }
 
@@ -128,6 +133,13 @@ namespace SENGENSystem.Server.Features.SystemParameters
                     name = settings.InstitutionName,
                     maxLength = SystemSettings.InstitutionNameMaxLength
                 },
+                facultyLoading = new
+                {
+                    labTeachingCreditFactor = settings.LabTeachingCreditFactor,
+                    minLabTeachingCreditFactor = SystemSettings.MinLabTeachingCreditFactor,
+                    maxLabTeachingCreditFactor = SystemSettings.MaxLabTeachingCreditFactor
+                },
+                programHeads = await LoadProgramHeadsAsync(db, ct),
                 timeSlots,
                 faculty,
                 updatedAtUtc = settings.UpdatedAtUtc
@@ -162,6 +174,13 @@ namespace SENGENSystem.Server.Features.SystemParameters
                 && (institutionName.Length == 0 || institutionName.Length > SystemSettings.InstitutionNameMaxLength))
             {
                 errors["institutionName"] = [$"Enter the institution name (up to {SystemSettings.InstitutionNameMaxLength} characters)."];
+            }
+            if (request.LabTeachingCreditFactor is { } factor
+                && (double.IsNaN(factor) || factor < SystemSettings.MinLabTeachingCreditFactor
+                    || factor > SystemSettings.MaxLabTeachingCreditFactor))
+            {
+                errors["labTeachingCreditFactor"] =
+                    [$"Must be between {SystemSettings.MinLabTeachingCreditFactor:0.##} and {SystemSettings.MaxLabTeachingCreditFactor:0.##}."];
             }
             if (errors.Count > 0)
             {
@@ -203,6 +222,16 @@ namespace SENGENSystem.Server.Features.SystemParameters
                 changes.Add($"institution name → “{institutionName}”");
             }
 
+            if (request.LabTeachingCreditFactor is { } lf)
+            {
+                lf = Math.Round(lf, 2);
+                if (Math.Abs(lf - settings.LabTeachingCreditFactor) > 0.0001)
+                {
+                    settings.LabTeachingCreditFactor = lf;
+                    changes.Add($"laboratory teaching-credit factor → {lf:0.##}");
+                }
+            }
+
             if (changes.Count > 0)
             {
                 settings.UpdatedAtUtc = DateTime.UtcNow;
@@ -219,7 +248,8 @@ namespace SENGENSystem.Server.Features.SystemParameters
                 minSectionEnrollment = settings.MinSectionEnrollment,
                 timeBudgetSeconds = settings.ScheduleTimeBudgetSeconds,
                 maxStepsThousands = settings.ScheduleMaxStepsThousands,
-                institutionName = settings.InstitutionName
+                institutionName = settings.InstitutionName,
+                labTeachingCreditFactor = settings.LabTeachingCreditFactor
             });
         }
 
@@ -258,6 +288,102 @@ namespace SENGENSystem.Server.Features.SystemParameters
                     isActive = f.User?.IsActive ?? false
                 })
                 .ToList();
+        }
+
+        // ---------- Program heads (the memo's "THRU" signatory) ----------
+
+        /// <summary>The staff roles that may be designated a Program Head.</summary>
+        private static readonly UserRole[] ProgramHeadRoles = [UserRole.FacultyMember, UserRole.AcademicHead];
+
+        /// <summary>
+        /// Every program the institution runs (from its curricula and faculty), each with its
+        /// designated head, plus the staff who may be designated — one select per program.
+        /// </summary>
+        private static async Task<object> LoadProgramHeadsAsync(AppDbContext db, CancellationToken ct)
+        {
+            var programs = (await db.Curricula.AsNoTracking().Select(c => c.ProgramCode).ToListAsync(ct))
+                .Concat(await db.FacultyProfiles.AsNoTracking().Select(f => f.ProgramCode).ToListAsync(ct))
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p.Trim().ToUpperInvariant())
+                .Distinct()
+                .OrderBy(p => p)
+                .ToList();
+
+            var candidates = await db.Users.AsNoTracking()
+                .Where(u => u.IsActive && ProgramHeadRoles.Contains(u.Role))
+                .OrderBy(u => u.LastName).ThenBy(u => u.FirstName)
+                .Select(u => new { u.Id, Name = u.FirstName + " " + u.LastName, u.Role, u.ProgramHeadOf })
+                .ToListAsync(ct);
+
+            return new
+            {
+                programs = programs.Select(p =>
+                {
+                    var h = candidates.FirstOrDefault(c => string.Equals(c.ProgramHeadOf, p, StringComparison.OrdinalIgnoreCase));
+                    return new { programCode = p, headUserId = h?.Id, headName = h?.Name };
+                }).ToList(),
+                candidates = candidates.Select(c => new { id = c.Id, name = c.Name, role = c.Role.ToString() }).ToList()
+            };
+        }
+
+        private static async Task<IResult> SetProgramHeadAsync(
+            string programCode, ProgramHeadRequest request, AppDbContext db, AuditLog audit, CancellationToken ct)
+        {
+            var program = (programCode ?? string.Empty).Trim().ToUpperInvariant();
+            var knownProgram = program.Length is > 0 and <= 20
+                && (await db.Curricula.AnyAsync(c => c.ProgramCode.ToUpper() == program, ct)
+                    || await db.FacultyProfiles.AnyAsync(f => f.ProgramCode.ToUpper() == program, ct));
+            if (!knownProgram)
+            {
+                return Results.NotFound(new { message = $"No program {program} is set up." });
+            }
+
+            User? next = null;
+            if (request.UserId is { } userId)
+            {
+                next = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+                if (next is null || !next.IsActive || !ProgramHeadRoles.Contains(next.Role))
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["userId"] = ["Choose an active faculty member or Academic Head."]
+                    });
+                }
+                if (next.ProgramHeadOf is { } other && !string.Equals(other, program, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Results.Conflict(new
+                    {
+                        message = $"{next.FullName} already heads {other}. Clear that program's head first."
+                    });
+                }
+            }
+
+            var current = await db.Users
+                .Where(u => u.ProgramHeadOf != null && u.ProgramHeadOf.ToUpper() == program)
+                .ToListAsync(ct);
+            var unchanged = next is null
+                ? current.Count == 0
+                : current.Count == 1 && current[0].Id == next.Id;
+
+            if (!unchanged)
+            {
+                // Two saves in one transaction: the outgoing head is cleared before the incoming one
+                // is set, so the one-head-per-program unique index never sees both at once.
+                await using var tx = await db.Database.BeginTransactionAsync(ct);
+                foreach (var u in current) u.ProgramHeadOf = null;
+                await db.SaveChangesAsync(ct);
+
+                if (next is not null) next.ProgramHeadOf = program;
+                audit.Record(AuditAction.SystemParametersUpdated,
+                    next is null
+                        ? $"Cleared the Program Head of {program}; its faculty-loading memos fall back to the Academic Head."
+                        : $"Designated {next.FullName} Program Head of {program}.",
+                    "SystemSettings", SystemSettings.SingletonId.ToString());
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+
+            return Results.Ok(new { programCode = program, headUserId = next?.Id, headName = next?.FullName });
         }
 
         // ---------- Section capacity cap ----------

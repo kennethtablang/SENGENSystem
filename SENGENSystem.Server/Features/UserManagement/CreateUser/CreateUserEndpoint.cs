@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Auth;
 using System.Net.Mail;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -63,17 +64,9 @@ namespace SENGENSystem.Server.Features.UserManagement.CreateUser
             // Privilege guard: only a School Admin may mint another School Admin, and only a Super
             // Admin may mint a Super Admin. An Academic Head has user-management access for
             // staff/students but cannot create a peer or higher administrator.
-            if (role == UserRole.SuperAdmin && !http.User.IsInRole(nameof(UserRole.SuperAdmin)))
+            if (AccountAuthority.RefuseAssigning(http.User, role) is { } refusal)
             {
-                return Results.Json(
-                    new { message = "Only a Super Admin can create a Super Admin account." },
-                    statusCode: StatusCodes.Status403Forbidden);
-            }
-            if (role == UserRole.SchoolAdmin && !http.User.IsInRole(nameof(UserRole.SchoolAdmin)))
-            {
-                return Results.Json(
-                    new { message = "Only a School Admin can create a School Admin account." },
-                    statusCode: StatusCodes.Status403Forbidden);
+                return AccountAuthority.Forbidden(refusal);
             }
 
             var email = request.Email!.Trim().ToLowerInvariant();

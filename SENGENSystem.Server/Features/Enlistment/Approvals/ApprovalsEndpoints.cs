@@ -547,7 +547,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             AuditLog audit,
             Notifier notifier,
             Features.Reports.Live.ReportsBroadcaster broadcaster,
-            IEmailSender email,
+            EmailOutbox outbox,
             CancellationToken cancellationToken)
         {
             var request = await db.SlotRequests
@@ -582,25 +582,24 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                         : $"Your request for {request.Section.Subject?.Code} ({request.Section.SectionCode}) was declined: {request.RejectionReason}",
                     "/enlistment");
             }
-            await db.SaveChangesAsync(cancellationToken);
-            broadcaster.Announce("enlistment");
-
+            // Queued with the rejection itself, as the approval confirmation already was. It used
+            // to be sent inline after the commit, so a failed rejection notice was simply lost —
+            // the one decision a student most needs to hear about, since they must pick again.
             var (subject, bodyHtml) = EnlistmentEmails.SlotRejected(
                 request.StudentRegistration,
                 request.Section.Subject?.Code ?? string.Empty,
                 request.Section.Subject?.Title ?? string.Empty,
                 request.Section.SectionCode,
                 request.RejectionReason);
-            var sent = await email.SendAsync(
-                request.StudentRegistration.Email, request.StudentRegistration.FullName,
-                subject, bodyHtml, cancellationToken);
-            if (sent.Sent)
+            if (outbox.Queue(request.StudentRegistration.Email, request.StudentRegistration.FullName,
+                    subject, bodyHtml, kind: "SlotRejected", dedupeKey: $"rejected:{request.Id}"))
             {
                 audit.Record(AuditAction.NotificationDispatched,
-                    $"Sent slot-rejection notice to {request.StudentRegistration.Email}.",
+                    $"Queued slot-rejection notice to {request.StudentRegistration.Email}.",
                     "SlotRequest", request.Id.ToString());
-                await db.SaveChangesAsync(cancellationToken);
             }
+            await db.SaveChangesAsync(cancellationToken);
+            broadcaster.Announce("enlistment");
 
             return Results.Ok(ApprovalRowDto.From(request));
         }

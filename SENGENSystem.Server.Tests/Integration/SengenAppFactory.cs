@@ -22,6 +22,8 @@ namespace SENGENSystem.Server.Tests.Integration
     /// </summary>
     public sealed class SengenAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
+        public const string SuperAdminPassword = "Super@Test2026";
+
         private string _connectionString = string.Empty;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -29,6 +31,16 @@ namespace SENGENSystem.Server.Tests.Integration
             builder.UseEnvironment("Testing");
             builder.UseSetting("ConnectionStrings:DefaultConnection", _connectionString);
             builder.UseSetting("Email:Password", "");
+            // Secrets no longer live in appsettings.json (outside Development the app refuses to
+            // start without a real signing key), so the test host supplies its own.
+            builder.UseSetting("Jwt:Key", "test-only-signing-key-for-the-integration-suite-0123456789");
+            builder.UseSetting("Seed:AdminPassword", "Admin@Sengen2026");
+            // The suites arrange against the sample rooms, faculty and terms.
+            builder.UseSetting("Seed:DemoData", "true");
+            // A configured Super Admin password, as a real deployment has. Left unconfigured, the
+            // seeded account would carry the must-change-password flag and the server would
+            // (rightly) refuse it everything but the password change.
+            builder.UseSetting("Seed:SuperAdminPassword", SuperAdminPassword);
         }
 
         public Task InitializeAsync()
@@ -55,14 +67,35 @@ namespace SENGENSystem.Server.Tests.Integration
             return scope;
         }
 
-        /// <summary>A client signed in as the given account, through the real login endpoint.</summary>
+        // One login per account per run. The app limits sign-in attempts per address (20 a
+        // minute), and every test client comes from the same one — signing in afresh for each
+        // test tripped that limiter once the suite grew past twenty logins, which is the limiter
+        // doing its job. Login itself is not what these tests are about.
+        private readonly Dictionary<string, string> _tokens = new(StringComparer.OrdinalIgnoreCase);
+        private readonly SemaphoreSlim _tokenLock = new(1, 1);
+
+        /// <summary>A client signed in as the given account. The first call per account goes through the real login endpoint.</summary>
         public async Task<HttpClient> SignedInAsync(string email, string password)
         {
+            string token;
+            await _tokenLock.WaitAsync();
+            try
+            {
+                if (!_tokens.TryGetValue(email, out token!))
+                {
+                    var response = await CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password });
+                    response.EnsureSuccessStatusCode();
+                    token = (await response.Content.ReadFromJsonAsync<LoginBody>())!.Token;
+                    _tokens[email] = token;
+                }
+            }
+            finally
+            {
+                _tokenLock.Release();
+            }
+
             var client = CreateClient();
-            var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password });
-            response.EnsureSuccessStatusCode();
-            var body = await response.Content.ReadFromJsonAsync<LoginBody>();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.Token);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             return client;
         }
 
@@ -82,6 +115,13 @@ namespace SENGENSystem.Server.Tests.Integration
             user.PasswordHash = hasher.HashPassword(user, password);
             db.Users.Add(user);
             await db.SaveChangesAsync();
+
+            // Test students are created by the dozen; their tokens are minted by the app's own
+            // JwtTokenService (the exact thing login issues) so they do not spend the login budget.
+            var tokens = scope.ServiceProvider.GetRequiredService<SENGENSystem.Server.Common.Auth.JwtTokenService>();
+            await _tokenLock.WaitAsync();
+            try { _tokens[email] = tokens.CreateToken(user); }
+            finally { _tokenLock.Release(); }
             return user.Id;
         }
 

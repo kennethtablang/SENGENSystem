@@ -184,3 +184,14 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Faculty-loading memo card: the Program Heads table sits under the factor form. */
+.param-subhead {
+  margin: 20px 0 8px;
+  font-size: 0.95rem;
+  color: var(--sti-blue);
+}
+.param-card .setup-table select {
+  width: 100%;
+  max-width: 360px;
+}

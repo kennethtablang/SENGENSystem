@@ -1,3 +1,4 @@
+using SENGENSystem.Server.Common.Auth;
 using System.Net.Mail;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
@@ -36,15 +37,12 @@ namespace SENGENSystem.Server.Features.UserManagement.UpdateUser
                 return Results.NotFound(new { message = "User not found." });
             }
 
-            // Privilege guard: only a School Admin may edit a School Admin account (an Academic
-            // Head cannot alter a peer administrator). The assign-SchoolAdmin case is checked once
-            // the requested role is parsed, below.
-            var callerIsAdmin = http.User.IsInRole(nameof(UserRole.SchoolAdmin));
-            if (user.Role == UserRole.SchoolAdmin && !callerIsAdmin)
+            // Privilege guard (AccountAuthority): an account above the caller's rank is not theirs
+            // to edit — changing its email is enough to claim it through "forgot password". The
+            // role being handed out is checked once it is parsed, below.
+            if (AccountAuthority.RefuseManaging(http.User, user) is { } refusal)
             {
-                return Results.Json(
-                    new { message = "Only a School Admin can modify a School Admin account." },
-                    statusCode: StatusCodes.Status403Forbidden);
+                return AccountAuthority.Forbidden(refusal);
             }
 
             var errors = new Dictionary<string, string[]>();
@@ -67,12 +65,11 @@ namespace SENGENSystem.Server.Features.UserManagement.UpdateUser
                 return Results.ValidationProblem(errors);
             }
 
-            // Privilege guard: an Academic Head cannot promote anyone into the School Admin role.
-            if (role == UserRole.SchoolAdmin && user.Role != UserRole.SchoolAdmin && !callerIsAdmin)
+            // Nobody hands out a role above their own — including to themselves, which is how an
+            // Academic Head could previously make themselves Super Admin.
+            if (role != user.Role && AccountAuthority.RefuseAssigning(http.User, role) is { } roleRefusal)
             {
-                return Results.Json(
-                    new { message = "Only a School Admin can assign the School Admin role." },
-                    statusCode: StatusCodes.Status403Forbidden);
+                return AccountAuthority.Forbidden(roleRefusal);
             }
 
             var email = request.Email!.Trim().ToLowerInvariant();
@@ -81,11 +78,10 @@ namespace SENGENSystem.Server.Features.UserManagement.UpdateUser
                 return Results.Conflict(new { message = "An account with this email address already exists." });
             }
 
-            // Don't let the last active School Admin be demoted out of the role.
-            var demotingAdmin = user.Role == UserRole.SchoolAdmin && role != UserRole.SchoolAdmin;
-            if (demotingAdmin && !await HasOtherActiveAdminAsync(db, user.Id, cancellationToken))
+            // Don't let the last active School Admin — or Super Admin — be demoted out of the role.
+            if (role != user.Role && await AccountAuthority.IsLastActiveAdminAsync(db, user, cancellationToken))
             {
-                return Results.BadRequest(new { message = "You can't change the role of the last active School Admin." });
+                return Results.BadRequest(new { message = $"You can't change the role of the last active {user.Role}." });
             }
 
             user.FirstName = NameFormatter.ToProperCase(request.FirstName!);
@@ -100,8 +96,5 @@ namespace SENGENSystem.Server.Features.UserManagement.UpdateUser
 
             return Results.Ok(UserDto.From(user));
         }
-
-        internal static Task<bool> HasOtherActiveAdminAsync(AppDbContext db, Guid excludingUserId, CancellationToken ct) =>
-            db.Users.AnyAsync(u => u.Role == UserRole.SchoolAdmin && u.IsActive && u.Id != excludingUserId, ct);
     }
 }

@@ -86,15 +86,27 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
         }
 
         /// <summary>
-        /// Emails the same amendment to the affected faculty member and students. Best-effort and
-        /// deliberately called <i>after</i> the edit is committed: a mail outage must not roll back
-        /// a schedule change the board has already accepted. Returns how many messages went out.
+        /// Queues the same amendment notice for the affected faculty member and every student
+        /// holding a seat, on the outbox. Returns how many were queued.
+        /// <para>
+        /// These used to be sent inline — one SMTP call per recipient, up to a section's forty
+        /// students plus its teacher, inside the request that moved the class. Dragging a published
+        /// class on the board therefore waited on the mail server, and a failed notice was logged
+        /// and forgotten: the same shape F-07 and F-12 moved onto the outbox, on a path that was
+        /// missed. Now the notices commit as rows and the dispatcher delivers them, with retries
+        /// and a record of every failure on the Outbox page.
+        /// </para>
+        /// <para>
+        /// The caller commits the queued rows in their own save after the edit's save, so the
+        /// edit still stands whatever happens to its notices — the property the inline version
+        /// had, kept.
+        /// </para>
         /// </summary>
-        public static async Task<int> EmailAsync(
+        public static async Task<int> QueueNoticesAsync(
             ScheduleAssignment assignment,
             string change,
             AppDbContext db,
-            IEmailSender email,
+            EmailOutbox outbox,
             CancellationToken ct)
         {
             if (!assignment.IsPublished) return 0;
@@ -105,7 +117,7 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
                 ? string.Empty
                 : $"{assignment.Section.ProgramCode} {assignment.Section.YearLevel}-{assignment.Section.Block}";
 
-            var sent = 0;
+            var queued = 0;
 
             var faculty = await db.FacultyProfiles.AsNoTracking()
                 .Include(f => f.User)
@@ -114,8 +126,10 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             {
                 var (subject, body) = PublishingEmails.ScheduleAmended(
                     facultyUser.FullName, subjectCode, subjectTitle, cohort, change);
-                var result = await email.SendAsync(facultyUser.Email, facultyUser.FullName, subject, body, ct);
-                if (result.Sent) sent++;
+                if (outbox.Queue(facultyUser.Email, facultyUser.FullName, subject, body, kind: "ScheduleAmended"))
+                {
+                    queued++;
+                }
             }
 
             var students = await db.SlotRequests.AsNoTracking()
@@ -126,11 +140,17 @@ namespace SENGENSystem.Server.Features.Scheduling.Board
             {
                 var (subject, body) = PublishingEmails.ScheduleAmended(
                     student.FullName, subjectCode, subjectTitle, cohort, change);
-                var result = await email.SendAsync(student.Email, student.FullName, subject, body, ct);
-                if (result.Sent) sent++;
+                if (outbox.Queue(student.Email, student.FullName, subject, body, kind: "ScheduleAmended"))
+                {
+                    queued++;
+                }
             }
 
-            return sent;
+            if (queued > 0)
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            return queued;
         }
 
         private static Guid? CurrentUserId(ClaimsPrincipal principal) =>

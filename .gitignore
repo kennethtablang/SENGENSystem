@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# SmarterASP deployment: live settings (secrets) and the upload bundle
+appsettings.Production.json
+publish.zip

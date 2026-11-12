@@ -113,8 +113,12 @@ namespace SENGENSystem.Server.Tests.Integration
                     SemesterId = term.Id,
                     Section = section,
                     TimeSlot = slot,
-                    RoomId = await db.Rooms.Select(r => r.Id).FirstAsync(),
-                    FacultyProfileId = await db.FacultyProfiles.Select(p => p.Id).FirstAsync(),
+                    // Deterministic, and a lecture room: an unordered "first room" let SQL Server
+                    // hand back a kitchen laboratory now and then, which the board rightly reads
+                    // as a laboratory meeting — a flaky test caused by the test, not the app.
+                    RoomId = await db.Rooms.Where(r => r.Kind == RoomKind.LectureRoom)
+                        .OrderBy(r => r.Name).Select(r => r.Id).FirstAsync(),
+                    FacultyProfileId = await db.FacultyProfiles.OrderBy(p => p.EmployeeId).Select(p => p.Id).FirstAsync(),
                     IsFinalized = true,
                     IsPublished = true
                 });

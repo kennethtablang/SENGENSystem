@@ -17,6 +17,14 @@ namespace SENGENSystem.Server.Domain
         public bool IsActive { get; set; } = true;
 
         /// <summary>
+        /// The program this staff member heads (e.g. "BSIT"), or null. A Program Head is a
+        /// designation on an existing account, not a role: it grants no access, it only names
+        /// who signs the "THRU: Program Head" line of that program's faculty-loading memo. At most
+        /// one account heads a program (unique index).
+        /// </summary>
+        public string? ProgramHeadOf { get; set; }
+
+        /// <summary>
         /// Set when the account was created for the student from their SIS with a system-generated
         /// temporary password: the first successful sign-in is forced through a password change
         /// before anything else is allowed. Cleared once the student sets their own password.

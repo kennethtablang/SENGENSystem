@@ -77,22 +77,24 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
         internal static async Task<List<FacultyLoadingRowDto>> BuildRowsAsync(
             Semester semester, AppDbContext db, CancellationToken ct)
         {
-            var loads = await db.FacultyLoadAssignments.AsNoTracking()
+            // Both per-member aggregates are GROUP BYs in SQL: one row per faculty member comes
+            // back, not one row per allocation or meeting.
+            var byFaculty = (await db.FacultyLoadAssignments.AsNoTracking()
                 .Where(l => l.SemesterId == semester.Id)
                 .Join(db.Subjects, l => l.SubjectId, s => s.Id,
                     (l, s) => new { l.FacultyProfileId, s.Units })
-                .ToListAsync(ct);
-            var byFaculty = loads.GroupBy(x => x.FacultyProfileId)
-                .ToDictionary(g => g.Key, g => (Units: g.Sum(x => x.Units), Count: g.Count()));
+                .GroupBy(x => x.FacultyProfileId)
+                .Select(g => new { FacultyProfileId = g.Key, Units = g.Sum(x => x.Units), Count = g.Count() })
+                .ToListAsync(ct))
+                .ToDictionary(x => x.FacultyProfileId, x => (x.Units, x.Count));
 
             var hours = (await db.ScheduleAssignments.AsNoTracking()
-                .Where(a => a.SemesterId == semester.Id)
-                .Include(a => a.TimeSlot)
+                .Where(a => a.SemesterId == semester.Id && a.TimeSlot != null)
+                .Select(a => new { a.FacultyProfileId, Minutes = a.TimeSlot!.EndMinutes - a.TimeSlot.StartMinutes })
+                .GroupBy(x => x.FacultyProfileId)
+                .Select(g => new { FacultyProfileId = g.Key, Minutes = g.Sum(x => x.Minutes) })
                 .ToListAsync(ct))
-                .Where(a => a.TimeSlot is not null)
-                .GroupBy(a => a.FacultyProfileId)
-                .ToDictionary(g => g.Key,
-                    g => g.Sum(a => a.TimeSlot!.EndMinutes - a.TimeSlot.StartMinutes) / 60.0);
+                .ToDictionary(x => x.FacultyProfileId, x => x.Minutes / 60.0);
 
             return (await db.FacultyProfiles.AsNoTracking()
                 .Include(f => f.User)
@@ -343,7 +345,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             XLWorkbook workbook, Semester semester, FacultyLoadingSignatories sig, FacultyLoadReportDto r, string sheetName)
         {
             var ws = workbook.AddWorksheet(sheetName);
-            const int cols = 11; // A..K
+            const int cols = 12; // A..L
 
             // ---- Title ----
             ws.Range(1, 1, 1, cols).Merge();
@@ -370,7 +372,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                 }
             }
             Memo(4, "TO", r.Name, r.EmployeeId == "—" ? null : $"Employee ID {r.EmployeeId}");
-            Memo(5, "THRU", sig.ProgramHead, "Program Head");
+            Memo(5, "THRU", sig.ProgramHeadFor(r.ProgramCode), "Program Head");
             Memo(6, "FROM", sig.AcademicHead, "Academic Head");
             Memo(7, "DATE", InstitutionClock.Now.ToString("dd MMMM yyyy"), null);
 
@@ -378,7 +380,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
 
             // ---- Assignment table ----
             const int headRow = 11;
-            string[] headers = ["CODE", "DESCRIPTION", "CLASS NO.", "TYPE", "SECTION", "DAYS", "TIME", "ROOM", "UNITS", "CONTACT HRS", "NO. OF STUDENTS"];
+            string[] headers = ["CODE", "DESCRIPTION", "CLASS NO.", "TYPE", "SECTION", "DAYS", "TIME", "ROOM", "UNITS", "CONTACT HRS", "TEACHING HRS", "NO. OF STUDENTS"];
             for (var c = 0; c < headers.Length; c++)
             {
                 var cell = ws.Cell(headRow, c + 1);
@@ -411,7 +413,8 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
                 }
                 if (line.ShowSubjectInfo && line.Units > 0) ws.Cell(row, 9).Value = line.Units;
                 if (!line.IsUnscheduled) ws.Cell(row, 10).Value = Math.Round(line.ContactHours, 1);
-                if (line.ShowSubjectInfo && line.StudentCount > 0) ws.Cell(row, 11).Value = line.StudentCount;
+                if (!line.IsUnscheduled) ws.Cell(row, 11).Value = Math.Round(line.TeachingHours, 2);
+                if (line.ShowSubjectInfo && line.StudentCount > 0) ws.Cell(row, 12).Value = line.StudentCount;
                 row++;
             }
 
@@ -422,7 +425,8 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             ws.Cell(row, 1).Style.Font.SetBold();
             ws.Cell(row, 9).Value = r.TotalUnits;
             ws.Cell(row, 10).Value = Math.Round(r.TotalContactHours, 1);
-            ws.Range(row, 9, row, 11).Style.Font.SetBold();
+            ws.Cell(row, 11).Value = Math.Round(r.TotalTeachingHours, 2);
+            ws.Range(row, 9, row, 12).Style.Font.SetBold();
             ws.Range(row, 1, row, cols).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#dfe7f7"));
 
             // Table border.
@@ -452,7 +456,8 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
             ws.Columns().AdjustToContents();
             ws.Column(2).Width = 34;   // Description — keep readable rather than over-wide
             ws.Column(7).Width = 20;   // Time
-            ws.Column(11).Width = 12;  // Students header wraps
+            ws.Column(11).Width = 12;  // Teaching hrs header wraps
+            ws.Column(12).Width = 12;  // Students header wraps
         }
 
         // ---- Grid schedules (per cohort timetable) ----------------------------------------

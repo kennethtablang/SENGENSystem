@@ -20,16 +20,27 @@ namespace SENGENSystem.Server.Common.Persistence
 
             await db.Database.MigrateAsync();
 
+            // Sample staff, faculty, students, rooms and a timetable, all with passwords that sit
+            // in source control. Development and demos only: a live install must never get them,
+            // so it is off unless Seed:DemoData is set (appsettings.Development.json sets it).
+            var demo = config.GetValue("Seed:DemoData", false);
+
             await SeedSystemSettingsAsync(db);
             await SeedSuperAdminAsync(db, hasher, config);
             await SeedAdminAsync(db, hasher, config);
-            await SeedStaffAsync(db, hasher);
-            await SeedSchedulingSampleAsync(db, hasher);
-            await SeedReturningStudentsAsync(db);
+            if (demo)
+            {
+                await SeedStaffAsync(db, hasher);
+                await SeedSchedulingSampleAsync(db, hasher);
+                await SeedReturningStudentsAsync(db);
+            }
             await BackfillAcademicSetupAsync(db);
             await SeedStiProgramsAsync(db);
-            await SeedFacultyLoadAsync(db);
-            await SeedRichDemoDataAsync(db, hasher);
+            if (demo)
+            {
+                await SeedFacultyLoadAsync(db);
+                await SeedRichDemoDataAsync(db, hasher);
+            }
         }
 
         /// <summary>
@@ -755,6 +766,18 @@ namespace SENGENSystem.Server.Common.Persistence
         /// rating survey. Seeded once; credentials come from config (Seed:SuperAdminEmail/Password)
         /// with dev defaults. Idempotent on the SuperAdmin role.
         /// </summary>
+        /// <summary>
+        /// The fallback when no seed password is configured. It is in source control, so an
+        /// account seeded with it is flagged to change it at first sign-in — the two most powerful
+        /// accounts on a fresh install must not keep a password anyone can read here. A configured
+        /// password is the deployer's choice and is left alone.
+        /// </summary>
+        private const string DefaultSeedPassword = "ChangeMe123!";
+
+        /// <summary>The configured seed password, or the default — which must be changed at first sign-in.</summary>
+        internal static (string Password, bool MustChange) SeedPassword(IConfiguration config, string key) =>
+            string.IsNullOrWhiteSpace(config[key]) ? (DefaultSeedPassword, true) : (config[key]!, false);
+
         private static async Task SeedSuperAdminAsync(AppDbContext db, IPasswordHasher<User> hasher, IConfiguration config)
         {
             if (await db.Users.AnyAsync(u => u.Role == UserRole.SuperAdmin))
@@ -770,7 +793,9 @@ namespace SENGENSystem.Server.Common.Persistence
                 Role = UserRole.SuperAdmin,
                 TermsAcceptedAtUtc = DateTime.UtcNow
             };
-            superAdmin.PasswordHash = hasher.HashPassword(superAdmin, config["Seed:SuperAdminPassword"] ?? "ChangeMe123!");
+            var (password, mustChange) = SeedPassword(config, "Seed:SuperAdminPassword");
+            superAdmin.PasswordHash = hasher.HashPassword(superAdmin, password);
+            superAdmin.MustChangePassword = mustChange;
 
             db.Users.Add(superAdmin);
             db.AuditEntries.Add(new AuditEntry
@@ -802,7 +827,9 @@ namespace SENGENSystem.Server.Common.Persistence
                 Role = UserRole.SchoolAdmin,
                 TermsAcceptedAtUtc = DateTime.UtcNow
             };
-            admin.PasswordHash = hasher.HashPassword(admin, config["Seed:AdminPassword"] ?? "ChangeMe123!");
+            var (password, mustChange) = SeedPassword(config, "Seed:AdminPassword");
+            admin.PasswordHash = hasher.HashPassword(admin, password);
+            admin.MustChangePassword = mustChange;
 
             db.Users.Add(admin);
 

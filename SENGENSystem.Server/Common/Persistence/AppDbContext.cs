@@ -75,10 +75,18 @@ namespace SENGENSystem.Server.Common.Persistence
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            // Class numbers for Section.ClassNumber ("Class No." on the faculty-loading memo).
+            modelBuilder.HasSequence<int>("ClassNumbers").StartsAt(1001);
+
             modelBuilder.Entity<User>(user =>
             {
                 user.HasIndex(u => u.Email).IsUnique();
                 user.Property(u => u.Email).HasMaxLength(256).IsRequired();
+                user.Property(u => u.ProgramHeadOf).HasMaxLength(20);
+                // One head per program. Inactive accounts are never named on a memo, and designating a
+                // new head clears the old one, so a deactivated head does not block the post.
+                user.HasIndex(u => u.ProgramHeadOf).IsUnique()
+                    .HasFilter("[ProgramHeadOf] IS NOT NULL");
                 user.Property(u => u.FirstName).HasMaxLength(100).IsRequired();
                 user.Property(u => u.LastName).HasMaxLength(100).IsRequired();
                 user.Property(u => u.PasswordHash).IsRequired();
@@ -223,6 +231,8 @@ namespace SENGENSystem.Server.Common.Persistence
                 settings.Property(s => s.MinSectionEnrollment).HasDefaultValue(15);
                 settings.Property(s => s.ScheduleTimeBudgetSeconds).HasDefaultValue(20);
                 settings.Property(s => s.ScheduleMaxStepsThousands).HasDefaultValue(2000);
+                settings.Property(s => s.LabTeachingCreditFactor)
+                    .HasDefaultValue(SENGENSystem.Server.Domain.SystemSettings.DefaultLabTeachingCreditFactor);
             });
 
             modelBuilder.Entity<Section>(section =>
@@ -234,6 +244,11 @@ namespace SENGENSystem.Server.Common.Persistence
                     "[EnrolledCount] >= 0 AND [EnrolledCount] <= [Capacity]"));
                 section.Property(s => s.RowVersion).IsRowVersion();
                 section.Property(s => s.SectionCode).HasMaxLength(60).IsRequired();
+                // Minted by the database so concurrent creators can never collide on a number.
+                section.Property(s => s.ClassNumber)
+                    .HasDefaultValueSql("NEXT VALUE FOR [ClassNumbers]")
+                    .ValueGeneratedOnAdd();
+                section.HasIndex(s => s.ClassNumber).IsUnique();
                 section.Property(s => s.ProgramCode).HasMaxLength(20).IsRequired();
                 section.Property(s => s.Block).HasMaxLength(10).IsRequired();
                 section.Ignore(s => s.CohortKey);

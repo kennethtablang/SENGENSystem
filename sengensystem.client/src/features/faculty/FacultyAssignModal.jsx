@@ -36,7 +36,7 @@ export default function FacultyAssignModal({ faculty, semesterId, onClose, onSav
         return () => { active = false; };
     }, [faculty.facultyProfileId, semesterId]);
 
-    const rows = data?.rows ?? [];
+    const rows = useMemo(() => data?.rows ?? [], [data]);
     const maxUnits = data?.maxLoadUnits ?? faculty.maxLoadUnits ?? 0;
 
     const courses = useMemo(() => ['All', ...[...new Set(rows.map(r => r.course))].sort()], [rows]);

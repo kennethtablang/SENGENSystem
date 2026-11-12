@@ -91,6 +91,16 @@ namespace SENGENSystem.Server
         /// </summary>
         internal const string LoginRateLimitPolicy = "auth-login";
 
+        /// <summary>
+        /// The anonymous forms that write or answer a lookup: self-registration, the public SIS,
+        /// term activation, the emailed survey link, and email confirmation. None was limited, and
+        /// two of them matter: the SIS sends an email to whatever address is typed, so a script
+        /// could turn the school's sender into a mailer for arbitrary addresses (and get that Gmail
+        /// account suspended); and the term-activation lookup answers "does this student number
+        /// and surname match?", so unlimited guesses enumerate students.
+        /// </summary>
+        internal const string PublicFormRateLimitPolicy = "public-form";
+
         public static async Task Main(string[] args)
         {
             // QuestPDF is used for the Consolidated Faculty Loading Report (FR-RPT-02).
@@ -161,6 +171,7 @@ namespace SENGENSystem.Server
 
             var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
                 ?? throw new InvalidOperationException("Missing Jwt configuration section.");
+            JwtOptions.EnsureUsableKey(jwt.Key, builder.Environment.IsDevelopment());
 
             builder.Services
                 .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -227,6 +238,19 @@ namespace SENGENSystem.Server
                             Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0
                         }));
+                // Looser than sign-in on purpose: on registration day a computer lab behind one
+                // campus address can file many SISes in the same minute, and refusing a real
+                // enrollee costs far more than the margin gives an attacker. 30 a minute still caps
+                // a script at a few dozen emails, not thousands.
+                options.AddPolicy(PublicFormRateLimitPolicy, context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 30,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0
+                        }));
             });
 
             var app = builder.Build();
@@ -289,6 +313,9 @@ namespace SENGENSystem.Server
             app.UseRateLimiter();
 
             app.UseAuthentication();
+            // After authentication (it needs the user) and before authorization and the endpoints:
+            // a must-change-password account reaches only what the first-login screen needs.
+            app.UsePasswordChangeGate();
             app.UseAuthorization();
 
             app.MapControllers();

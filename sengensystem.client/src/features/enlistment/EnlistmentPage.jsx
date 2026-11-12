@@ -66,6 +66,8 @@ function EnlistmentPage() {
     useEffect(() => {
         const initial = setTimeout(load, 0);
         return () => clearTimeout(initial);
+        // Mount-only: later reloads are explicit (toggle, after an action).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     async function toggleShowAll() {
