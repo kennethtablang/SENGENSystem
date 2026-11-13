@@ -24,9 +24,16 @@ This drops `ClassInsight.Agent.exe` into `deploy\agent\`, where `Install-Agent.p
 ```powershell
 # Run from an Administrator PowerShell
 .\Install-Agent.ps1
-# …or point at a custom location:
-.\Install-Agent.ps1 -BinaryPath 'C:\Program Files\ClassInsight\ClassInsight.Agent.exe'
+# ...or install from a specific published build:
+.\Install-Agent.ps1 -BinaryPath 'C:\build\agent\ClassInsight.Agent.exe'
 ```
+
+The installer **copies the agent into `%ProgramFiles%\ClassInsight`** (override with `-InstallDir`)
+and **locks that folder's ACL** - Administrators/SYSTEM get full control, standard Users get only
+read & execute - then registers the service to run from there. This matters: the service runs as
+`LocalSystem`, so if the binary lived in a student-writable folder a student could swap the exe and
+run code as SYSTEM at boot. The installer **refuses to proceed if the installed binary is writable
+by non-admins**.
 
 The service is registered as `ClassInsightAgent`, **Automatic** start, running as `LocalSystem`,
 with **restart-on-failure** (5s, 5s, then every 10s) so it recovers if it exits (FR-AGENT-07).
@@ -44,7 +51,8 @@ Application, source *ClassInsight Agent*) since there's no console.
 ## 4. Uninstall (elevated)
 
 ```powershell
-.\Uninstall-Agent.ps1
+.\Uninstall-Agent.ps1            # removes the service and %ProgramFiles%\ClassInsight
+.\Uninstall-Agent.ps1 -KeepFiles # removes only the service, leaves the files
 ```
 
 ## Mass deployment
