@@ -50,32 +50,43 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 
 # --- helpers ----------------------------------------------------------------
-# SIDs of broad, non-admin principals. If any of these is granted write/modify to the installed
-# binary, a standard student could tamper with a SYSTEM service - so we treat it as fatal.
-$NonAdminSids = @{
-    'S-1-1-0'     = 'Everyone'
-    'S-1-5-11'    = 'Authenticated Users'
-    'S-1-5-32-545'= 'Users'
-    'S-1-5-32-546'= 'Guests'
-    'S-1-5-7'     = 'Anonymous'
-}
+# Allowlist, not denylist: a SYSTEM service's install tree is safe only if the *only* principals
+# that can write/delete/retake it are trusted system principals. Anything else -- a custom group,
+# a specific user, Everyone -- is fatal. A denylist would fail open on SIDs it didn't enumerate.
+$TrustedSids = @(
+    'S-1-5-32-544',  # BUILTIN\Administrators
+    'S-1-5-18',      # NT AUTHORITY\SYSTEM (LocalSystem)
+    'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464'  # NT SERVICE\TrustedInstaller
+)
 # Atomic mutate bits only. NOTE: do NOT use composite rights like Modify/FullControl here --
 # those bundle read/execute bits, so AND-ing them would flag even a correct read-only grant.
 $WriteMask = [System.Security.AccessControl.FileSystemRights]'WriteData,AppendData,WriteExtendedAttributes,WriteAttributes,Delete,DeleteSubdirectoriesAndFiles,ChangePermissions,TakeOwnership'
 
-function Test-NonAdminWritable {
+function ConvertTo-Sid {
+    param($IdentityReference)
+    try { return $IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value }
+    catch { return $IdentityReference.Value }
+}
+
+# Returns a human-readable problem string if $Path is NOT securely owned/ACLed, else $null.
+function Get-ItemSecurityProblem {
     param([Parameter(Mandatory)][string]$Path)
     $acl = Get-Acl -LiteralPath $Path
+
+    $ownerSid = try { $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value } catch { '' }
+    if ($TrustedSids -notcontains $ownerSid) {
+        return "owner is '$($acl.Owner)' ($ownerSid); expected Administrators or SYSTEM"
+    }
+
     foreach ($ace in $acl.Access) {
         if ($ace.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
-        try { $sid = $ace.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value }
-        catch { $sid = $ace.IdentityReference.Value }
-        if ($NonAdminSids.ContainsKey($sid) -and ($ace.FileSystemRights -band $WriteMask)) {
-            Write-Warning "  $Path grants '$($ace.FileSystemRights)' to $($NonAdminSids[$sid])."
-            return $true
+        if (($ace.FileSystemRights -band $WriteMask) -eq 0) { continue }   # read/execute only -> fine
+        $sid = ConvertTo-Sid $ace.IdentityReference
+        if ($TrustedSids -notcontains $sid) {
+            return "grants '$($ace.FileSystemRights)' to '$($ace.IdentityReference)' ($sid)"
         }
     }
-    return $false
+    return $null
 }
 
 # --- resolve the source agent executable ------------------------------------
@@ -104,10 +115,25 @@ if ($existing) {
     Start-Sleep -Seconds 2
 }
 
-# --- copy into the protected program folder ---------------------------------
-if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+# --- start from a clean, protected folder -----------------------------------
+# Wipe any pre-existing InstallDir first: a leftover folder could carry a weak ACL or planted
+# DLLs that the SYSTEM service would load (DLL search-order hijack). Sanity-guard the path so a
+# bad -InstallDir can't turn this into a destructive delete.
+$InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
+$leaf = Split-Path $InstallDir -Leaf
+$qualifier = Split-Path $InstallDir -Qualifier   # e.g. 'C:'
+if ([string]::IsNullOrWhiteSpace($leaf) -or $InstallDir -eq "$qualifier\" -or $InstallDir.Length -le 4) {
+    throw "Unsafe -InstallDir '$InstallDir' (refusing to operate on a drive root)."
 }
+if (Test-Path -LiteralPath $InstallDir) {
+    Write-Host "Removing existing $InstallDir (avoids stale ACLs / planted DLLs)..."
+    Remove-Item -LiteralPath $InstallDir -Recurse -Force
+    if (Test-Path -LiteralPath $InstallDir) {
+        throw "Could not remove existing $InstallDir (files in use?). Resolve and re-run."
+    }
+}
+New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+
 Write-Host "Copying agent files into $InstallDir..."
 Copy-Item -Path (Join-Path $sourceDir '*') -Destination $InstallDir -Recurse -Force
 
@@ -133,11 +159,23 @@ $sd.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule
 $sd.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($users,'ReadAndExecute',$inherit,$none,$allow)))
 Set-Acl -LiteralPath $InstallDir -AclObject $sd
 
-# --- verify the installed binary is NOT writable by non-admins --------------
-Write-Host "Verifying the installed binary is not writable by standard users..."
-if ((Test-NonAdminWritable -Path $InstallDir) -or (Test-NonAdminWritable -Path $targetExe)) {
-    throw "Refusing to install: '$InstallDir' is writable by non-administrators. A standard user " +
-          "could replace the agent and run code as SYSTEM. Fix the folder ACL and re-run."
+# Reset every child to inherit the protected DACL above (drops any explicit ACE the copy carried
+# over), then force ownership of the whole tree to Administrators. icacls needs the SIDs prefixed
+# with '*'. /T recurse, /C continue on error, /Q quiet.
+& icacls $InstallDir /reset /T /C /Q | Out-Null
+& icacls $InstallDir /setowner "*S-1-5-32-544" /T /C /Q | Out-Null
+
+# --- verify the WHOLE install tree is securely owned and not user-writable ---
+Write-Host "Verifying the install tree is owned by Administrators and not writable by standard users..."
+$items = @($InstallDir) + @(Get-ChildItem -LiteralPath $InstallDir -Recurse -Force |
+                            Select-Object -ExpandProperty FullName)
+$problems = foreach ($it in $items) {
+    $p = Get-ItemSecurityProblem -Path $it
+    if ($p) { "  $it -> $p" }
+}
+if ($problems) {
+    throw ("Refusing to install: the install tree is not secure (a standard user could run code " +
+           "as SYSTEM). Problems:`n" + ($problems -join "`n"))
 }
 
 # --- register: auto-start, runs as LocalSystem ------------------------------
