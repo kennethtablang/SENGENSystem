@@ -39,6 +39,13 @@ public sealed record StudentInfo
     public int ScreenHeight { get; init; }
 
     public string AgentVersion { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Wire-protocol version the agent was built against. Defaults to the <see cref="Protocol.Version"/>
+    /// of the shared library it is compiled with, so the server can reject an incompatible
+    /// agent at registration (FR-DISC-06) without any client-side plumbing.
+    /// </summary>
+    public int ProtocolVersion { get; init; } = Protocol.Version;
 }
 
 public sealed record TeacherInfo
@@ -53,6 +60,12 @@ public sealed record TeacherInfo
     /// Students never supply this — their auto-join flow is unchanged.
     /// </summary>
     public string? JoinCode { get; init; }
+
+    /// <summary>
+    /// Wire-protocol version the teacher app was built against (see <see cref="StudentInfo.ProtocolVersion"/>).
+    /// Lets the server reject an incompatible teacher at registration (FR-DISC-06).
+    /// </summary>
+    public int ProtocolVersion { get; init; } = Protocol.Version;
 }
 
 /// <summary>A student entry as projected to teachers in the roster/dashboard.</summary>

@@ -41,6 +41,8 @@ public sealed class ClassroomHub : Hub
     /// <summary>A student agent announces itself. No code, no login (FR-SEC-01).</summary>
     public async Task RegisterStudent(StudentInfo info)
     {
+        RejectIfIncompatible(info.ProtocolVersion);
+
         // Prefer the real socket address the server sees over whatever the agent guessed.
         var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
         if (!string.IsNullOrWhiteSpace(ip))
@@ -62,6 +64,8 @@ public sealed class ClassroomHub : Hub
     /// </summary>
     public async Task RegisterTeacher(TeacherInfo info)
     {
+        RejectIfIncompatible(info.ProtocolVersion);
+
         if (!_identity.AllowOpenTeacherMode)
         {
             var key = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString() ?? Context.ConnectionId;
@@ -181,4 +185,20 @@ public sealed class ClassroomHub : Hub
 
     private Task BroadcastRosterToTeachers() =>
         Clients.Clients(_room.TeacherConnectionIds).SendAsync(Protocol.ClientMethods.RosterUpdated, _room.BuildRoster());
+
+    /// <summary>
+    /// Reject a client whose wire-protocol version doesn't match this server's (FR-DISC-06).
+    /// Throwing <see cref="HubException"/> fails the registration call on the client; nothing
+    /// is added to the roster, so an incompatible build can't half-join.
+    /// </summary>
+    private void RejectIfIncompatible(int clientProtocolVersion)
+    {
+        if (clientProtocolVersion != Protocol.Version)
+        {
+            _logger.LogWarning("Rejected client with protocol v{Client} (server v{Server}).",
+                clientProtocolVersion, Protocol.Version);
+            throw new HubException(
+                $"Protocol version mismatch: client v{clientProtocolVersion}, server v{Protocol.Version}. Update to a matching build.");
+        }
+    }
 }
