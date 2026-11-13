@@ -1,6 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/ClassInsight.Server/ClassInsight.Server.csproj" />
-    <Project Path="src/ClassInsight.Shared/ClassInsight.Shared.csproj" />
-  </Folder>
-</Solution>
