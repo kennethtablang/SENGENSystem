@@ -132,18 +132,11 @@ if (Test-Path -LiteralPath $InstallDir) {
         throw "Could not remove existing $InstallDir (files in use?). Resolve and re-run."
     }
 }
-New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-
-Write-Host "Copying agent files into $InstallDir..."
-Copy-Item -Path (Join-Path $sourceDir '*') -Destination $InstallDir -Recurse -Force
-
-$targetExe = Join-Path $InstallDir 'ClassInsight.Agent.exe'
-if (-not (Test-Path $targetExe)) {
-    throw "Copy did not produce $targetExe - check the source bundle."
-}
-
-# --- lock the ACL: Admins/SYSTEM full, Users read+execute, no inheritance ---
-Write-Host "Securing $InstallDir (Administrators/SYSTEM full control; Users read & execute only)..."
+# --- create the folder ALREADY holding the protected DACL -------------------
+# Build the DACL first and create the directory with it, so there is never an instant where the
+# folder exists under the weaker inherited ACL (TOCTOU). %ProgramFiles% is not user-writable to
+# begin with, so this is defence-in-depth, but it closes the window cleanly.
+Write-Host "Creating $InstallDir with a protected ACL (Administrators/SYSTEM full; Users read & execute)..."
 $admins = New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')
 $system = New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
 $users  = New-Object Security.Principal.SecurityIdentifier('S-1-5-32-545')
@@ -153,15 +146,49 @@ $allow   = [System.Security.AccessControl.AccessControlType]::Allow
 
 $sd = New-Object System.Security.AccessControl.DirectorySecurity
 $sd.SetAccessRuleProtection($true, $false)   # break inheritance, drop inherited ACEs
-$sd.SetOwner($admins)
 $sd.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($admins,'FullControl',$inherit,$none,$allow)))
 $sd.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($system,'FullControl',$inherit,$none,$allow)))
 $sd.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($users,'ReadAndExecute',$inherit,$none,$allow)))
-Set-Acl -LiteralPath $InstallDir -AclObject $sd
+[System.IO.Directory]::CreateDirectory($InstallDir, $sd) | Out-Null
 
-# Reset every child to inherit the protected DACL above (drops any explicit ACE the copy carried
-# over), then force ownership of the whole tree to Administrators. icacls needs the SIDs prefixed
-# with '*'. /T recurse, /C continue on error, /Q quiet.
+Write-Host "Copying agent files into $InstallDir..."
+Copy-Item -Path (Join-Path $sourceDir '*') -Destination $InstallDir -Recurse -Force
+
+$targetExe = Join-Path $InstallDir 'ClassInsight.Agent.exe'
+if (-not (Test-Path $targetExe)) {
+    throw "Copy did not produce $targetExe - check the source bundle."
+}
+
+# --- verify installed files match the source bundle EXACTLY -----------------
+# By relative path + SHA-256: this rejects any file that appears in the install tree but not in
+# the trusted source (e.g. something planted during the copy), so the later /setowner cannot mask
+# an unexpected file by relabelling its owner.
+Write-Host "Verifying installed files match the source bundle (SHA-256)..."
+function Get-RelHashMap {
+    param([Parameter(Mandatory)][string]$Root)
+    $base = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
+    $map = @{}
+    Get-ChildItem -LiteralPath $base -Recurse -File -Force | ForEach-Object {
+        $rel = $_.FullName.Substring($base.Length + 1)
+        $map[$rel] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }
+    return $map
+}
+$srcMap = Get-RelHashMap -Root $sourceDir
+$dstMap = Get-RelHashMap -Root $InstallDir
+$fileProblems = @()
+foreach ($k in $dstMap.Keys) {
+    if (-not $srcMap.ContainsKey($k)) { $fileProblems += "unexpected installed file: $k" }
+    elseif ($srcMap[$k] -ne $dstMap[$k]) { $fileProblems += "hash mismatch: $k" }
+}
+foreach ($k in $srcMap.Keys) { if (-not $dstMap.ContainsKey($k)) { $fileProblems += "missing file: $k" } }
+if ($fileProblems) {
+    throw ("Refusing to install: installed files do not match the source bundle:`n  " +
+           ($fileProblems -join "`n  "))
+}
+
+# Normalize: re-inherit the protected DACL on children (drops any explicit ACE the copy carried
+# over) and set uniform Administrators ownership. /T recurse, /C continue, /Q quiet.
 & icacls $InstallDir /reset /T /C /Q | Out-Null
 & icacls $InstallDir /setowner "*S-1-5-32-544" /T /C /Q | Out-Null
 
