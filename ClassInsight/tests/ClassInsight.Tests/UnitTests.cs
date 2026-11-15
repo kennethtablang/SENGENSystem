@@ -317,6 +317,15 @@ public class CaptureSizingTests
         Assert.Equal(0, th % 16);
     }
 
+    [Theory]
+    [InlineData(1920, 1080, 480, 272, 2)]   // thumbnail: 480x270 mip, 2 rows of tolerance
+    [InlineData(1920, 1080, 1280, 720, 0)]  // focus: full size, no mip is big enough
+    [InlineData(3840, 2160, 1280, 720, 1)]  // 4K focus: 1920x1080 mip
+    [InlineData(3840, 2160, 480, 272, 3)]
+    [InlineData(1366, 768, 480, 272, 1)]    // 683x384 is the smallest mip >= target
+    public void Dxgi_reads_the_smallest_mip_that_covers_the_target(int w, int h, int tw, int th, int level) =>
+        Assert.Equal(level, DxgiDuplicator.LevelFor(w, h, tw, th));
+
     [Fact]
     public void Every_aligned_size_encodes()
     {

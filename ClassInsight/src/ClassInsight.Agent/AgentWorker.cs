@@ -45,6 +45,7 @@ public sealed class AgentWorker : BackgroundService
     private readonly string _machineId;
     private readonly SystemTelemetryCollector _telemetry;
     private readonly BrowserActivityProbe? _browser;
+    private readonly ViewingIndicator? _indicator;
 
     private IReadOnlyList<IceServerConfig> _iceServers = [];
 
@@ -55,10 +56,16 @@ public sealed class AgentWorker : BackgroundService
 
         var section = configuration.GetSection("ClassInsight");
         _roomName = NullIfBlank(section["RoomName"]);
+        ScreenCapture.DisableDxgi = string.Equals(section["CaptureBackend"], "GDI", StringComparison.OrdinalIgnoreCase);
         _serverAddress = NullIfBlank(section["ServerAddress"]);
 
         if (section.GetValue<bool?>("ReportBrowserActivity") ?? true)
             _browser = new BrowserActivityProbe(loggerFactory.CreateLogger<BrowserActivityProbe>());
+
+        // On-screen notice while a teacher is viewing (FR-SEC-05). On by default; an institution
+        // whose policy doesn't require notice can turn it off.
+        if (section.GetValue<bool?>("ShowViewingIndicator") ?? true)
+            _indicator = new ViewingIndicator(loggerFactory.CreateLogger<ViewingIndicator>());
 
         _machineId = InstallId.GetOrCreate(logger);
         _telemetry = new SystemTelemetryCollector(_machineId, _browser);
@@ -98,6 +105,7 @@ public sealed class AgentWorker : BackgroundService
         {
             await TearDownSendersAsync();
             _browser?.Dispose();
+            _indicator?.Dispose();
         }
     }
 
@@ -176,6 +184,7 @@ public sealed class AgentWorker : BackgroundService
                     await sender.DisposeAsync();
                     _logger.LogInformation("Stopped stream to teacher {Teacher}; {Count} viewer(s) left.", teacherId, _senders.Count);
                 }
+                UpdateIndicator();
             }
             finally
             {
@@ -221,6 +230,7 @@ public sealed class AgentWorker : BackgroundService
                 _logger.LogWarning(ex, "Could not start stream to {Teacher}.", teacherId);
                 if (_senders.TryRemove(teacherId, out var s)) await s.DisposeAsync();
             }
+            UpdateIndicator();
         }
         finally
         {
@@ -263,12 +273,15 @@ public sealed class AgentWorker : BackgroundService
             foreach (var key in _senders.Keys.ToArray())
                 if (_senders.TryRemove(key, out var sender))
                     await sender.DisposeAsync();
+            UpdateIndicator();
         }
         finally
         {
             _senderGate.Release();
         }
     }
+
+    private void UpdateIndicator() => _indicator?.SetViewing(!_senders.IsEmpty);
 
     private static async Task SafeDelay(TimeSpan delay, CancellationToken ct)
     {

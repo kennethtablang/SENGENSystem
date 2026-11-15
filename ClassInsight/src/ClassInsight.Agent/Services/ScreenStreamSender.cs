@@ -276,8 +276,8 @@ public sealed class ScreenStreamSender : IAsyncDisposable
 
         var secs = Math.Max(0.001, clock.Elapsed.TotalSeconds);
         _logger.LogInformation(
-            "Stream to {Teacher} ({Quality}) ended after {Seconds:0}s: {Frames} frames sent ({Fps:0.0} fps), {Skipped} unchanged frames skipped.",
-            _teacherConnectionId, _quality, secs, frames, frames / secs, skipped);
+            "Stream to {Teacher} ({Quality}, {Backend}) ended after {Seconds:0}s: {Frames} frames sent ({Fps:0.0} fps), {Skipped} unchanged frames skipped.",
+            _teacherConnectionId, _quality, _capture.Backend, secs, frames, frames / secs, skipped);
     }
 
     private async Task SafeSend(string method, object arg)

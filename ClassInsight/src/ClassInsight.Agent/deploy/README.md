@@ -19,6 +19,23 @@ dotnet publish -c Release -r win-x64 --self-contained true `
 
 This drops `ClassInsight.Agent.exe` into `deploy\agent\`, where `Install-Agent.ps1` looks by default.
 
+## Option A — MSI (recommended for GPO / Intune / SCCM / imaging)
+
+```powershell
+cd ..\..\..\installer
+dotnet build -c Release          # publishes the agent self-contained, then links the MSI
+# -> installer\bin\x64\Release\ClassInsight.Agent.msi
+msiexec /i ClassInsight.Agent.msi /qn
+```
+
+The MSI installs into `%ProgramFiles%\ClassInsight`, registers the same `ClassInsightAgent` service
+(Automatic, LocalSystem, restart on failure 5 s / 5 s / 5 s, reset daily), creates
+`%ProgramData%\ClassInsight` with a protected ACL, starts the service, and upgrades in place.
+An admin's edits to `appsettings.json` survive upgrades. Sign the MSI with your institution's
+code-signing certificate before distribution (`signtool sign /fd sha256 /a ClassInsight.Agent.msi`).
+
+## Option B — PowerShell installer
+
 ## 2. Install the service (elevated)
 
 ```powershell
@@ -62,6 +79,8 @@ At the Windows logon screen there is no user desktop to capture; the agent stays
 | `ClassInsight:RoomName` | Join only the server with this room name, when several rooms share one network. |
 | `ClassInsight:ServerAddress` | `host` or `host:port` to try when UDP broadcast discovery is blocked. |
 | `ClassInsight:ReportBrowserActivity` | Report the foreground browser tab's **host** (domain only). Default `true`. |
+| `ClassInsight:ShowViewingIndicator` | Show the student a small "Your screen is being viewed by your teacher" notice while viewed. Default `true` (FR-SEC-05). |
+| `ClassInsight:CaptureBackend` | `DXGI` (GPU capture, default) or `GDI`. GDI is the automatic fallback; force it only for diagnostics. |
 
 The agent's identity is a random per-install id kept in `%ProgramData%\ClassInsight\agent-id`
 (the installer protects that folder).

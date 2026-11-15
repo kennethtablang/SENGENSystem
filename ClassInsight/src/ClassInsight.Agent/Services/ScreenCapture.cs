@@ -54,8 +54,10 @@ public static class DisplayEnumerator
 /// macroblocks (it rejects e.g. 480×270), so sizes are rounded and the aspect ratio shifts by
 /// at most a few percent.
 ///
-/// One GDI <c>StretchBlt</c> (HALFTONE) straight from the screen into a reused DIB section does
-/// the grab and the downscale together — no full-resolution intermediate bitmap — and the
+/// The image comes from DXGI Desktop Duplication when available (GPU capture + GPU mip
+/// downsampling, ~2.5 ms/frame, free when nothing changed; see <see cref="DxgiDuplicator"/>),
+/// otherwise from one GDI <c>StretchBlt</c> (HALFTONE) straight from the screen. Either way the
+/// final resize is a HALFTONE stretch into a reused target DIB section, and the
 /// mouse cursor is drawn on top so the teacher can see where the student is pointing. Two
 /// buffers alternate so the caller can skip encoding frames that haven't changed (NFR-PERF-04).
 /// Requires per-monitor DPI awareness (set in Program) so scaled displays are captured whole.
@@ -73,6 +75,17 @@ public sealed class ScreenCapture : IDisposable
 
     private byte[] _current = [];
     private byte[] _previous = [];
+    private bool _haveFrame;
+
+    // DXGI path (GPU capture) and the DIB that receives its downsampled image.
+    private DxgiDuplicator? _dxgi;
+    private DateTime _dxgiRetryAt;
+    private IntPtr _srcDc, _srcDib, _srcOld, _srcBits;
+    private int _srcW, _srcH, _srcLevel = -1;
+    private bool _srcValid;
+
+    /// <summary>Force GDI capture everywhere (diagnostics: <c>ClassInsight:CaptureBackend=GDI</c>).</summary>
+    public static bool DisableDxgi { get; set; }
 
     public ScreenCapture(CaptureDisplay display) => _display = display;
 
@@ -96,19 +109,33 @@ public sealed class ScreenCapture : IDisposable
         var (tw, th) = TargetSize(maxWidth);
         if (!EnsureSurface(tw, th)) return null;
 
-        var screen = GetDC(IntPtr.Zero);
-        if (screen == IntPtr.Zero) return null;
-        try
+        SetStretchBltMode(_memDc, HALFTONE);
+        SetBrushOrgEx(_memDc, 0, 0, IntPtr.Zero);
+
+        if (TryDxgi(tw, th, out var noChange, out var srcW, out var srcH))
         {
-            SetStretchBltMode(_memDc, HALFTONE);
-            SetBrushOrgEx(_memDc, 0, 0, IntPtr.Zero);
-            if (!StretchBlt(_memDc, 0, 0, tw, th, screen,
-                    _display.Left, _display.Top, _display.Width, _display.Height, SRCCOPY | CAPTUREBLT))
+            // Nothing on screen changed (not even the pointer): hand back the last frame, no work.
+            if (noChange && _haveFrame && _previous.Length == tw * th * 4)
+                return new Frame(tw, th, _previous, false);
+
+            // GPU-downsampled image -> final size (a small CPU-side stretch, no screen readback).
+            if (!StretchBlt(_memDc, 0, 0, tw, th, _srcDc, 0, 0, srcW, srcH, SRCCOPY))
                 return null;
         }
-        finally
+        else
         {
-            ReleaseDC(IntPtr.Zero, screen);
+            var screen = GetDC(IntPtr.Zero);
+            if (screen == IntPtr.Zero) return null;
+            try
+            {
+                if (!StretchBlt(_memDc, 0, 0, tw, th, screen,
+                        _display.Left, _display.Top, _display.Width, _display.Height, SRCCOPY | CAPTUREBLT))
+                    return null;
+            }
+            finally
+            {
+                ReleaseDC(IntPtr.Zero, screen);
+            }
         }
 
         DrawCursor(tw);
@@ -118,9 +145,111 @@ public sealed class ScreenCapture : IDisposable
         if (_current.Length != len) { _current = new byte[len]; _previous = new byte[len]; }
         Marshal.Copy(_bits, _current, 0, len);
 
-        var changed = !_current.AsSpan().SequenceEqual(_previous);
+        var changed = !_haveFrame || !_current.AsSpan().SequenceEqual(_previous);
         (_current, _previous) = (_previous, _current);   // _previous now holds this frame
+        _haveFrame = true;
         return new Frame(tw, th, _previous, changed);
+    }
+
+    /// <summary>"DXGI" while GPU duplication is active for this display, else "GDI".</summary>
+    public string Backend => _dxgi is null ? "GDI" : "DXGI";
+
+    /// <summary>
+    /// Try the DXGI Desktop Duplication path (see <see cref="DxgiDuplicator"/>). On success the
+    /// GPU-downsampled image is in the source DIB (<paramref name="srcW"/> x <paramref name="srcH"/>),
+    /// or <paramref name="noChange"/> says the screen is unchanged. Returns false to use GDI for
+    /// this frame: duplication unavailable, lost (it is retried later), or not primed yet.
+    /// </summary>
+    private bool TryDxgi(int tw, int th, out bool noChange, out int srcW, out int srcH)
+    {
+        noChange = false;
+        srcW = srcH = 0;
+        if (DisableDxgi) return false;
+
+        if (_dxgi is null)
+        {
+            if (DateTime.UtcNow < _dxgiRetryAt) return false;
+            _dxgi = DxgiDuplicator.TryCreate(_display.Info.Name);
+            // Only trust it if it describes the same pixels we enumerated (guards odd multi-GPU setups).
+            if (_dxgi is null || _dxgi.Width != _display.Width || _dxgi.Height != _display.Height)
+            {
+                _dxgi?.Dispose();
+                _dxgi = null;
+                _dxgiRetryAt = DateTime.UtcNow.AddSeconds(5);
+                return false;
+            }
+            _srcValid = false;
+        }
+
+        var level = _dxgi.LevelFor(tw, th);
+        srcW = Math.Max(1, _dxgi.Width >> level);
+        srcH = Math.Max(1, _dxgi.Height >> level);
+        if (!EnsureSource(srcW, srcH)) return false;
+        if (level != _srcLevel) { _srcValid = false; _srcLevel = level; }
+
+        switch (_dxgi.TryAcquire(level, _srcBits, srcW * 4))
+        {
+            case DxgiDuplicator.Outcome.NewImage:
+                _srcValid = true;
+                return true;
+            case DxgiDuplicator.Outcome.PointerOnly:
+                return _srcValid;   // recomposite the cursor over the last image
+            case DxgiDuplicator.Outcome.NoChange:
+                noChange = _srcValid;
+                return _srcValid;
+            default:
+                // Lost (mode change, secure desktop...): drop it, use GDI, retry shortly.
+                _dxgi.Dispose();
+                _dxgi = null;
+                _srcValid = false;
+                _dxgiRetryAt = DateTime.UtcNow.AddSeconds(2);
+                return false;
+        }
+    }
+
+    private bool EnsureSource(int w, int h)
+    {
+        if (_srcDib != IntPtr.Zero && _srcW == w && _srcH == h) return true;
+        FreeSource();
+
+        var screen = GetDC(IntPtr.Zero);
+        if (screen == IntPtr.Zero) return false;
+        try
+        {
+            _srcDc = CreateCompatibleDC(screen);
+            var bmi = new BITMAPINFOHEADER
+            {
+                biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
+                biWidth = w,
+                biHeight = -h,
+                biPlanes = 1,
+                biBitCount = 32,
+            };
+            _srcDib = CreateDIBSection(screen, ref bmi, DIB_RGB_COLORS, out _srcBits, IntPtr.Zero, 0);
+            if (_srcDc == IntPtr.Zero || _srcDib == IntPtr.Zero || _srcBits == IntPtr.Zero)
+            {
+                FreeSource();
+                return false;
+            }
+            _srcOld = SelectObject(_srcDc, _srcDib);
+            _srcW = w; _srcH = h;
+            _srcValid = false;
+            return true;
+        }
+        finally
+        {
+            ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
+    private void FreeSource()
+    {
+        if (_srcDc != IntPtr.Zero && _srcOld != IntPtr.Zero) SelectObject(_srcDc, _srcOld);
+        if (_srcDib != IntPtr.Zero) DeleteObject(_srcDib);
+        if (_srcDc != IntPtr.Zero) DeleteDC(_srcDc);
+        _srcDc = _srcDib = _srcOld = _srcBits = IntPtr.Zero;
+        _srcW = _srcH = 0;
+        _srcValid = false;
     }
 
     private void DrawCursor(int targetWidth)
@@ -212,5 +341,11 @@ public sealed class ScreenCapture : IDisposable
         _w = _h = 0;
     }
 
-    public void Dispose() => FreeSurface();
+    public void Dispose()
+    {
+        FreeSurface();
+        FreeSource();
+        _dxgi?.Dispose();
+        _dxgi = null;
+    }
 }
