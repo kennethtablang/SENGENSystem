@@ -3,18 +3,35 @@ using System.Collections.Concurrent;
 namespace ClassInsight.Server.Services;
 
 /// <summary>
-/// Fail-closed brute-force protection for teacher pairing (FR-SEC-02, NFR-SEC-03). Tracks
-/// failed join-code attempts per source key (client IP) and imposes an escalating lockout
-/// so a wrong code can't be guessed by rapid retries. Open mode never consults this.
+/// Fail-closed brute-force protection for teacher pairing (FR-SEC-06). Two layers:
 ///
-/// Reconstructed from the hub's usage and the plan's security NFRs after the original was lost.
+///  * <b>Per source</b> (client IP): after a few free attempts each further failure doubles a
+///    lockout, capped, so one device can't hammer the code.
+///  * <b>Global</b>: if failures across <i>all</i> sources exceed a budget inside a sliding
+///    window, every new attempt is refused for a cool-down — so an attacker rotating source
+///    addresses still can't make fast progress.
+///
+/// Combined with a ≥64-bit generated code (see <see cref="ServerIdentity"/>), online guessing is
+/// infeasible. Open mode never consults this.
 /// </summary>
 public sealed class TeacherAuthThrottle
 {
-    private const int FreeAttempts = 5;              // attempts before lockout kicks in
+    // Per-source policy.
+    public const int FreeAttempts = 5;
     private static readonly TimeSpan BaseLockout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MaxLockout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan DecayWindow = TimeSpan.FromMinutes(10);
+
+    // Global policy.
+    public const int GlobalBudget = 30;
+    private static readonly TimeSpan GlobalWindow = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan GlobalCooldown = TimeSpan.FromMinutes(1);
+
+    private readonly TimeProvider _clock;
+
+    public TeacherAuthThrottle() : this(TimeProvider.System) { }
+
+    public TeacherAuthThrottle(TimeProvider clock) => _clock = clock;
 
     private sealed class Record
     {
@@ -25,26 +42,48 @@ public sealed class TeacherAuthThrottle
 
     private readonly ConcurrentDictionary<string, Record> _records = new();
 
+    private readonly object _globalLock = new();
+    private readonly Queue<DateTimeOffset> _globalFailures = new();
+    private DateTimeOffset _globalLockedUntil;
+
     /// <summary>
-    /// If the key is currently locked out, returns the remaining wait; otherwise null.
-    /// Call before validating a code.
+    /// If attempts from <paramref name="key"/> are currently refused (per-source or global
+    /// lockout), returns the remaining wait; otherwise null. Call before validating a code.
     /// </summary>
     public TimeSpan? GetLockout(string key)
     {
-        if (!_records.TryGetValue(key, out var rec)) return null;
-        var now = DateTimeOffset.UtcNow;
-        if (rec.LockedUntil > now) return rec.LockedUntil - now;
-        return null;
+        var now = _clock.GetUtcNow();
+        TimeSpan? wait = null;
+
+        lock (_globalLock)
+        {
+            if (_globalLockedUntil > now) wait = _globalLockedUntil - now;
+        }
+
+        if (_records.TryGetValue(key, out var rec))
+        {
+            lock (rec)
+            {
+                if (rec.LockedUntil > now)
+                {
+                    var local = rec.LockedUntil - now;
+                    if (wait is null || local > wait) wait = local;
+                }
+            }
+        }
+
+        return wait;
     }
 
-    /// <summary>Record a failed attempt and (re)compute the lockout for this key.</summary>
+    /// <summary>Record a failed attempt and (re)compute both lockouts.</summary>
     public void RegisterFailure(string key)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock.GetUtcNow();
+
         var rec = _records.GetOrAdd(key, _ => new Record());
         lock (rec)
         {
-            // Let old failures decay so a transient fat-finger doesn't lock a room for long.
+            // Let old failures decay so a transient fat-finger doesn't lock a device for long.
             if (now - rec.LastAttempt > DecayWindow) rec.Failures = 0;
 
             rec.Failures++;
@@ -59,8 +98,27 @@ public sealed class TeacherAuthThrottle
                 rec.LockedUntil = now + backoff;
             }
         }
+
+        lock (_globalLock)
+        {
+            _globalFailures.Enqueue(now);
+            while (_globalFailures.Count > 0 && now - _globalFailures.Peek() > GlobalWindow)
+                _globalFailures.Dequeue();
+
+            if (_globalFailures.Count >= GlobalBudget)
+            {
+                _globalLockedUntil = now + GlobalCooldown;
+                _globalFailures.Clear();
+            }
+        }
+
+        // Keep the per-source table from growing without bound under a spray of addresses.
+        if (_records.Count > 4096)
+            foreach (var (k, r) in _records)
+                if (now - r.LastAttempt > DecayWindow && r.LockedUntil <= now)
+                    _records.TryRemove(k, out _);
     }
 
-    /// <summary>Clear the record on a successful registration.</summary>
+    /// <summary>Clear the source's record on a successful registration.</summary>
     public void RegisterSuccess(string key) => _records.TryRemove(key, out _);
 }

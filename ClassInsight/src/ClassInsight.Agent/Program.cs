@@ -1,21 +1,43 @@
 using ClassInsight.Agent;
+using ClassInsight.Agent.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 
-// The student agent is a headless background worker. On a managed lab PC it is deployed as a
-// Windows service that starts automatically at boot (FR-AGENT-02), so it auto-connects the
-// moment the machine is on, with no student action and no per-machine configuration: it finds
-// the server itself (UDP discovery) and joins with no code.
+// The student agent is a headless background worker. It runs in one of three modes:
 //
-// The same executable also runs as a plain console app for development — AddWindowsService()
-// is a no-op unless the process was actually launched by the Windows Service Control Manager,
-// so `dotnet run` still gives an interactive, Ctrl+C-stoppable agent.
-var builder = Host.CreateApplicationBuilder(args);
+//  * Windows service (deployed on a lab PC, FR-AGENT-02): starts at boot under LocalSystem and runs
+//    the SessionSupervisor, which launches this same exe in the student's console session (see
+//    below) and keeps it alive. Services live in session 0 and can't see the student's desktop,
+//    hence the split.
+//  * Session agent (`--session-agent`, launched by the supervisor): the real monitor — discovery,
+//    registration, telemetry and screen streaming — running as SYSTEM on the student's desktop.
+//  * Console (`dotnet run`, development): the monitor directly in the current session, Ctrl+C to stop.
+//
+// No mode needs per-machine configuration: the agent finds the server itself (UDP discovery)
+// and joins with no code.
+if (!OperatingSystem.IsWindows())
+{
+    // The agent captures the Windows desktop via GDI; other platforms are teacher-only.
+    Console.Error.WriteLine("ClassInsight.Agent runs on Windows lab machines only.");
+    return;
+}
 
-// When the SCM starts us, the working directory is C:\Windows\System32; anchor the content
-// root to the executable so config/relative paths resolve the same as in console mode.
+// Physical-pixel coordinates for capture on scaled (125 %/150 %) displays. Must precede any
+// window/DC use.
+NativeMethods.SetProcessDpiAwarenessContext(NativeMethods.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+var sessionAgent = args.Contains(Program.SessionAgentSwitch, StringComparer.OrdinalIgnoreCase);
+var asService = !sessionAgent && WindowsServiceHelpers.IsWindowsService();
+
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = args.Where(a => !a.Equals(Program.SessionAgentSwitch, StringComparison.OrdinalIgnoreCase)).ToArray(),
+    // Under the SCM (or launched by it) the working directory is System32; anchor config to the exe.
+    ContentRootPath = AppContext.BaseDirectory,
+});
+
 builder.Services.AddWindowsService(o => o.ServiceName = "ClassInsight Agent");
 
 builder.Logging.AddSimpleConsole(o =>
@@ -24,22 +46,20 @@ builder.Logging.AddSimpleConsole(o =>
     o.TimestampFormat = "HH:mm:ss ";
 });
 
-if (OperatingSystem.IsWindows())
-{
-    // Under the SCM there is no console to read; mirror diagnostics into the Windows Event Log
-    // so a lab admin can see the agent's health in Event Viewer (Applications → ClassInsight).
-    if (WindowsServiceHelpers.IsWindowsService())
-    {
-        builder.Logging.AddEventLog(o => o.SourceName = "ClassInsight Agent");
-    }
+// Neither the service nor its session agent has a console to read; mirror diagnostics into the
+// Windows Event Log so a lab admin can see the agent's health in Event Viewer.
+if (asService || sessionAgent)
+    builder.Logging.AddEventLog(o => o.SourceName = "ClassInsight Agent");
 
-    builder.Services.AddHostedService<AgentWorker>();
-}
+if (asService)
+    builder.Services.AddHostedService<SessionSupervisor>();
 else
-{
-    // The agent captures the Windows desktop via GDI; other platforms are teacher-only.
-    Console.Error.WriteLine("ClassInsight.Agent runs on Windows lab machines only.");
-    return;
-}
+    builder.Services.AddHostedService<AgentWorker>();
 
 await builder.Build().RunAsync();
+
+public partial class Program
+{
+    /// <summary>Command-line switch the service supervisor uses to start the in-session monitor.</summary>
+    public const string SessionAgentSwitch = "--session-agent";
+}

@@ -1,6 +1,7 @@
 using ClassInsight.Server.Hubs;
 using ClassInsight.Server.Services;
 using ClassInsight.Shared;
+using ClassInsight.Shared.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,4 +30,18 @@ _ = app.Services.GetRequiredService<ServerIdentity>();
 app.MapHub<ClassroomHub>(Protocol.HubPath);
 app.MapGet("/", () => Results.Ok(new { service = "ClassInsight", status = "ok" }));
 
+// Status endpoint (FR-SRV-03): id, room, protocol version and live counts. Also how a client
+// resolves a manually entered server address when broadcast is blocked (NFR-COMPAT-02).
+app.MapGet(Protocol.StatusPath, (ServerIdentity identity, RoomRegistry room) => Results.Ok(new ServerStatus
+{
+    ServerId = identity.ServerId,
+    RoomName = identity.RoomName,
+    ProtocolVersion = Protocol.Version,
+    Students = room.StudentCount,
+    Teachers = room.TeacherCount,
+}));
+
 app.Run();
+
+/// <summary>Exposed so integration tests can host the server in-process (WebApplicationFactory).</summary>
+public partial class Program;

@@ -41,6 +41,25 @@ public sealed record StreamRequest
     /// (thumbnail in the grid vs. a full-screen focused view).
     /// </summary>
     public StreamQuality Quality { get; init; } = StreamQuality.Thumbnail;
+
+    /// <summary>
+    /// Which of the student's displays to stream (index into <see cref="StudentInfo.Displays"/>;
+    /// 0 = primary). Out-of-range values fall back to the primary display (FR-AGENT-04).
+    /// </summary>
+    public int DisplayIndex { get; init; }
+}
+
+/// <summary>
+/// A STUN or TURN server handed to both WebRTC peers so a stream can still be set up across a
+/// segmented network where direct LAN connectivity fails (relay fallback, P4). Configured on
+/// the server under <c>ClassInsight:IceServers</c>; empty on a flat lab LAN.
+/// </summary>
+public sealed record IceServerConfig
+{
+    /// <summary>e.g. <c>stun:10.0.0.5:3478</c> or <c>turn:10.0.0.5:3478</c>.</summary>
+    public string Urls { get; init; } = string.Empty;
+    public string? Username { get; init; }
+    public string? Credential { get; init; }
 }
 
 public enum StreamQuality

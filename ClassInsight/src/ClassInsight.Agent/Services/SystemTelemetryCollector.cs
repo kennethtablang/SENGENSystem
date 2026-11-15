@@ -7,27 +7,30 @@ namespace ClassInsight.Agent.Services;
 /// <summary>
 /// Samples live machine metrics for the telemetry stream (FR-TEL-01..04): total CPU,
 /// physical memory, instantaneous network bandwidth, the top processes by resource use,
-/// and the foreground window title. Each metric is a delta against the previous sample,
-/// so the collector is stateful and must be called on a single cadence.
+/// the foreground window title and (optionally) the foreground browser's host. Each metric is a
+/// delta against the previous sample, so the collector is stateful and must be called on a
+/// single cadence.
 /// </summary>
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public sealed class SystemTelemetryCollector
 {
     private readonly string _machineId;
+    private readonly BrowserActivityProbe? _browser;
+    private readonly RateMeter _net = new();
     private readonly int _processorCount = Environment.ProcessorCount;
 
     // CPU deltas (whole machine).
     private ulong _prevIdle, _prevKernel, _prevUser;
     private bool _haveCpuBaseline;
 
-    // Bandwidth deltas.
-    private long _prevRx, _prevTx;
-    private DateTimeOffset _prevNetAt;
-    private bool _haveNetBaseline;
-
     // Per-process CPU deltas.
     private readonly Dictionary<int, (TimeSpan Cpu, DateTimeOffset At)> _procCpu = new();
 
-    public SystemTelemetryCollector(string machineId) => _machineId = machineId;
+    public SystemTelemetryCollector(string machineId, BrowserActivityProbe? browser = null)
+    {
+        _machineId = machineId;
+        _browser = browser;
+    }
 
     public TelemetrySnapshot Collect()
     {
@@ -39,6 +42,7 @@ public sealed class SystemTelemetryCollector
             Bandwidth = SampleBandwidth(),
             TopProcesses = SampleTopProcesses(),
             ForegroundWindowTitle = SafeForegroundTitle(),
+            ActiveUrl = _browser?.CurrentHost,
         };
     }
 
@@ -95,27 +99,7 @@ public sealed class SystemTelemetryCollector
             catch { /* some adapters refuse stats */ }
         }
 
-        var now = DateTimeOffset.UtcNow;
-        double down = 0, up = 0;
-        if (_haveNetBaseline)
-        {
-            var secs = (now - _prevNetAt).TotalSeconds;
-            if (secs > 0)
-            {
-                down = Math.Max(0, (rx - _prevRx) / secs);
-                up = Math.Max(0, (tx - _prevTx) / secs);
-            }
-        }
-
-        _prevRx = rx; _prevTx = tx; _prevNetAt = now; _haveNetBaseline = true;
-
-        return new BandwidthSample
-        {
-            DownloadBytesPerSec = down,
-            UploadBytesPerSec = up,
-            TotalDownloadBytes = rx,
-            TotalUploadBytes = tx,
-        };
+        return _net.Sample(rx, tx, DateTimeOffset.UtcNow);
     }
 
     private IReadOnlyList<ProcessSample> SampleTopProcesses()
@@ -185,5 +169,56 @@ public sealed class SystemTelemetryCollector
     {
         try { return NativeMethods.GetForegroundWindowTitle(); }
         catch { return null; }
+    }
+}
+
+/// <summary>
+/// Turns raw, ever-increasing NIC byte counters into live bandwidth (FR-TEL-02): bytes/sec as
+/// the delta over the elapsed interval — not a raw counter — plus session totals counted from
+/// the first sample, i.e. since the agent started (FR-TEL-05). A counter that goes backwards
+/// (adapter reset / removed) re-baselines instead of producing a negative or huge spike.
+/// </summary>
+public sealed class RateMeter
+{
+    private long _prevRx, _prevTx, _baseRx, _baseTx, _accRx, _accTx;
+    private DateTimeOffset _prevAt;
+    private bool _have;
+
+    public BandwidthSample Sample(long rx, long tx, DateTimeOffset now)
+    {
+        double down = 0, up = 0;
+        if (_have)
+        {
+            var secs = (now - _prevAt).TotalSeconds;
+            var dRx = rx - _prevRx;
+            var dTx = tx - _prevTx;
+            if (dRx < 0 || dTx < 0)
+            {
+                // Counters reset: bank what we had and start a new baseline.
+                _accRx += Math.Max(0, _prevRx - _baseRx);
+                _accTx += Math.Max(0, _prevTx - _baseTx);
+                _baseRx = rx; _baseTx = tx;
+            }
+            else if (secs > 0)
+            {
+                down = dRx / secs;
+                up = dTx / secs;
+            }
+        }
+        else
+        {
+            _baseRx = rx; _baseTx = tx;
+            _have = true;
+        }
+
+        _prevRx = rx; _prevTx = tx; _prevAt = now;
+
+        return new BandwidthSample
+        {
+            DownloadBytesPerSec = down,
+            UploadBytesPerSec = up,
+            TotalDownloadBytes = _accRx + (rx - _baseRx),
+            TotalUploadBytes = _accTx + (tx - _baseTx),
+        };
     }
 }

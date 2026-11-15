@@ -38,6 +38,12 @@ public sealed record StudentInfo
     public int ScreenWidth { get; init; }
     public int ScreenHeight { get; init; }
 
+    /// <summary>
+    /// Every attached display, primary first, so a teacher can pick which one to watch
+    /// (FR-AGENT-04). <see cref="StreamRequest.DisplayIndex"/> indexes this list.
+    /// </summary>
+    public IReadOnlyList<DisplayInfo> Displays { get; init; } = Array.Empty<DisplayInfo>();
+
     public string AgentVersion { get; init; } = string.Empty;
 
     /// <summary>
@@ -68,6 +74,22 @@ public sealed record TeacherInfo
     public int ProtocolVersion { get; init; } = Protocol.Version;
 }
 
+/// <summary>One physical display on a student machine (FR-AGENT-04).</summary>
+public sealed record DisplayInfo
+{
+    /// <summary>Position in <see cref="StudentInfo.Displays"/>; 0 is always the primary display.</summary>
+    public int Index { get; init; }
+
+    /// <summary>Native pixel size of the display.</summary>
+    public int Width { get; init; }
+    public int Height { get; init; }
+
+    public bool IsPrimary { get; init; }
+
+    /// <summary>OS device name (e.g. <c>\\.\DISPLAY1</c>), informational only.</summary>
+    public string? Name { get; init; }
+}
+
 /// <summary>A student entry as projected to teachers in the roster/dashboard.</summary>
 public sealed record StudentSnapshot
 {
@@ -78,6 +100,7 @@ public sealed record StudentSnapshot
     public string IpAddress { get; init; } = string.Empty;
     public int ScreenWidth { get; init; }
     public int ScreenHeight { get; init; }
+    public IReadOnlyList<DisplayInfo> Displays { get; init; } = Array.Empty<DisplayInfo>();
     public StudentState State { get; init; } = StudentState.Online;
     public DateTimeOffset ConnectedAt { get; init; }
 

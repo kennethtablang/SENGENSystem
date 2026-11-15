@@ -28,6 +28,12 @@ public static class Protocol
     /// <summary>How often (ms) the server emits an unsolicited discovery beacon.</summary>
     public const int BeaconIntervalMs = 2000;
 
+    /// <summary>
+    /// HTTP status endpoint (FR-SRV-03). Also how a client resolves a manually entered server
+    /// address on networks where UDP broadcast is blocked (NFR-COMPAT-02).
+    /// </summary>
+    public const string StatusPath = "/status";
+
     /// <summary>Names of hub methods the SERVER invokes ON clients.</summary>
     public static class ClientMethods
     {
@@ -53,6 +59,9 @@ public static class Protocol
         public const string RegisterStudent = nameof(RegisterStudent);
         public const string RegisterTeacher = nameof(RegisterTeacher);
         public const string GetRoster = nameof(GetRoster);
+
+        /// <summary>STUN/TURN servers the room is configured with (relay fallback, P4).</summary>
+        public const string GetIceServers = nameof(GetIceServers);
 
         public const string RequestStream = nameof(RequestStream);
         public const string StopStream = nameof(StopStream);

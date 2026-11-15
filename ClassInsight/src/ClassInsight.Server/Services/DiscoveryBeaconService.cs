@@ -1,9 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
-using System.Text.Json;
 using ClassInsight.Shared;
-using ClassInsight.Shared.Contracts;
+using ClassInsight.Shared.Discovery;
 
 namespace ClassInsight.Server.Services;
 
@@ -12,15 +10,14 @@ namespace ClassInsight.Server.Services;
 /// listens on UDP <see cref="Protocol.DiscoveryPort"/> for <see cref="DiscoveryProbe"/>
 /// datagrams and unicasts a <see cref="DiscoveryResponse"/> straight back to the prober,
 /// and additionally emits a periodic broadcast beacon. Every datagram is the magic token
-/// followed by JSON so unrelated UDP traffic is ignored.
+/// followed by JSON so unrelated UDP traffic is ignored; encoding is the shared
+/// <see cref="DiscoveryCodec"/> so server and clients can't drift.
 ///
-/// Reconstructed from the shared discovery contract and <c>LanDiscoveryClient</c> after
-/// the original was lost; the wire shape matches what clients already expect.
+/// Several rooms can share one network (FR-SRV-05): each room is its own server and beacon,
+/// and the port is bound with address reuse so two servers on one host can coexist.
 /// </summary>
 public sealed class DiscoveryBeaconService : BackgroundService
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
     private readonly ServerIdentity _identity;
     private readonly ILogger<DiscoveryBeaconService> _logger;
 
@@ -32,6 +29,12 @@ public sealed class DiscoveryBeaconService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!_identity.DiscoveryEnabled)
+        {
+            _logger.LogInformation("UDP discovery disabled by configuration; clients must use a manual server address.");
+            return;
+        }
+
         UdpClient udp;
         try
         {
@@ -70,7 +73,7 @@ public sealed class DiscoveryBeaconService : BackgroundService
             catch (OperationCanceledException) { break; }
             catch (SocketException) { continue; }
 
-            if (!IsProbe(result.Buffer)) continue;
+            if (!DiscoveryCodec.IsProbe(result.Buffer)) continue;
 
             try
             {
@@ -97,28 +100,5 @@ public sealed class DiscoveryBeaconService : BackgroundService
         }
     }
 
-    private byte[] EncodeResponse()
-    {
-        var json = JsonSerializer.Serialize(_identity.ToDiscoveryResponse(), Json);
-        return Encoding.UTF8.GetBytes(Protocol.DiscoveryMagic + json);
-    }
-
-    private static bool IsProbe(byte[] datagram)
-    {
-        var magic = Protocol.DiscoveryMagic;
-        if (datagram.Length <= magic.Length) return false;
-
-        var text = Encoding.UTF8.GetString(datagram);
-        if (!text.StartsWith(magic, StringComparison.Ordinal)) return false;
-
-        try
-        {
-            var probe = JsonSerializer.Deserialize<DiscoveryProbe>(text[magic.Length..], Json);
-            return probe is { Kind: "probe" };
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
+    private byte[] EncodeResponse() => DiscoveryCodec.Encode(_identity.ToDiscoveryResponse());
 }

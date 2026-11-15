@@ -42,3 +42,17 @@ public sealed record DiscoveryResponse
     /// <summary>Convenience: the full hub URL a client can hand straight to HubConnectionBuilder.</summary>
     public string HubUrl => $"http://{Host}:{Port}{HubPath}";
 }
+
+/// <summary>
+/// Payload of the server's HTTP status endpoint (<see cref="Protocol.StatusPath"/>, FR-SRV-03).
+/// A client that was given a server address by hand (broadcast blocked, NFR-COMPAT-02) reads
+/// this to learn the room before opening the hub.
+/// </summary>
+public sealed record ServerStatus
+{
+    public string ServerId { get; init; } = string.Empty;
+    public string RoomName { get; init; } = string.Empty;
+    public int ProtocolVersion { get; init; }
+    public int Students { get; init; }
+    public int Teachers { get; init; }
+}

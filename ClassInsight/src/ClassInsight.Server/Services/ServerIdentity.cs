@@ -13,8 +13,7 @@ namespace ClassInsight.Server.Services;
 /// the LAN address clients should dial, the open/closed teacher-mode decision and the
 /// effective teacher code.
 ///
-/// Reconstructed from its call sites (ClassroomHub / DiscoveryBeaconService / Program)
-/// and the plan's security model (FR-SEC-02/03) after the original was lost.
+/// Implements the plan's security model for teacher pairing (FR-SEC-02/03/06, NFR-SEC-04).
 /// </summary>
 public sealed class ServerIdentity
 {
@@ -34,6 +33,16 @@ public sealed class ServerIdentity
     /// </summary>
     public string TeacherCode { get; }
 
+    /// <summary>When false the UDP discovery beacon is not started (tests, or broadcast-hostile networks).</summary>
+    public bool DiscoveryEnabled { get; }
+
+    /// <summary>
+    /// STUN/TURN servers handed to both WebRTC peers (relay fallback for segmented networks, P4).
+    /// Empty on a flat lab LAN, where peers connect directly. Only given to registered clients,
+    /// since TURN entries carry credentials.
+    /// </summary>
+    public IReadOnlyList<IceServerConfig> IceServers { get; }
+
     public ServerIdentity(IConfiguration configuration, ILogger<ServerIdentity> logger)
     {
         var section = configuration.GetSection("ClassInsight");
@@ -43,6 +52,10 @@ public sealed class ServerIdentity
         Port = section.GetValue<int?>("Port") ?? Protocol.DefaultServerPort;
         AllowOpenTeacherMode = section.GetValue<bool?>("AllowOpenTeacherMode") ?? false;
         Host = ResolveLanAddress();
+        DiscoveryEnabled = section.GetValue<bool?>("DiscoveryEnabled") ?? true;
+        IceServers = section.GetSection("IceServers").Get<IceServerConfig[]>()?
+            .Where(s => !string.IsNullOrWhiteSpace(s.Urls))
+            .ToArray() ?? [];
 
         var configured = section.GetValue<string>("TeacherCode");
         if (AllowOpenTeacherMode)
@@ -90,10 +103,39 @@ public sealed class ServerIdentity
         ProtocolVersion = Protocol.Version,
     };
 
-    private static string GenerateCode()
+    // Crockford base32: no I/L/O/U, so a code read off the console can't be mistyped as 1/0.
+    private const string CodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+    /// <summary>
+    /// A one-time pairing code with 65 bits of entropy (13 base32 symbols), grouped for reading
+    /// aloud, e.g. <c>7KQ2-M9XD-4TR8B</c>. FR-SEC-06 requires ≥ 64 bits so that, together with
+    /// <see cref="TeacherAuthThrottle"/>, online guessing is infeasible.
+    /// </summary>
+    public static string GenerateCode()
     {
-        // 6 digits, easy to read aloud; not a secret store — just a pairing gate.
-        return RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        Span<char> raw = stackalloc char[13];
+        for (var i = 0; i < raw.Length; i++)
+            raw[i] = CodeAlphabet[RandomNumberGenerator.GetInt32(CodeAlphabet.Length)];
+        var s = new string(raw);
+        return $"{s[..4]}-{s[4..8]}-{s[8..]}";
+    }
+
+    /// <summary>Canonical form for comparison: separators/whitespace dropped, upper-cased.</summary>
+    public static string NormalizeCode(string? code) =>
+        new string((code ?? string.Empty).Where(c => !char.IsWhiteSpace(c) && c != '-').ToArray())
+            .ToUpperInvariant();
+
+    /// <summary>
+    /// Constant-time check of a presented teacher code (NFR-SEC-04). Both sides are normalised
+    /// and hashed first, so neither the content nor the length of the real code leaks through
+    /// timing. Always false when no code is configured.
+    /// </summary>
+    public bool VerifyTeacherCode(string? presented)
+    {
+        if (string.IsNullOrEmpty(TeacherCode)) return false;
+        var a = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(NormalizeCode(presented)));
+        var b = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(NormalizeCode(TeacherCode)));
+        return CryptographicOperations.FixedTimeEquals(a, b);
     }
 
     /// <summary>

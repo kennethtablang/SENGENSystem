@@ -10,6 +10,10 @@
     configures restart-on-failure so the agent recovers if it exits (FR-AGENT-07, within the lab
     trust model).
 
+    At run time the service itself only supervises: it starts the same exe with --session-agent
+    inside the signed-in student's console session (services can't see the user's desktop from
+    session 0), as SYSTEM, and relaunches it if it exits or the console user changes.
+
     Run from an elevated (Administrator) PowerShell. Intended for IT to run directly, via GPO
     startup script, or baked into a machine image.
 
@@ -205,9 +209,36 @@ if ($problems) {
            "as SYSTEM). Problems:`n" + ($problems -join "`n"))
 }
 
+# --- protected state folder for the agent's random install id (FR-SEC-07) -------------------
+# %ProgramData% lets standard users create files in new subfolders, so pre-create ours with a
+# protected DACL. An agent-id a non-admin planted before the first run is discarded so a student
+# can't choose (or copy) the identity this machine reports.
+$stateDir = Join-Path $env:ProgramData 'ClassInsight'
+$stateSd = New-Object System.Security.AccessControl.DirectorySecurity
+$stateSd.SetAccessRuleProtection($true, $false)
+$stateSd.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($admins,'FullControl',$inherit,$none,$allow)))
+$stateSd.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($system,'FullControl',$inherit,$none,$allow)))
+$stateSd.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($users,'ReadAndExecute',$inherit,$none,$allow)))
+if (Test-Path -LiteralPath $stateDir) {
+    $idFile = Join-Path $stateDir 'agent-id'
+    if (Test-Path -LiteralPath $idFile) {
+        $idOwner = try { (Get-Acl -LiteralPath $idFile).GetOwner([Security.Principal.SecurityIdentifier]).Value } catch { '' }
+        if ($TrustedSids -notcontains $idOwner) {
+            Write-Host "Discarding an agent-id not created by the agent ($idOwner)."
+            Remove-Item -LiteralPath $idFile -Force
+        }
+    }
+    Set-Acl -LiteralPath $stateDir -AclObject $stateSd
+    & icacls $stateDir /reset /T /C /Q | Out-Null
+    & icacls $stateDir /setowner "*S-1-5-32-544" /T /C /Q | Out-Null
+} else {
+    [System.IO.Directory]::CreateDirectory($stateDir, $stateSd) | Out-Null
+}
+
 # --- register: auto-start, runs as LocalSystem ------------------------------
-# LocalSystem is used so the agent runs before/independent of a student login and can reach the
-# active desktop session for screen streaming. The protected ACL above is what keeps that safe.
+# LocalSystem is used so the agent runs before/independent of a student login and can launch its
+# monitor into the student's desktop session (SeTcbPrivilege) for screen streaming. The protected
+# ACL above is what keeps that safe.
 Write-Host "Creating service '$ServiceName' (auto-start)..."
 New-Service -Name $ServiceName `
             -BinaryPathName "`"$targetExe`"" `
