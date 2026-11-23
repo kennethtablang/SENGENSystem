@@ -7,6 +7,7 @@ import LoginPage from './features/auth/LoginPage';
 import FirstLoginPasswordChange from './features/auth/FirstLoginPasswordChange';
 import AppLayout from './features/shell/AppLayout';
 import ComingSoon from './features/shell/ComingSoon';
+import ConsentNotice from './features/legal/ConsentNotice';
 import { allNavItems, searchableItems } from './features/shell/nav';
 import { getPrefs } from './features/settings/prefs';
 import './App.css';
@@ -106,6 +107,8 @@ function App() {
     return (
         <>
         <ToastContainer theme="light" newestOnTop pauseOnFocusLoss={false} />
+        {/* Terms and privacy agreement, asked once per browser on any page (features/legal). */}
+        <ConsentNotice />
         <Suspense fallback={<p className="route-loading" role="status">Loading…</p>}>
         <Routes>
             <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />

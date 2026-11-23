@@ -214,3 +214,14 @@
     align-items: flex-start;
   }
 }
+
+/* Terms and privacy note under "About this system". */
+.help-legal {
+  margin-top: 1rem;
+  color: var(--text-2);
+}
+
+.legal-links.help-legal-links {
+  justify-content: flex-start;
+  font-size: 0.88rem;
+}

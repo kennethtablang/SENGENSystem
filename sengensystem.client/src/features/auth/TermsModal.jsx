@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalFocus } from '../shell/useModalFocus';
+import { PRIVACY_URL, TERMS_URL, externalLinkProps } from '../legal/policy';
 
 // State lives in the dialog, which mounts fresh every time the modal
 // opens — so "read to the end" is required on every viewing.
@@ -103,6 +104,11 @@ function TermsDialog({ onClose, onAgree }) {
                         The date and time of your agreement are recorded together with your
                         registration as proof of this acknowledgment. For privacy concerns,
                         contact the Registrar's Office of STI College Alaminos.
+                    </p>
+                    <p>
+                        This is a summary. The complete{' '}
+                        <a href={TERMS_URL} {...externalLinkProps}>Terms and Conditions</a> and{' '}
+                        <a href={PRIVACY_URL} {...externalLinkProps}>Privacy Policy</a> open in a new tab.
                     </p>
                 </div>
 

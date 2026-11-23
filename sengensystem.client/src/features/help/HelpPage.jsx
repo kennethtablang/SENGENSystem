@@ -1,6 +1,7 @@
 import { Icon } from '../shell/AppLayout';
 import { version } from '../../../package.json';
 import logo from '../../assets/SENGENlogo.png';
+import { LegalLinks } from '../legal/ConsentNotice';
 import './help.css';
 
 /* The enrollment-to-scheduling journey, in order. */
@@ -186,6 +187,12 @@ function HelpPage() {
                     <span className="chip chip-muted">FullCalendar</span>
                     <span className="chip chip-muted">CSP scheduling engine</span>
                 </div>
+                <p className="help-legal">
+                    Using SEN-GEN AI means agreeing to its Terms and Conditions. How your personal data is
+                    collected, used, and protected under the Data Privacy Act of 2012 is set out in the
+                    Privacy Policy.
+                </p>
+                <LegalLinks className="help-legal-links" />
             </section>
         </div>
     );

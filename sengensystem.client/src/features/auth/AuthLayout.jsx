@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import logo from '../../assets/SENGENlogo.png';
+import { LegalLinks } from '../legal/ConsentNotice';
 import './auth.css';
 
 export function Wordmark() {
@@ -45,6 +46,7 @@ function AuthLayout({ children }) {
                 <div className="auth-form-wrap">{children}</div>
                 <footer className="auth-footer">
                     <span>© 2026 STI College Alaminos</span>
+                    <LegalLinks />
                     <span>Personal data handled under RA 10173</span>
                 </footer>
             </div>

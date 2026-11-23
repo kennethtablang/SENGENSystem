@@ -1,0 +1,44 @@
+/* Consent notice (ConsentNotice.jsx) and the shared "Terms · Privacy" footer links. */
+
+/* Above every other overlay: agreement comes before anything else on the page. */
+.consent-overlay {
+  z-index: 2000;
+}
+
+.consent-modal {
+  max-width: 520px;
+}
+
+.consent-modal .modal-body p {
+  margin: 0 0 0.8rem;
+  line-height: 1.55;
+}
+
+.consent-modal .modal-body a {
+  font-weight: 600;
+}
+
+.consent-modal .consent-note {
+  color: var(--text-3);
+  font-size: 0.88rem;
+}
+
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.legal-links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal-links a:hover {
+  color: var(--sti-blue);
+}
