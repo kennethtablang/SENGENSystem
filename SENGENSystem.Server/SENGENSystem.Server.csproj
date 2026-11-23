@@ -19,11 +19,39 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Never shipped: the dev file holds the dev signing key and seed password. The live
-         settings live in deploy\appsettings.Production.json (git-ignored), which
-         deploy\publish-smarterasp.ps1 copies into the build. -->
+    <!-- Never shipped: the dev file holds the dev signing key and seed password. -->
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
+
+  <!-- ===== Publishing to SmarterASP (Visual Studio "Publish" button or deploy\ scripts) =====
+       The live settings live in deploy\appsettings.Production.json (git-ignored). Every publish
+       ships it as appsettings.Production.json at the site root, so a Visual Studio publish can't
+       go out without it. It is never copied to bin\ (CopyToOutputDirectory=Never), so local runs
+       and the tests never see production settings. -->
+  <PropertyGroup>
+    <ProductionSettingsFile>$(MSBuildProjectDirectory)\..\deploy\appsettings.Production.json</ProductionSettingsFile>
+    <!-- Web Deploy: take the site offline (app_offline.htm) during the copy, so IIS lets go of the
+         DLLs it holds and the publish doesn't fail on "file in use". -->
+    <EnableMSDeployAppOffline>true</EnableMSDeployAppOffline>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(ProductionSettingsFile)')">
+    <Content Include="$(ProductionSettingsFile)" Link="appsettings.Production.json"
+             CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+  <!-- Refuse a Web Deploy publish that would leave the site unable to start. The deploy\ scripts
+       check more (JWT key length, admin emails); this is the floor for the Visual Studio button. -->
+  <Target Name="RequireProductionSettings" BeforeTargets="Publish;MSDeployPublish"
+          Condition="'$(WebPublishMethod)' == 'MSDeploy'">
+    <Error Condition="!Exists('$(ProductionSettingsFile)')"
+           Text="deploy\appsettings.Production.json is missing. Copy deploy\appsettings.Production.example.json to it and fill it in before publishing." />
+    <PropertyGroup Condition="Exists('$(ProductionSettingsFile)')">
+      <_ProductionSettingsText>$([System.IO.File]::ReadAllText('$(ProductionSettingsFile)'))</_ProductionSettingsText>
+    </PropertyGroup>
+    <Error Condition="Exists('$(ProductionSettingsFile)') And ($(_ProductionSettingsText.Contains('SQLxxxx')) Or $(_ProductionSettingsText.Contains('db_xxxxx')) Or $(_ProductionSettingsText.Contains('YOUR-DATABASE-PASSWORD')) Or $(_ProductionSettingsText.Contains('PASTE-A-LONG-RANDOM')) Or $(_ProductionSettingsText.Contains('GMAIL-APP-PASSWORD')))"
+           Text="deploy\appsettings.Production.json still has placeholders from the example file. Fill them in before publishing." />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />

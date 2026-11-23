@@ -72,6 +72,22 @@ left to fill in.
 (Visual Studio's **Publish → Import profile** with the profile file from the Control Panel also
 works, if you prefer that.)
 
+### Or: one-click Publish from Visual Studio
+
+Set up once:
+
+1. Control Panel → your site → **Web Deploy** → download the **`.PublishSettings`** file.
+2. In Visual Studio, right-click **SENGENSystem.Server** → **Publish** → **Add a publish profile**
+   → **Import Profile** → choose the file → **Finish**.
+3. Click **Publish**. When asked, enter the Web Deploy password and tick **Save password**.
+
+After that, whenever there are changes: right-click **SENGENSystem.Server** → **Publish** → **Publish**.
+
+The project includes `deploy\appsettings.Production.json` automatically, takes the site offline
+during the copy, and refuses to publish if the settings file is missing or still has placeholders.
+After editing the settings file, run `.\deploy\publish-smarterasp.ps1` once: it checks more (JWT key,
+admin emails). Database changes apply on the site's next start.
+
 ### Or: publish straight from this PC with Web Deploy (no zip)
 
 1. Control Panel → your site → **Web Deploy**: enable it and set its password.

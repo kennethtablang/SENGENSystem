@@ -256,10 +256,16 @@ It takes the site offline during the copy (no "file in use") and leaves server-o
 logs alone. If it fails on the server's certificate, re-run with `-AllowUntrusted`. A 401 means a
 wrong user name or Web Deploy password. Port 8172 is sometimes blocked on school networks.
 
-*Visual Studio alternative:* panel → **Web Deploy** → download the `.publishsettings`, then
-**SENGENSystem.Server → Publish → Import Profile**. That path does **not** include
-`deploy\appsettings.Production.json`, so copy it to the site by hand afterwards. Never commit the
-`.publishsettings` file.
+*Visual Studio alternative (one click once set up):* panel → **Web Deploy** → download the
+`.PublishSettings` file (SmarterASP's has no password in it). In Visual Studio: right-click
+**SENGENSystem.Server** → **Publish** → **Add a publish profile** → **Import Profile** → choose the
+file → **Finish**. Enter the Web Deploy password once when asked, and tick **Save password**: Visual
+Studio stores it encrypted in a git-ignored `.pubxml.user`. After that, every change ships with one
+click on **Publish**. The server project automatically includes `deploy\appsettings.Production.json`
+in every publish, takes the site offline during the copy, and **refuses to publish** if that file
+is missing or still has placeholders (verified 2026-11-23). It does not run the deeper checks in
+`publish-smarterasp.ps1` (JWT key length, admin email format), so run that script once after editing
+the settings file. `*.publishsettings` is git-ignored; never commit it.
 
 **Option C, self-contained (only on HTTP 500.31, runtime missing):**
 ```powershell
