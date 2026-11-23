@@ -97,9 +97,9 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 
 | # | What | Rules | Your value | Where it is used | Status |
 |---|---|---|---|---|---|
-| A1 | **Super Admin email** | A real mailbox, **all lowercase** (sign-in lowercases what is typed, the seeder does not) | [FILL IN] | `Seed:SuperAdminEmail` | Set |
+| A1 | **Super Admin email** | A real mailbox, **all lowercase** (sign-in lowercases what is typed, the seeder does not) | In `appsettings.Production.json` | `Seed:SuperAdminEmail` | Set: valid address, all lowercase (checked 2026-11-23) |
 | A2 | Super Admin password | Strong and unique, meets the password policy (password manager) | — | `Seed:SuperAdminPassword` | Set |
-| A3 | **School Admin email** | A real mailbox, all lowercase | [FILL IN] | `Seed:AdminEmail` | **Still not an email address, no `@` (rechecked 2026-11-23).** Fix it before the first start: the account is created only once |
+| A3 | **School Admin email** | A real mailbox, all lowercase. A **different** account from the Super Admin (A1) | [FILL IN] | `Seed:AdminEmail` | **Still not an email address, no `@` (rechecked 2026-11-23).** Fix it before the first start: the account is created only once |
 | A4 | School Admin password | Strong and unique (password manager) | — | `Seed:AdminPassword` | Set |
 
 > If a seed password is left empty, the account gets a built-in default password and must change it
