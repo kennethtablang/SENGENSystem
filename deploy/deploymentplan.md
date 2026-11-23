@@ -81,7 +81,7 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 | D1 | **Public address** users will type | The temp address (H4) at first, later e.g. `https://sengen.<school-domain>` | Now: `https://kenneth3224-002-site1.ktempurl.com`. Later: `https://sengen.stialaminos.edu.ph` | `Email:ClientBaseUrl`, `AllowedHosts` | `ClientBaseUrl` set to the **temp address** (no trailing slash), so emailed links work before the domain exists. Switch it to the domain in §6 Step 4 |
 | D2 | Who manages the school's DNS | School IT office contact | Kenneth Tablang (account owner, H2) | §6 Step 4 | Set. Needs edit access to the DNS zone for `stialaminos.edu.ph` |
 | D3 | DNS record the panel asks for | `CNAME sengen → <site>.smarterasp.net` or an `A` record | [FILL IN] | §6 Step 4 | — |
-| D4 | SSL certificate | Free Let's Encrypt from the panel **[VERIFY]** | — | §6 Step 3 | — |
+| D4 | SSL certificate | Free Let's Encrypt from the panel **[VERIFY]** | **Free** certificate from the SmarterASP panel | §6 Step 3 | The temp address already serves HTTPS (2026-11-23). Add the free certificate for `sengen.stialaminos.edu.ph` after its DNS record (D3) is in place. Free certificates renew automatically, but check the expiry date in the panel each term (`maintenanceplan.md`) |
 
 ### 3.3 Database
 
