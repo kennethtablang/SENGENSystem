@@ -104,6 +104,36 @@ namespace SENGENSystem.Server.Tests.Integration
         }
 
         [SqlFact]
+        public async Task A_corequisite_cannot_be_withdrawn_while_its_dependent_is_held()
+        {
+            // The hole the co-requisite rule opened: request the co-requisite, get the dependent
+            // in on it, then cancel the co-requisite and keep the dependent. The pair has to come
+            // out in order — dependent first.
+            var term = await scenario.ActiveTermAsync();
+            var past = await scenario.PastTermAsync();
+            var subjects = await scenario.SubjectsAsync(term, 3, secondRequiresFirst: true);
+            var coRequisite = await scenario.SectionAsync(subjects[0], term, publishedAt: (DayOfWeek.Monday, 8 * 60, 10 * 60));
+            var dependent = await scenario.SectionAsync(subjects[1], term, publishedAt: (DayOfWeek.Tuesday, 8 * 60, 10 * 60));
+            var (student, email) = await scenario.StudentAsync(term);
+            await scenario.RecordAsync(student, subjects[2], past, SubjectVerdict.Passed);
+            var coRequisiteRequest = await scenario.RequestAsync(student, coRequisite);
+            var dependentRequest = await scenario.RequestAsync(student, dependent);
+            var client = await app.SignedInAsync(email, StudentPassword);
+
+            var early = await client.DeleteAsync($"/api/enlistment/requests/{coRequisiteRequest}");
+            Assert.Equal(HttpStatusCode.Conflict, early.StatusCode);
+            Assert.Contains(subjects[1].Code, await MessageAsync(early));
+
+            var registrar = await app.SignedInAsync(Registrar, StaffPassword);
+            var reject = await registrar.PostAsJsonAsync(
+                $"/api/enlistment/approvals/{coRequisiteRequest}/reject", new { reason = "test" });
+            Assert.Equal(HttpStatusCode.Conflict, reject.StatusCode);
+
+            Assert.True((await client.DeleteAsync($"/api/enlistment/requests/{dependentRequest}")).IsSuccessStatusCode);
+            Assert.True((await client.DeleteAsync($"/api/enlistment/requests/{coRequisiteRequest}")).IsSuccessStatusCode);
+        }
+
+        [SqlFact]
         public async Task Request_leg_falls_open_for_a_student_with_no_history_on_file()
         {
             // An empty record is not "every prerequisite unmet" (AcademicHistory.IsEnforceable).

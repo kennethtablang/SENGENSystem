@@ -139,6 +139,24 @@ namespace SENGENSystem.Server.Features.Enlistment.MyEnlistment
                 return Results.NotFound(new { message = "Request not found." });
             }
 
+            // A co-requisite can't be withdrawn while a subject that relies on it is still held —
+            // otherwise the pair the gate let in together could be split (CoRequisiteGuard).
+            if (request.Status is SlotRequestStatus.Requested or SlotRequestStatus.Approved
+                && request.Section is not null)
+            {
+                var dependents = await CoRequisiteGuard.HeldDependentsAsync(
+                    db, request.StudentRegistrationId, request.Section.SemesterId,
+                    request.Section.SubjectId, cancellationToken);
+                if (dependents.Count > 0)
+                {
+                    return Results.Conflict(new
+                    {
+                        message = CoRequisiteGuard.Refusal(
+                            request.Section.Subject?.Code ?? "This subject", dependents, aboutSelf: true)
+                    });
+                }
+            }
+
             if (request.Status == SlotRequestStatus.Approved)
             {
                 var window = await EnrollmentCyclePolicy.CheckEnlistmentAsync(db, cancellationToken);

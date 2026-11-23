@@ -572,6 +572,17 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             {
                 return Results.Conflict(new { message = $"This request is already {request.Status}." });
             }
+            var heldDependents = await CoRequisiteGuard.HeldDependentsAsync(
+                db, request.StudentRegistrationId, request.Section.SemesterId,
+                request.Section.SubjectId, cancellationToken);
+            if (heldDependents.Count > 0)
+            {
+                return Results.Conflict(new
+                {
+                    message = CoRequisiteGuard.Refusal(
+                        request.Section.Subject?.Code ?? "This subject", heldDependents, aboutSelf: false)
+                });
+            }
 
             request.Status = SlotRequestStatus.Rejected;
             request.DecidedAtUtc = DateTime.UtcNow;
@@ -640,6 +651,20 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             if (request?.Section is null || request.StudentRegistration is null)
             {
                 return Results.NotFound(new { message = "Request not found." });
+            }
+            if (request.Status == SlotRequestStatus.Approved)
+            {
+                var heldDependents = await CoRequisiteGuard.HeldDependentsAsync(
+                    db, request.StudentRegistrationId, request.Section.SemesterId,
+                    request.Section.SubjectId, cancellationToken);
+                if (heldDependents.Count > 0)
+                {
+                    return Results.Conflict(new
+                    {
+                        message = CoRequisiteGuard.Refusal(
+                            request.Section.Subject?.Code ?? "This subject", heldDependents, aboutSelf: false)
+                    });
+                }
             }
 
             var outcome = await SeatRelease.ReleaseAsync(
