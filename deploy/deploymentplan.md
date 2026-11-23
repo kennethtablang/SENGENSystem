@@ -87,11 +87,11 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 
 | # | What | Example / format | Your value | Where it is used | Status |
 |---|---|---|---|---|---|
-| B1 | **SQL server** | `SQL1234.site4now.net` | [FILL IN] | Connection string | **Placeholder still in file** |
-| B2 | **Database name** | `db_abc123_sengen` | [FILL IN] | Connection string | **Placeholder still in file** |
-| B3 | **Database user** | `db_abc123_sengen_admin` | [FILL IN] | Connection string | **Placeholder still in file** |
-| B4 | **Database password** | (password manager) | — | Connection string | **Placeholder still in file** |
-| B5 | Certificate host name, only if you see a "trust chain" error | From SmarterASP support | [FILL IN if needed] | `HostNameInCertificate=` in the connection string | — |
+| B1 | **SQL server** | `SQL1234.site4now.net` | `sql1003.site4now.net` (SQL Server 2022) | Connection string | Set |
+| B2 | **Database name** | `db_abc123_sengen` | `db_ad16f0_sengendb` (panel name `sengendb`) | Connection string | Set |
+| B3 | **Database user** | `db_abc123_sengen_admin` | `db_ad16f0_sengendb_admin` | Connection string | Set. Is `db_owner`, so the first start can create the tables |
+| B4 | **Database password** | (password manager) | — | Connection string | Set. **Connection tested 2026-11-23** from the development PC: encrypted, database empty |
+| B5 | Certificate host name, only if you see a "trust chain" error | From SmarterASP support | Not needed | `HostNameInCertificate=` in the connection string | The server certificate verified with `TrustServerCertificate=False`. Keep it `False`, even though the panel's sample string says `True` |
 
 ### 3.4 Admin accounts (created on first start)
 
@@ -110,7 +110,7 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 | # | What | Example / format | Your value | Where it is used | Status |
 |---|---|---|---|---|---|
 | E1 | Sender Gmail account | `noreply.classsched.stialam@gmail.com` | — | `Email:User`, `Email:FromAddress` | Set |
-| E2 | **Gmail app password** (16 letters, 2-Step Verification must be on) | (password manager) | — | `Email:Password` | **Placeholder still in file.** Without it SEN-GEN does **not** send email, it only writes it to the log: no password resets, 2FA codes or enlistment notices |
+| E2 | **Gmail app password** (16 letters, 2-Step Verification must be on) | (password manager) | — | `Email:Password` | Set (16 characters, checked 2026-11-23). Without it SEN-GEN does **not** send email, it only writes it to the log |
 | E3 | Display name on emails | `STI.SEN-GEN` (default) | [FILL IN if different] | `Email:FromName` | Default |
 
 ### 3.6 Security secrets

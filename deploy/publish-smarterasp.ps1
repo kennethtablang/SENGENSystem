@@ -37,6 +37,18 @@ if ($unfilled.Count -gt 0) {
 }
 if ("$($settings.Jwt.Key)".Length -lt 32) { throw 'Jwt:Key must be at least 32 characters.' }
 
+# The two admin accounts are created once, on the first start, from these addresses. A typo here
+# leaves an account nobody can sign in to or receive mail at, so catch it before it ships.
+# Lowercase matters too: sign-in lowercases what is typed, the seeder stores what is written.
+foreach ($key in 'SuperAdminEmail', 'AdminEmail') {
+    $email = "$($settings.Seed.$key)"
+    if ($email -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') { throw "Seed:$key is not a valid email address." }
+    if ($email -cne $email.ToLowerInvariant()) { throw "Seed:$key must be all lowercase." }
+}
+if ("$($settings.Seed.SuperAdminEmail)" -eq "$($settings.Seed.AdminEmail)") {
+    throw 'Seed:SuperAdminEmail and Seed:AdminEmail must be different addresses.'
+}
+
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 if (Test-Path $zip) { Remove-Item $zip -Force }
 
