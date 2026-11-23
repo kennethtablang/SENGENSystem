@@ -8,8 +8,8 @@ one background service (the email outbox sender).
 **Status:** Draft. Items marked **[VERIFY]** depend on the SmarterASP plan or control panel and must be
 confirmed before go-live. Items marked **[FILL IN]** are values only you can supply. Collect them in §3.
 
-> Companion documents in this folder: `plan.md` (the short 7-step version), `maintenanceplan.md`
-> (what to do after go-live). The build script is `publish-smarterasp.ps1` in the repository root.
+> Companion documents in this folder: `README.md` (the short 7-step version), `maintenanceplan.md`
+> (what to do after go-live). The build script `publish-smarterasp.ps1` and both settings files are in this folder too.
 
 > **About the control panel:** SmarterASP's new panel ("Control Panel V10") is behind your login, so
 > these steps could not be checked screen by screen. Each step says **what** to find. If a label
@@ -157,7 +157,7 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 
 ## 5. Production configuration reference
 
-`SENGENSystem.Server\appsettings.Production.json`. Copy it from `appsettings.Production.example.json`.
+`deploy\appsettings.Production.json`. Copy it from `deploy\appsettings.Production.example.json`.
 
 | Key | Value | Notes |
 |---|---|---|
@@ -217,7 +217,7 @@ Every value from §3. Fix the School Admin email (A3) **before** the first start
 ### Step 7: Build the zip
 From the repository root:
 ```powershell
-.\publish-smarterasp.ps1
+.\deploy\publish-smarterasp.ps1
 ```
 It stops on any placeholder, runs `dotnet publish` (Release, `win-x64`, framework-dependent), which
 also builds the React client into `wwwroot`, checks `wwwroot\index.html`, drops the development
@@ -240,7 +240,7 @@ password, **Validate**, set Release / net10.0 / Framework-dependent / win-x64, *
 ```powershell
 dotnet publish .\SENGENSystem.Server -c Release -r win-x64 --self-contained true -o publish
 ```
-Copy `appsettings.Production.json` into `publish\`, zip the contents, upload as above (100 MB+).
+Copy `deploy\appsettings.Production.json` into the publish output folder, zip the contents, upload as above (100 MB+).
 
 ### Step 9: First start
 Open `https://<site>/` and wait up to a minute while it migrates and seeds. Don't keep refreshing.
@@ -302,7 +302,7 @@ restored doesn't count.
 
 **Redeploy:**
 1. Back up the database (§8).
-2. `.\publish-smarterasp.ps1`
+2. `.\deploy\publish-smarterasp.ps1`
 3. Upload an empty **`app_offline.htm`** to the site root, which stops the app and releases files.
 4. Upload and extract the new `publish.zip` over the old files.
 5. Delete `app_offline.htm`. New migrations run automatically on start.

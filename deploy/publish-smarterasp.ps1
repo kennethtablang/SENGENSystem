@@ -1,20 +1,21 @@
 # Builds SEN-GEN for SmarterASP.NET and zips it, ready to upload.
 #
-#   1. Copy SENGENSystem.Server\appsettings.Production.example.json to
-#      SENGENSystem.Server\appsettings.Production.json and fill it in (it is git-ignored).
-#   2. Run:  .\publish-smarterasp.ps1
-#   3. Upload publish.zip with the SmarterASP File Manager and unzip it into the site folder.
+#   1. Copy deploy\appsettings.Production.example.json to
+#      deploy\appsettings.Production.json and fill it in (it is git-ignored).
+#   2. Run from the repository root:  .\deploy\publish-smarterasp.ps1
+#   3. Upload deploy\publish.zip with the SmarterASP File Manager and unzip it into the site folder.
 #
-# See sengensystem.client\src\assets\plan.md for the full steps.
+# See deploy\README.md for the full steps.
 
 $ErrorActionPreference = 'Stop'
-$root = $PSScriptRoot
-$out = Join-Path $root 'publish'
-$zip = Join-Path $root 'publish.zip'
-$prodSettings = Join-Path $root 'SENGENSystem.Server\appsettings.Production.json'
+$deploy = $PSScriptRoot                  # this folder: the settings go in, the build comes out
+$root = Split-Path $deploy -Parent       # the repository
+$out = Join-Path $deploy 'publish'
+$zip = Join-Path $deploy 'publish.zip'
+$prodSettings = Join-Path $deploy 'appsettings.Production.json'
 
 if (-not (Test-Path $prodSettings)) {
-    throw "Missing SENGENSystem.Server\appsettings.Production.json - copy appsettings.Production.example.json and fill it in first."
+    throw "Missing deploy\appsettings.Production.json - copy deploy\appsettings.Production.example.json and fill it in first."
 }
 
 # Refuse to build while any placeholder from the example file is still in place.

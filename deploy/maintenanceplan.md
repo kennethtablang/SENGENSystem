@@ -88,7 +88,7 @@ Every change, even a small one, follows the same path:
 5. **Merge** into `master`.
 6. **Deploy** (deployment §9):
    1. Back up the database.
-   2. `.\publish-smarterasp.ps1`
+   2. `.\deploy\publish-smarterasp.ps1`
    3. Upload `app_offline.htm` → upload and unzip `publish.zip` → delete `app_offline.htm`.
 7. **Smoke test** (deployment §6 Step 11): `/health`, sign-in, one report, one email.
 8. **Tag the release** so you know what is live, and add a row to the release log (deployment §13):
@@ -155,7 +155,7 @@ See deployment §11 (Troubleshooting). Most issues are 500.30 (settings or datab
 ### Recovery steps (the site is broken after an update; same as deployment §9 "Rollback")
 1. Upload `app_offline.htm` to stop the site.
 2. **Code problem:** check out the previous release tag (`git checkout v1.1.0`), run
-   `.\publish-smarterasp.ps1`, and upload that build.
+   `.\deploy\publish-smarterasp.ps1`, and upload that build.
 3. **Data problem** (bad migration, deleted records): Control Panel → **MSSQL → Restore** the
    backup taken just before the deploy, then upload the previous build too (the old code must
    match the old database).

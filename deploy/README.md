@@ -32,7 +32,7 @@ password from a server, so:
 
 ## Step 3: Fill in the settings file
 
-1. In `SENGENSystem.Server\`, copy **`appsettings.Production.example.json`** and name the copy
+1. In this `deploy\` folder, copy **`appsettings.Production.example.json`** and name the copy
    **`appsettings.Production.json`**.
 2. Replace every placeholder:
 
@@ -54,10 +54,10 @@ This file holds the passwords, so **git ignores it**. It never goes into the rep
 Open PowerShell in the repository folder and run:
 
 ```powershell
-.\publish-smarterasp.ps1
+.\deploy\publish-smarterasp.ps1
 ```
 
-It builds the server and the web client together and produces **`publish.zip`** (about 24 MB).
+It builds the server and the web client together and produces **`deploy\publish.zip`** (about 24 MB).
 If any placeholder from Step 3 is still in the settings file, it stops and lists which fields are
 left to fill in.
 
@@ -105,7 +105,7 @@ If all five work, the system is live.
 ## Updating later
 
 1. **Back up the database** (Control Panel → MSSQL → Backup).
-2. Run `.\publish-smarterasp.ps1` again.
+2. Run `.\deploy\publish-smarterasp.ps1` again.
 3. In the File Manager, upload and unzip `publish.zip` over the old files.
    (If a file is "in use", first upload an empty file named `app_offline.htm`, then unzip, then
    delete `app_offline.htm`.)

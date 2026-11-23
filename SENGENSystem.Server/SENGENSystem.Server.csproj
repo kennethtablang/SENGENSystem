@@ -19,10 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Never shipped: the dev file holds the dev signing key and seed password, the example is
-         only a template. The live settings go in appsettings.Production.json (git-ignored). -->
+    <!-- Never shipped: the dev file holds the dev signing key and seed password. The live
+         settings live in deploy\appsettings.Production.json (git-ignored), which
+         deploy\publish-smarterasp.ps1 copies into the build. -->
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
-    <Content Update="appsettings.Production.example.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <ItemGroup>
