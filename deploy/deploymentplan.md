@@ -198,7 +198,18 @@ To generate `Jwt:Key` in PowerShell:
 
 ### Step 2: Create the database (B1–B4)
 **Databases → MSSQL → Add database**, for example `sengen`. Create the user, then copy the four
-values or the ready-made connection string. Don't create tables: SEN-GEN does it on first start.
+values or the ready-made connection string. SEN-GEN creates the tables on first start.
+
+**Optional, create the tables from SSMS 2022:** run `deploy\migrate.sql` against the database
+(SQL Server Authentication, Encryption = Mandatory, database selected in the toolbar dropdown,
+then F5). It contains all 43 migrations as one idempotent script, so it's safe to re-run and does
+nothing once the site has migrated itself. Use it if the first start times out, or to check the
+schema before going live. It creates tables only: the admin accounts and STI programs still come
+from the first start. **Verified 2026-11-23** on a fresh SQL Server database: two runs succeed, and
+the schema matches the one the app builds itself exactly (325 columns, 87 indexes, 39 foreign
+keys). Regenerate it with `.\deploy\make-migrate-sql.ps1` after adding a migration. Plain
+`dotnet ef migrations script` output **fails** in SSMS (Msg 207, "Invalid column name 'Hours'"),
+which is why the generator script exists.
 
 ### Step 3: Turn on HTTPS (D4)
 **SSL** → enable the free Let's Encrypt certificate for the temp address (and the domain, after

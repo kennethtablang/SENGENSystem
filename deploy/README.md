@@ -97,6 +97,23 @@ is sometimes blocked on school networks, so if it can't connect, try another net
 
 ---
 
+### Optional: create the tables yourself in SSMS first
+
+The site creates its own tables on the first start. If that first start times out, or you'd rather
+watch it happen, run `deploy\migrate.sql` in **SSMS 2022** before Step 6:
+
+1. Connect to the database server with **SQL Server Authentication** (server, login and password
+   from SmarterASP → **Databases → MSSQL**). On **Connection Properties**, set Encryption to
+   **Mandatory** and leave "Trust server certificate" unticked.
+2. Select your database in the toolbar dropdown. The script has no `USE` line.
+3. Open `deploy\migrate.sql` and press **Execute** (F5).
+
+It's safe to run more than once, and it does nothing if the site already created the tables. It
+creates tables only. The two admin accounts and the STI programs are still added by the site on
+its first start. After adding a new migration, regenerate it with `.\deploy\make-migrate-sql.ps1`.
+
+---
+
 ## Step 6: Open the site and sign in
 
 1. Browse to the site. The first visit takes up to a minute while it sets up the database
