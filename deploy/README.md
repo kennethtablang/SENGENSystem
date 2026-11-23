@@ -117,10 +117,13 @@ its first start. After adding a new migration, regenerate it with `.\deploy\make
 ## Step 6: Open the site and sign in
 
 1. Browse to the site. The first visit takes up to a minute while it sets up the database
-   (tables, the STI programs and subjects, and the two admin accounts).
-2. Sign in as the **School Admin** and the **Super Admin** with the passwords from Step 3.
-   The system does **not** ask for a new one, so change each from **Profile → Change password**
-   if anyone else has seen the settings file.
+   (tables, the STI programs and subjects, and the admin accounts).
+2. Sign in as the **Super Admin** with the password from Step 3. The system does **not** ask for a
+   new one, so change it from **Profile → Change password** if anyone else has seen the settings
+   file.
+   - **No School Admin yet?** If `Seed:AdminEmail` was left as `""`, none is created. When you've
+     chosen the person, the Super Admin adds them in **User management** with the role
+     **School Admin**. Until then the Super Admin can do everything a School Admin can.
 3. In **System parameters**, set the institution name, seat cap, and Program Heads.
 4. Add the real staff in **User management**, then set up the term, buildings, and rooms.
 

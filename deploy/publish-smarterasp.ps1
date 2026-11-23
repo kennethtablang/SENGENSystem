@@ -40,12 +40,18 @@ if ("$($settings.Jwt.Key)".Length -lt 32) { throw 'Jwt:Key must be at least 32 c
 # The two admin accounts are created once, on the first start, from these addresses. A typo here
 # leaves an account nobody can sign in to or receive mail at, so catch it before it ships.
 # Lowercase matters too: sign-in lowercases what is typed, the seeder stores what is written.
+# Seed:AdminEmail may be left blank ("") to create no School Admin yet; the Super Admin adds one
+# later from User management. The Super Admin itself is always required.
 foreach ($key in 'SuperAdminEmail', 'AdminEmail') {
     $email = "$($settings.Seed.$key)"
-    if ($email -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') { throw "Seed:$key is not a valid email address." }
+    if ($key -eq 'AdminEmail' -and $email.Trim() -eq '') { continue }
+    if ($email -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
+        if ($key -eq 'AdminEmail') { throw 'Seed:AdminEmail is not a valid email address. Set a real one, or "" to create the School Admin later from User management.' }
+        throw "Seed:$key is not a valid email address."
+    }
     if ($email -cne $email.ToLowerInvariant()) { throw "Seed:$key must be all lowercase." }
 }
-if ("$($settings.Seed.SuperAdminEmail)" -eq "$($settings.Seed.AdminEmail)") {
+if ("$($settings.Seed.AdminEmail)".Trim() -ne '' -and "$($settings.Seed.SuperAdminEmail)" -eq "$($settings.Seed.AdminEmail)") {
     throw 'Seed:SuperAdminEmail and Seed:AdminEmail must be different addresses.'
 }
 

@@ -99,8 +99,8 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 |---|---|---|---|---|---|
 | A1 | **Super Admin email** | A real mailbox, **all lowercase** (sign-in lowercases what is typed, the seeder does not) | In `appsettings.Production.json` | `Seed:SuperAdminEmail` | Set: valid address, all lowercase (checked 2026-11-23) |
 | A2 | Super Admin password | Strong and unique, meets the password policy (password manager) | — | `Seed:SuperAdminPassword` | Set |
-| A3 | **School Admin email** | A real mailbox, all lowercase. A **different** account from the Super Admin (A1) | [FILL IN] | `Seed:AdminEmail` | **Still not an email address, no `@` (rechecked 2026-11-23).** Fix it before the first start: the account is created only once |
-| A4 | School Admin password | Strong and unique (password manager) | — | `Seed:AdminPassword` | Set |
+| A3 | **School Admin email** | A real mailbox, all lowercase, a **different** account from the Super Admin (A1). Or `""` to create none yet | **Deferred:** `""` | `Seed:AdminEmail` | No School Admin is seeded. **After go-live, the Super Admin creates one** in **User management** (role: School Admin). The Super Admin can do everything a School Admin can, so nothing is blocked meanwhile |
+| A4 | School Admin password | Strong and unique (password manager) | — | `Seed:AdminPassword` | Blank, unused while A3 is `""`. Set it in User management when creating the account instead |
 
 > If a seed password is left empty, the account gets a built-in default password and must change it
 > on first sign-in. Don't rely on that in production: always set both passwords.
@@ -166,7 +166,7 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 | `ConnectionStrings:DefaultConnection` | `Data Source=B1;Initial Catalog=B2;User Id=B3;Password=B4;Encrypt=True;TrustServerCertificate=False;MultipleActiveResultSets=True` | Keep `Encrypt=True` and `TrustServerCertificate=False` |
 | `Jwt:Key` | S1 | 32+ random characters |
 | `Seed:SuperAdminEmail` / `Seed:SuperAdminPassword` | A1 / A2 | Used only when no Super Admin exists yet |
-| `Seed:AdminEmail` / `Seed:AdminPassword` | A3 / A4 | Used only when no School Admin exists yet |
+| `Seed:AdminEmail` / `Seed:AdminPassword` | A3 / A4 | Used only when no School Admin exists yet. `""` seeds none: the Super Admin creates it later in User management. (A **missing** key falls back to a development address, so always write the key, even blank) |
 | `Email:User`, `Email:FromAddress` | E1 | |
 | `Email:Password` | E2 | Gmail app password, not the account password |
 | `Email:ClientBaseUrl` | D1, `https://`, **no trailing slash** | Emailed links (reset password, survey) use it |

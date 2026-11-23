@@ -812,9 +812,20 @@ namespace SENGENSystem.Server.Common.Persistence
             await db.SaveChangesAsync();
         }
 
-        private static async Task SeedAdminAsync(AppDbContext db, IPasswordHasher<User> hasher, IConfiguration config)
+        internal static async Task SeedAdminAsync(AppDbContext db, IPasswordHasher<User> hasher, IConfiguration config)
         {
             if (await db.Users.AnyAsync(u => u.Role == UserRole.SchoolAdmin))
+            {
+                return;
+            }
+
+            // Seed:AdminEmail set but left blank means "no School Admin yet". The Super Admin ranks
+            // above it, can do everything it can, and creates one from User management when the
+            // institution has picked the person. Seeding one anyway would leave a powerful account
+            // with a placeholder address nobody receives mail at. A *missing* key keeps the
+            // development fallback below.
+            var configuredEmail = config["Seed:AdminEmail"];
+            if (configuredEmail is not null && string.IsNullOrWhiteSpace(configuredEmail))
             {
                 return;
             }
