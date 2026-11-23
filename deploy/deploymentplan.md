@@ -69,7 +69,7 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 | H2 | Account owner / login email | Who owns and pays for the account | `kennethrrtablang@gmail.com` | Handover (`maintenanceplan.md` §8) | Set |
 | H3 | **Site name** (as shown in the panel) | `sengen` or `site1` | `kenneth3224-002-site1` | §6 Step 1, Web Deploy | Set |
 | H4 | **Temporary site address** | `http://<account>-001-site1.xxxx.smarterasp.net` | `https://kenneth3224-002-site1.ktempurl.com` | Staging, UAT, smoke tests | HTTPS works. Shows **IIS 403 Forbidden** until the first deploy, because the site folder is still empty (checked 2026-11-23) |
-| H5 | Site root folder | `h:\root\home\<account>\www\site1` | [FILL IN] | File Manager / FTP upload | — |
+| H5 | Site root folder | `h:\root\home\<account>\www\site1` | `h:\root\home\kenneth3224-002\www\site1` | File Manager / FTP upload | Set. `SENGENSystem.Server.dll`, `web.config` and `wwwroot\` go **directly** in `site1`. Web Deploy targets the site by name and doesn't need this path |
 | H6 | FTP host / user (password in the password manager) | `ftp.site4now.net`, `<account>-001` | Host `win1032.site4now.net`, user `kenneth3224-002` | Upload fallback (§6 Step 8) | Set. Same server as Web Deploy (H7) |
 | H7 | Web Deploy service URL | `https://winXXXX.site4now.net:8172` | `https://win1032.site4now.net:8172/MsDeploy.axd?site=kenneth3224-002-site1` | §6 Option B | Set in `deploy\webdeploy.local.json`. Port 8172 reachable from the development PC (2026-11-23) |
 | H8 | Web Deploy user name (password in the password manager) | `<account>` | `kenneth3224-002` | §6 Option B | Set in `deploy\webdeploy.local.json`. The script asks for the password each run |
