@@ -365,3 +365,6 @@ FodyWeavers.xsd
 # SmarterASP deployment: live settings (secrets) and the upload bundle
 appsettings.Production.json
 publish.zip
+
+# Web Deploy target for deploy\deploy-webdeploy.ps1 (account identifiers; password is never stored)
+webdeploy.local.json

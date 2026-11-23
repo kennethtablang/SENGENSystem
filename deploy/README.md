@@ -72,6 +72,29 @@ left to fill in.
 (Visual Studio's **Publish → Import profile** with the profile file from the Control Panel also
 works, if you prefer that.)
 
+### Or: publish straight from this PC with Web Deploy (no zip)
+
+1. Control Panel → your site → **Web Deploy**: enable it and set its password.
+2. Copy `deploy\webdeploy.example.json` to `deploy\webdeploy.local.json` and fill in the service URL,
+   site name, user name, and site address from that page. It's git-ignored. Never put the password
+   in it.
+3. From the repository root, try a dry run first (changes nothing on the server):
+
+   ```powershell
+   .\deploy\deploy-webdeploy.ps1 -DryRun
+   ```
+
+4. Then publish for real:
+
+   ```powershell
+   .\deploy\deploy-webdeploy.ps1
+   ```
+
+It builds with the same checks as Step 4, asks for the Web Deploy password, and takes the site
+offline during the copy so no file is "in use". Files that exist only on the server (logs) are
+left alone. If it fails on the server's certificate, run it again with `-AllowUntrusted`. Port 8172
+is sometimes blocked on school networks, so if it can't connect, try another network.
+
 ---
 
 ## Step 6: Open the site and sign in
@@ -105,10 +128,10 @@ If all five work, the system is live.
 ## Updating later
 
 1. **Back up the database** (Control Panel → MSSQL → Backup).
-2. Run `.\deploy\publish-smarterasp.ps1` again.
-3. In the File Manager, upload and unzip `publish.zip` over the old files.
-   (If a file is "in use", first upload an empty file named `app_offline.htm`, then unzip, then
-   delete `app_offline.htm`.)
+2. Run `.\deploy\deploy-webdeploy.ps1`. That's all.
+   Or, without Web Deploy: run `.\deploy\publish-smarterasp.ps1`, then in the File Manager upload
+   and unzip `publish.zip` over the old files. (If a file is "in use", first upload an empty file
+   named `app_offline.htm`, then unzip, then delete `app_offline.htm`.)
 
 Database changes apply automatically on the next start.
 
