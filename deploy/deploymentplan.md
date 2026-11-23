@@ -4,7 +4,8 @@
 **System:** ASP.NET Core `net10.0` server that also serves the built React (Vite) client from `wwwroot`,
 EF Core + SQL Server, SignalR (live reports), SMTP email through Gmail, QuestPDF / ClosedXML exports,
 one background service (the email outbox sender).
-**Prepared:** 2026-11-22
+**Prepared:** 2026-11-22 · **Updated:** 2026-11-23 (site, temporary address and Web Deploy filled in;
+settings rechecked)
 **Status:** Draft. Items marked **[VERIFY]** depend on the SmarterASP plan or control panel and must be
 confirmed before go-live. Items marked **[FILL IN]** are values only you can supply. Collect them in §3.
 
@@ -58,7 +59,7 @@ and seeds the STI programs and subjects. The first start can take up to a minute
 
 Fill this in before Phase 1. **Do not write passwords in this file.** Put them in a password manager
 and only in `appsettings.Production.json`. The **Status** column shows what the current local
-`appsettings.Production.json` has (checked 2026-11-22, values not shown).
+`appsettings.Production.json` has (checked 2026-11-23, values not shown).
 
 ### 3.1 Hosting account and site
 
@@ -66,17 +67,18 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 |---|---|---|---|---|---|
 | H1 | SmarterASP **plan** | Free 60-day trial for staging, then a paid plan with .NET 10 + MSSQL **[VERIFY]** | [FILL IN] | §6 Step 1 | — |
 | H2 | Account owner / login email | Who owns and pays for the account | [FILL IN] | Handover (`maintenanceplan.md` §8) | — |
-| H3 | **Site name** (as shown in the panel) | `sengen` or `site1` | [FILL IN] | §6 Step 1 | — |
-| H4 | **Temporary site address** | `http://<account>-001-site1.xxxx.smarterasp.net` | [FILL IN] | Staging, UAT, smoke tests | — |
+| H3 | **Site name** (as shown in the panel) | `sengen` or `site1` | `kenneth3224-002-site1` | §6 Step 1, Web Deploy | Set |
+| H4 | **Temporary site address** | `http://<account>-001-site1.xxxx.smarterasp.net` | `https://kenneth3224-002-site1.ktempurl.com` | Staging, UAT, smoke tests | HTTPS works. Shows **IIS 403 Forbidden** until the first deploy, because the site folder is still empty (checked 2026-11-23) |
 | H5 | Site root folder | `h:\root\home\<account>\www\site1` | [FILL IN] | File Manager / FTP upload | — |
-| H6 | FTP host / user (password in the password manager) | `ftp.site4now.net`, `<account>-001` | [FILL IN] | Upload fallback (§6 Step 8) | — |
-| H7 | Web Deploy URL (only if publishing from Visual Studio) | `https://winXXXX.site4now.net:8172` | [FILL IN] | §6 Option B | — |
+| H6 | FTP host / user (password in the password manager) | `ftp.site4now.net`, `<account>-001` | Host `win1032.site4now.net`, user `kenneth3224-002` | Upload fallback (§6 Step 8) | Set. Same server as Web Deploy (H7) |
+| H7 | Web Deploy service URL | `https://winXXXX.site4now.net:8172` | `https://win1032.site4now.net:8172/MsDeploy.axd?site=kenneth3224-002-site1` | §6 Option B | Set in `deploy\webdeploy.local.json`. Port 8172 reachable from the development PC (2026-11-23) |
+| H8 | Web Deploy user name (password in the password manager) | `<account>` | `kenneth3224-002` | §6 Option B | Set in `deploy\webdeploy.local.json`. The script asks for the password each run |
 
 ### 3.2 Domain and HTTPS
 
 | # | What | Example / format | Your value | Where it is used | Status |
 |---|---|---|---|---|---|
-| D1 | **Public address** users will type | The temp address (H4) at first, later e.g. `https://sengen.<school-domain>` | [FILL IN] | `Email:ClientBaseUrl`, `AllowedHosts` | `ClientBaseUrl` is set to `https://sengen.stialaminos.edu.ph`. **[VERIFY]** that this domain exists and points to the site; if not, use the temp address until it does |
+| D1 | **Public address** users will type | The temp address (H4) at first, later e.g. `https://sengen.<school-domain>` | Now: `https://kenneth3224-002-site1.ktempurl.com`. Later: `https://sengen.stialaminos.edu.ph` | `Email:ClientBaseUrl`, `AllowedHosts` | `ClientBaseUrl` set to the **temp address** (no trailing slash), so emailed links work before the domain exists. Switch it to the domain in §6 Step 4 |
 | D2 | Who manages the school's DNS | School IT office contact | [FILL IN] | §6 Step 4 | — |
 | D3 | DNS record the panel asks for | `CNAME sengen → <site>.smarterasp.net` or an `A` record | [FILL IN] | §6 Step 4 | — |
 | D4 | SSL certificate | Free Let's Encrypt from the panel **[VERIFY]** | — | §6 Step 3 | — |
@@ -97,7 +99,7 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 |---|---|---|---|---|---|
 | A1 | **Super Admin email** | A real mailbox, **all lowercase** (sign-in lowercases what is typed, the seeder does not) | [FILL IN] | `Seed:SuperAdminEmail` | Set |
 | A2 | Super Admin password | Strong and unique, meets the password policy (password manager) | — | `Seed:SuperAdminPassword` | Set |
-| A3 | **School Admin email** | A real mailbox, all lowercase | [FILL IN] | `Seed:AdminEmail` | **Set, but it is not an email address (no `@`).** Fix it before the first start: the account is created only once |
+| A3 | **School Admin email** | A real mailbox, all lowercase | [FILL IN] | `Seed:AdminEmail` | **Still not an email address, no `@` (rechecked 2026-11-23).** Fix it before the first start: the account is created only once |
 | A4 | School Admin password | Strong and unique (password manager) | — | `Seed:AdminPassword` | Set |
 
 > If a seed password is left empty, the account gets a built-in default password and must change it
@@ -148,8 +150,8 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 |---|---|---|---|
 | C1 | Demo data only with `Seed:DemoData=true` | Sample accounts and passwords are in source control | **Done** |
 | C2 | Server refuses a missing, short or development `Jwt:Key` outside Development | Stops forged sign-in tokens | **Done** |
-| C3 | `publish-smarterasp.ps1` refuses to build while placeholders remain, and leaves out the development settings | Stops a half-filled settings file from shipping | **Done** (in the working copy, not yet committed) |
-| C4 | Set `AllowedHosts` in `appsettings.Production.json` to the real host names (temp address and domain, separated by `;`) | `appsettings.json` has `*`, which accepts any Host header | **To do** (configuration only) |
+| C3 | `publish-smarterasp.ps1` refuses to build while placeholders remain, and leaves out the development settings | Stops a half-filled settings file from shipping | **Done** |
+| C4 | Set `AllowedHosts` in `appsettings.Production.json` to the real host names (temp address and domain, separated by `;`) | `appsettings.json` has `*`, which accepts any Host header | **Done** (2026-11-23): `kenneth3224-002-site1.ktempurl.com;sengen.stialaminos.edu.ph` |
 | C5 | Add `app.UseHsts()` outside Development in `Program.cs` | The server redirects to HTTPS but sends no HSTS header, so browsers can still try plain HTTP first | **To do** (recommended) |
 | C6 | Lowercase `Seed:SuperAdminEmail` / `Seed:AdminEmail` when seeding | Sign-in lowercases the typed email, so a seeded address with capitals can never sign in | **To do** (until then, type the emails in lowercase, §3.4) |
 
@@ -168,7 +170,7 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 | `Email:User`, `Email:FromAddress` | E1 | |
 | `Email:Password` | E2 | Gmail app password, not the account password |
 | `Email:ClientBaseUrl` | D1, `https://`, **no trailing slash** | Emailed links (reset password, survey) use it |
-| `AllowedHosts` | e.g. `sengen.<school-domain>;<account>-001-site1.xxxx.smarterasp.net` | C4 |
+| `AllowedHosts` | `kenneth3224-002-site1.ktempurl.com;sengen.stialaminos.edu.ph` | C4. Add any new address here before pointing it at the site |
 
 Set in `appsettings.json` already and normally left alone: `Jwt:Issuer`, `Jwt:Audience`,
 `Jwt:ExpiryMinutes` (480), `Email:Host` (`smtp.gmail.com`), `Email:Port` (587), `Email:FromName`.
@@ -221,7 +223,8 @@ From the repository root:
 ```
 It stops on any placeholder, runs `dotnet publish` (Release, `win-x64`, framework-dependent), which
 also builds the React client into `wwwroot`, checks `wwwroot\index.html`, drops the development
-settings and writes **`publish.zip`** (about 24 MB).
+settings and writes **`deploy\publish.zip`** (about 24 MB) and the folder `deploy\publish\`.
+With Option B below you don't need this step: the Web Deploy script runs it for you.
 
 ### Step 8: Upload (Option A, recommended)
 1. **File Manager** → the site's root folder (H5). Delete the default `index.html` / `hostingstart.html`.
@@ -231,10 +234,21 @@ settings and writes **`publish.zip`** (about 24 MB).
 
 If the browser upload fails, use FTP (H6, e.g. FileZilla), then extract with the File Manager.
 
-**Option B, Visual Studio Web Deploy:** panel → **Web Deploy** → enable, set a password, download the
-`.publishsettings`. In Visual Studio: **SENGENSystem.Server → Publish → Import Profile**, enter the
-password, **Validate**, set Release / net10.0 / Framework-dependent / win-x64, **Publish**. Port
-8172 is sometimes blocked on school networks. Never commit the `.publishsettings` file.
+**Option B, Web Deploy from this PC (no zip upload):** the target is already filled in
+`deploy\webdeploy.local.json` (H3, H7, H8; git-ignored). From the repository root, in your own
+PowerShell window:
+```powershell
+.\deploy\deploy-webdeploy.ps1 -DryRun   # shows what would change, changes nothing
+.\deploy\deploy-webdeploy.ps1           # builds (Step 7 checks), asks for the Web Deploy password, deploys
+```
+It takes the site offline during the copy (no "file in use") and leaves server-only files such as
+logs alone. If it fails on the server's certificate, re-run with `-AllowUntrusted`. A 401 means a
+wrong user name or Web Deploy password. Port 8172 is sometimes blocked on school networks.
+
+*Visual Studio alternative:* panel → **Web Deploy** → download the `.publishsettings`, then
+**SENGENSystem.Server → Publish → Import Profile**. That path does **not** include
+`deploy\appsettings.Production.json`, so copy it to the site by hand afterwards. Never commit the
+`.publishsettings` file.
 
 **Option C, self-contained (only on HTTP 500.31, runtime missing):**
 ```powershell
