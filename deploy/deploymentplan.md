@@ -65,8 +65,8 @@ and only in `appsettings.Production.json`. The **Status** column shows what the 
 
 | # | What | Example / format | Your value | Where it is used | Status |
 |---|---|---|---|---|---|
-| H1 | SmarterASP **plan** | Free 60-day trial for staging, then a paid plan with .NET 10 + MSSQL **[VERIFY]** | [FILL IN] | §6 Step 1 | — |
-| H2 | Account owner / login email | Who owns and pays for the account | [FILL IN] | Handover (`maintenanceplan.md` §8) | — |
+| H1 | SmarterASP **plan** | Free 60-day trial for staging, then a paid plan with .NET 10 + MSSQL **[VERIFY]** | **Basic** | §6 Step 1 | Set. **[VERIFY]** in the panel that Basic includes an MS SQL database and lists .NET 10 for the site |
+| H2 | Account owner / login email | Who owns and pays for the account | `kennethrrtablang@gmail.com` | Handover (`maintenanceplan.md` §8) | Set |
 | H3 | **Site name** (as shown in the panel) | `sengen` or `site1` | `kenneth3224-002-site1` | §6 Step 1, Web Deploy | Set |
 | H4 | **Temporary site address** | `http://<account>-001-site1.xxxx.smarterasp.net` | `https://kenneth3224-002-site1.ktempurl.com` | Staging, UAT, smoke tests | HTTPS works. Shows **IIS 403 Forbidden** until the first deploy, because the site folder is still empty (checked 2026-11-23) |
 | H5 | Site root folder | `h:\root\home\<account>\www\site1` | [FILL IN] | File Manager / FTP upload | — |
