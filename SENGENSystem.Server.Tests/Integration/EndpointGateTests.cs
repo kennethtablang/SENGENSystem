@@ -134,6 +134,44 @@ namespace SENGENSystem.Server.Tests.Integration
         }
 
         [SqlFact]
+        public async Task Racing_a_corequisite_cancel_against_its_dependent_request_never_splits_the_pair()
+        {
+            // Each check alone is sound, but sent together the request saw the co-requisite still
+            // held and the cancel saw no dependent yet, so both went through. Under the per-student
+            // lock one waits for the other: whichever order wins, the student never ends up holding
+            // the dependent without the co-requisite.
+            var term = await scenario.ActiveTermAsync();
+            var past = await scenario.PastTermAsync();
+            var (student, email) = await scenario.StudentAsync(term);
+            var client = await app.SignedInAsync(email, StudentPassword);
+
+            for (var round = 0; round < 5; round++)
+            {
+                var subjects = await scenario.SubjectsAsync(term, 3, secondRequiresFirst: true);
+                var coRequisite = await scenario.SectionAsync(subjects[0], term, publishedAt: (DayOfWeek.Wednesday, (8 + 2 * round) * 60, (9 + 2 * round) * 60));
+                var dependent = await scenario.SectionAsync(subjects[1], term, publishedAt: (DayOfWeek.Thursday, (8 + 2 * round) * 60, (9 + 2 * round) * 60));
+                if (round == 0) await scenario.RecordAsync(student, subjects[2], past, SubjectVerdict.Passed);
+                var coRequisiteRequest = await scenario.RequestAsync(student, coRequisite);
+
+                await Task.WhenAll(
+                    client.DeleteAsync($"/api/enlistment/requests/{coRequisiteRequest}"),
+                    client.PostAsJsonAsync("/api/enlistment/requests", new { sectionId = dependent.Id }));
+
+                await using var scope = app.Scope(out var db);
+                bool Live(SlotRequestStatus s) => s is SlotRequestStatus.Requested or SlotRequestStatus.Approved;
+                var statuses = await db.SlotRequests
+                    .Where(r => r.StudentRegistrationId == student.Id
+                        && (r.SectionId == coRequisite.Id || r.SectionId == dependent.Id))
+                    .Select(r => new { r.SectionId, r.Status })
+                    .ToListAsync();
+                var holdsDependent = statuses.Any(r => r.SectionId == dependent.Id && Live(r.Status));
+                var holdsCoRequisite = statuses.Any(r => r.SectionId == coRequisite.Id && Live(r.Status));
+                Assert.False(holdsDependent && !holdsCoRequisite,
+                    $"Round {round}: the dependent is held without its co-requisite.");
+            }
+        }
+
+        [SqlFact]
         public async Task Request_leg_falls_open_for_a_student_with_no_history_on_file()
         {
             // An empty record is not "every prerequisite unmet" (AcademicHistory.IsEnforceable).

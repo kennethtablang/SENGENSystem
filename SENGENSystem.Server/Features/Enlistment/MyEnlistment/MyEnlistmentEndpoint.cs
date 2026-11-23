@@ -139,6 +139,12 @@ namespace SENGENSystem.Server.Features.Enlistment.MyEnlistment
                 return Results.NotFound(new { message = "Request not found." });
             }
 
+            // Serialized with this student's other enlistment changes (StudentEnlistmentLock), and
+            // the request re-read under the lock so a concurrent change to it is seen.
+            await using var studentLock = await StudentEnlistmentLock.AcquireAsync(
+                db, request.StudentRegistrationId, cancellationToken);
+            await db.Entry(request).ReloadAsync(cancellationToken);
+
             // A co-requisite can't be withdrawn while a subject that relies on it is still held —
             // otherwise the pair the gate let in together could be split (CoRequisiteGuard).
             if (request.Status is SlotRequestStatus.Requested or SlotRequestStatus.Approved

@@ -44,6 +44,11 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
             }
             var registration = eligibility.Registration!;
 
+            // Everything below reads this student's live set and then adds to it. Serialized with
+            // their other enlistment changes so a co-requisite can't be withdrawn mid-check.
+            await using var studentLock = await StudentEnlistmentLock.AcquireAsync(
+                db, registration.Id, cancellationToken);
+
             // Institution-wide gate (FR-CYC-01, FR-ENL-08): the term must actually be in the
             // enlistment stage, and the Registrar's pause switch must be off. Previously only the
             // switch was checked, so a term sitting in "Enrollment closed" still accepted seat

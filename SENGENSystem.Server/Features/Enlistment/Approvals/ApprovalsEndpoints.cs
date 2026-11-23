@@ -568,6 +568,9 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             {
                 return Results.NotFound(new { message = "Request not found." });
             }
+            await using var studentLock = await StudentEnlistmentLock.AcquireAsync(
+                db, request.StudentRegistrationId, cancellationToken);
+            await db.Entry(request).ReloadAsync(cancellationToken);
             if (request.Status != SlotRequestStatus.Requested)
             {
                 return Results.Conflict(new { message = $"This request is already {request.Status}." });
@@ -652,6 +655,9 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             {
                 return Results.NotFound(new { message = "Request not found." });
             }
+            await using var studentLock = await StudentEnlistmentLock.AcquireAsync(
+                db, request.StudentRegistrationId, cancellationToken);
+            await db.Entry(request).ReloadAsync(cancellationToken);
             if (request.Status == SlotRequestStatus.Approved)
             {
                 var heldDependents = await CoRequisiteGuard.HeldDependentsAsync(
