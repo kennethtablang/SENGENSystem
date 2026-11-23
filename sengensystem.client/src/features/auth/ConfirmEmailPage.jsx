@@ -37,7 +37,7 @@ function ConfirmEmailPage() {
         <AuthLayout>
             <div className="auth-card">
                 <h1>Confirm email change</h1>
-                <p className="auth-subtitle">SEN-GEN account security</p>
+                <p className="auth-subtitle">SEN-GEN AI account security</p>
 
                 {state.status === 'working' && <p>Confirming your new email address…</p>}
                 {state.status === 'done' && <div className="alert alert-success" role="status">{state.message}</div>}

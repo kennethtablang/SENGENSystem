@@ -34,7 +34,7 @@ export const navGroups = [
                 // Only surfaces while this user actually owes a response (see canSee) — there is
                 // nothing to open for someone who was never invited or already answered.
                 onlyWhenBadge: 'survey',
-                desc: 'Rate SEN-GEN using the ISO/IEC 25010 evaluation — questions in English and Filipino.'
+                desc: 'Rate SEN-GEN AI using the ISO/IEC 25010 evaluation — questions in English and Filipino.'
             }
         ]
     },
@@ -354,7 +354,7 @@ export const navMinor = [
         label: 'Help & about',
         icon: 'help',
         roles: ALL,
-        desc: 'How SEN-GEN works, from enrollment to scheduling.'
+        desc: 'How SEN-GEN AI works, from enrollment to scheduling.'
     }
 ];
 

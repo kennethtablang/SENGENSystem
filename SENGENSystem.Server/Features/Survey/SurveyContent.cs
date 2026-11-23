@@ -12,8 +12,8 @@ namespace SENGENSystem.Server.Features.Survey
 
     public static class SurveyContent
     {
-        public const string Title = "SEN-GEN Software Quality Evaluation (ISO/IEC 25010)";
-        public const string TitleFil = "Pagsusuri sa Kalidad ng SEN-GEN (ISO/IEC 25010)";
+        public const string Title = "SEN-GEN AI Software Quality Evaluation (ISO/IEC 25010)";
+        public const string TitleFil = "Pagsusuri sa Kalidad ng SEN-GEN AI (ISO/IEC 25010)";
 
         public static readonly IReadOnlyList<SurveyScalePoint> Scale =
         [
@@ -101,8 +101,8 @@ namespace SENGENSystem.Server.Features.Survey
             ]),
         ];
 
-        public const string SuggestionsEn = "Suggestions — what would make SEN-GEN better for you?";
-        public const string SuggestionsFil = "Mga Mungkahi — ano ang makapagpapabuti sa SEN-GEN para sa iyo?";
+        public const string SuggestionsEn = "Suggestions — what would make SEN-GEN AI better for you?";
+        public const string SuggestionsFil = "Mga Mungkahi — ano ang makapagpapabuti sa SEN-GEN AI para sa iyo?";
         public const string CommentsEn = "Further Comments";
         public const string CommentsFil = "Karagdagang Puna";
 

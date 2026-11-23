@@ -6,7 +6,7 @@ export function Wordmark() {
     return (
         <span className="wordmark">
             <img src={logo} alt="" />
-            <span>SEN<span className="wordmark-dot">·</span>GEN</span>
+            <span className="wordmark-name">SEN<span className="wordmark-dot">·</span>GEN<span className="wordmark-ai">AI</span></span>
             <span className="wordmark-campus">STI Alaminos</span>
         </span>
     );
@@ -24,7 +24,7 @@ function AuthLayout({ children }) {
                         <span className="text-brand">conflict&#8209;free class schedule</span>.
                     </h2>
                     <p>
-                        SEN&#8209;GEN is a Student Enrollment and Constraint&#8209;Satisfaction
+                        SEN&#8209;GEN&nbsp;AI is a Student Enrollment and Constraint&#8209;Satisfaction
                         scheduling engine. Enroll, pick your subjects, and the engine slots
                         each one into a valid weekly timetable — checking time overlaps,
                         prerequisites, and your unit cap as you go.
@@ -38,7 +38,7 @@ function AuthLayout({ children }) {
             </aside>
             <div className="auth-main">
                 <header className="auth-main-header">
-                    <Link to="/login" aria-label="SEN-GEN home">
+                    <Link to="/login" aria-label="SEN-GEN AI home">
                         <Wordmark />
                     </Link>
                 </header>

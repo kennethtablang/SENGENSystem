@@ -134,7 +134,7 @@ function LoginPage() {
         <AuthLayout>
             <form className="auth-card" onSubmit={handleSubmit} noValidate>
                 <h1>Sign in</h1>
-                <p className="auth-subtitle">Use your SEN-GEN account email.</p>
+                <p className="auth-subtitle">Use your SEN-GEN AI account email.</p>
 
                 {justRegistered && (
                     <div className="alert alert-success" role="status">

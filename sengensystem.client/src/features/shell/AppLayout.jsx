@@ -164,7 +164,7 @@ function AppLayout() {
             return;
         }
         const ok = await confirmAction({
-            title: 'Sign out of SEN-GEN?',
+            title: 'Sign out of SEN-GEN AI?',
             message: 'You’ll need to sign in again to keep working.',
             confirmLabel: 'Sign out'
         });

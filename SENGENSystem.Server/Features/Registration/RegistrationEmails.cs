@@ -31,11 +31,11 @@ namespace SENGENSystem.Server.Features.Registration
         /// </summary>
         public static (string Subject, string Body) AccountCredentials(
             StudentRegistration r, string loginEmail, string temporaryPassword) =>
-            ($"Your SEN-GEN Account — {r.StudentNumber}",
+            ($"Your SEN-GEN AI Account — {r.StudentNumber}",
              EmailLayout.Wrap(
                 $"<h2>Your account is ready</h2>" +
                 $"<p>Hi {EmailLayout.Escape(r.FirstName)},</p>" +
-                $"<p>We've created a SEN-GEN account for you from your Student Information Sheet so " +
+                $"<p>We've created a SEN-GEN AI account for you from your Student Information Sheet so " +
                 $"you can sign in, track your admission documents, and select your subject slots.</p>" +
                 $"<p><strong>Sign in with:</strong></p>" +
                 $"<table style=\"border-collapse:collapse;margin:8px 0\">" +

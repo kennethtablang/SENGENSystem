@@ -101,7 +101,7 @@ function SurveyPage() {
                     {!embedded && <Wordmark />}
                     <h1>Thank you! · Salamat!</h1>
                     <p className="survey-note">
-                        Your evaluation has been recorded. We appreciate your feedback on SEN-GEN.<br />
+                        Your evaluation has been recorded. We appreciate your feedback on SEN-GEN AI.<br />
                         Naitala na ang iyong sagot. Salamat sa iyong puna.
                     </p>
                 </div>
@@ -167,7 +167,7 @@ function SurveyPage() {
                             </select>
                         </label>
                         <label className="survey-field">
-                            <span>Years using SEN-GEN · Taong paggamit</span>
+                            <span>Years using SEN-GEN AI · Taong paggamit</span>
                             <select value={profile.yearsUsing} onChange={setProfileField('yearsUsing')}>
                                 {YEARS_OPTIONS.map(o => <option key={o} value={o}>{o || '—'}</option>)}
                             </select>

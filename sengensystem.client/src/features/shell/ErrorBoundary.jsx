@@ -48,7 +48,7 @@ export default class ErrorBoundary extends Component {
                 <div className="crash-card">
                     <h1>Something broke on this page</h1>
                     <p>
-                        SEN-GEN hit an error while drawing this screen. Nothing you were viewing has been
+                        SEN-GEN AI hit an error while drawing this screen. Nothing you were viewing has been
                         saved or changed by this — but the page cannot finish rendering.
                     </p>
 
@@ -57,7 +57,7 @@ export default class ErrorBoundary extends Component {
                             Try this page again
                         </button>
                         <button type="button" className="btn" onClick={() => window.location.reload()}>
-                            Reload SEN-GEN
+                            Reload SEN-GEN AI
                         </button>
                         <a className="btn btn-ghost" href="/">Back to dashboard</a>
                     </div>

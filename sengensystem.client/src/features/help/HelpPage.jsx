@@ -111,7 +111,7 @@ function HelpPage() {
                 <img src={logo} alt="" className="help-logo" />
                 <div className="help-hero-main">
                     <h2>
-                        SEN-GEN
+                        SEN-GEN AI
                         <span className="chip chip-yellow">v{version}</span>
                     </h2>
                     <p className="help-tagline">
@@ -174,7 +174,7 @@ function HelpPage() {
             <section className="card help-about rise rise-4">
                 <h3>About this system</h3>
                 <p>
-                    SEN-GEN was built as a Master&rsquo;s capstone project for STI College Alaminos to replace
+                    SEN-GEN AI was built as a Master&rsquo;s capstone project for STI College Alaminos to replace
                     manual, spreadsheet-based scheduling and paper enrollment with a single conflict-free,
                     auditable workflow. For questions about your enrollment, visit the Registrar&rsquo;s or
                     Admission Office on campus.

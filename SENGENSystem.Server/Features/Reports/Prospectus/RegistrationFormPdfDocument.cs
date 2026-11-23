@@ -48,7 +48,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         public DocumentMetadata GetMetadata() => new()
         {
             Title = $"Certificate of Registration — {studentName}",
-            Author = "SEN-GEN",
+            Author = "SEN-GEN AI",
             Subject = $"Enrolled subjects for {semesterName}"
         };
 
@@ -64,7 +64,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 page.Content().PaddingTop(8).Element(Body);
                 page.Footer().PaddingTop(6).Row(row =>
                 {
-                    row.RelativeItem().Text($"Generated {generatedAt:dd MMM yyyy HH:mm} · SEN-GEN")
+                    row.RelativeItem().Text($"Generated {generatedAt:dd MMM yyyy HH:mm} · SEN-GEN AI")
                         .FontSize(7).FontColor(Muted);
                     row.ConstantItem(120).AlignRight().Text(t =>
                     {

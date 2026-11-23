@@ -108,7 +108,7 @@ function SettingsPage() {
             <header className="settings-head rise">
                 <div>
                     <h2>Settings</h2>
-                    <p>Tune how SEN-GEN looks and behaves on this device. Changes apply instantly.</p>
+                    <p>Tune how SEN-GEN AI looks and behaves on this device. Changes apply instantly.</p>
                 </div>
                 <span className={`chip chip-blue settings-saved${saved ? ' show' : ''}`} aria-live="polite">
                     {saved ? 'Preferences saved' : ''}
@@ -368,7 +368,7 @@ function SettingsPage() {
 
                             <SettingRow
                                 title="Start page after sign-in"
-                                desc="The page SEN-GEN opens right after you sign in on this device."
+                                desc="The page SEN-GEN AI opens right after you sign in on this device."
                             >
                                 <select
                                     aria-label="Start page after sign-in"

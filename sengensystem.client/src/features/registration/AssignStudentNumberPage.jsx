@@ -98,7 +98,7 @@ function AssignStudentNumberPage() {
                 <div>
                     <h2>Assign student number</h2>
                     <p className="reg-sub">
-                        SEN-GEN issues a registration number; the official student number comes from the
+                        SEN-GEN AI issues a registration number; the official student number comes from the
                         separate student-records system. Once an enrollee has been given theirs, record it
                         here against their registration.
                     </p>

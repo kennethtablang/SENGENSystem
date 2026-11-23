@@ -50,7 +50,7 @@ function TermsDialog({ onClose, onAgree }) {
                 <div className="modal-body" ref={bodyRef} onScroll={checkScroll}>
                     <h3>1. Acceptance</h3>
                     <p>
-                        By creating a SEN-GEN account you agree to these terms and conditions
+                        By creating a SEN-GEN AI account you agree to these terms and conditions
                         governing the use of the Student Enrollment and Generative Scheduling
                         System of STI College Alaminos. If you do not agree, do not proceed
                         with registration.
@@ -58,7 +58,7 @@ function TermsDialog({ onClose, onAgree }) {
 
                     <h3>2. Collection of personal data</h3>
                     <p>
-                        SEN-GEN collects the personal information you provide during account
+                        SEN-GEN AI collects the personal information you provide during account
                         registration and enrollment — including your name, email address,
                         Student Information Sheet details, and enrollment documents such as
                         Form 137, your birth certificate, and certificate of good moral
