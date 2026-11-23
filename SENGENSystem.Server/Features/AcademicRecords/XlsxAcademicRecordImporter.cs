@@ -231,7 +231,7 @@ namespace SENGENSystem.Server.Features.AcademicRecords
             string[][] lines =
             [
                 ["Column", "What to put"],
-                ["StudentNumber", "The SEN-GEN AI registration number (2026-000001) or the official student number."],
+                ["StudentNumber", "The SEN-GEN registration number (2026-000001) or the official student number."],
                 ["SubjectCode", "The curriculum subject code, e.g. CS101. Must be unique across curricula."],
                 ["Term", "The exact semester name. Leave blank to use the active term."],
                 ["Verdict", "Passed, Failed, or Dropped. Only Passed earns credit and satisfies a prerequisite."],

@@ -157,7 +157,7 @@ function AuditTrailPage() {
                 <div>
                     <h2>Audit trail</h2>
                     <p className="audit-sub">
-                        Accountability log of security- and data-relevant actions across SEN-GEN AI —
+                        Accountability log of security- and data-relevant actions across SEN-GEN —
                         sign-ins, registrations, profile and password changes, and schedule generation.
                     </p>
                 </div>

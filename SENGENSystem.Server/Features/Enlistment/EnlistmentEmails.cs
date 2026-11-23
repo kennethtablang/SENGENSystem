@@ -19,7 +19,7 @@ namespace SENGENSystem.Server.Features.Enlistment
                 $"<p>The Registrar has approved your slot request:</p>" +
                 $"<p><strong>{EmailLayout.Escape(subjectCode)}</strong> — {EmailLayout.Escape(subjectTitle)}<br>" +
                 $"<strong>Section:</strong> {EmailLayout.Escape(sectionCode)}</p>" +
-                $"<p>The class now appears on <strong>My schedule</strong> in SEN-GEN AI.</p>"));
+                $"<p>The class now appears on <strong>My schedule</strong> in SEN-GEN.</p>"));
 
         public static (string Subject, string Body) SlotRejected(
             StudentRegistration r, string subjectCode, string subjectTitle, string sectionCode, string? reason) =>
@@ -33,6 +33,6 @@ namespace SENGENSystem.Server.Features.Enlistment
                 (string.IsNullOrWhiteSpace(reason)
                     ? ""
                     : $"<p><strong>Registrar's note:</strong> {EmailLayout.Escape(reason)}</p>") +
-                $"<p>You may request a different section in SEN-GEN AI, or visit the Registrar for assistance.</p>"));
+                $"<p>You may request a different section in SEN-GEN, or visit the Registrar for assistance.</p>"));
     }
 }

@@ -196,7 +196,7 @@ namespace SENGENSystem.Server.Features.Reports.SystemExport
             List<FacultyProfile> faculty, List<User> users)
         {
             var sheet = workbook.AddWorksheet("Overview");
-            sheet.Cell(1, 1).Value = "SEN-GEN AI system parameters export";
+            sheet.Cell(1, 1).Value = "SEN-GEN system parameters export";
             sheet.Cell(1, 1).Style.Font.Bold = true;
 
             var rooms = buildings.SelectMany(b => b.Rooms).ToList();

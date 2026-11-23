@@ -28,7 +28,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
         public DocumentMetadata GetMetadata() => new()
         {
             Title = $"Confirmation of Faculty Loading — {semester.Name}",
-            Author = "SEN-GEN AI",
+            Author = "SEN-GEN",
             Subject = "Faculty academic load and schedule"
         };
 
@@ -57,7 +57,7 @@ namespace SENGENSystem.Server.Features.Reports.FacultyLoading
 
                     page.Footer().PaddingTop(6).Row(row =>
                     {
-                        row.RelativeItem().Text($"Generated {generatedAt:dd MMM yyyy HH:mm} · SEN-GEN AI")
+                        row.RelativeItem().Text($"Generated {generatedAt:dd MMM yyyy HH:mm} · SEN-GEN")
                             .FontSize(7.5f).FontColor(Muted);
                         row.ConstantItem(120).AlignRight().Text(t =>
                         {

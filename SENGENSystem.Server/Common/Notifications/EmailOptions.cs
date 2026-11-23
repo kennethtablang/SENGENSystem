@@ -21,7 +21,7 @@ namespace SENGENSystem.Server.Common.Notifications
 
         public string FromAddress { get; set; } = string.Empty;
 
-        public string FromName { get; set; } = "STI.SEN-GEN AI";
+        public string FromName { get; set; } = "STI.SEN-GEN";
 
         /// <summary>Base URL of the client app, used to build links in emails (reset password, confirm email).</summary>
         public string ClientBaseUrl { get; set; } = "https://localhost:51683";

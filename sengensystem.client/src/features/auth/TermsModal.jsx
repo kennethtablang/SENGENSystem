@@ -51,7 +51,7 @@ function TermsDialog({ onClose, onAgree }) {
                 <div className="modal-body" ref={bodyRef} onScroll={checkScroll}>
                     <h3>1. Acceptance</h3>
                     <p>
-                        By creating a SEN-GEN AI account you agree to these terms and conditions
+                        By creating a SEN-GEN account you agree to these terms and conditions
                         governing the use of the Student Enrollment and Generative Scheduling
                         System of STI College Alaminos. If you do not agree, do not proceed
                         with registration.
@@ -59,36 +59,43 @@ function TermsDialog({ onClose, onAgree }) {
 
                     <h3>2. Collection of personal data</h3>
                     <p>
-                        SEN-GEN AI collects the personal information you provide during account
-                        registration and enrollment — including your name, email address,
-                        Student Information Sheet details, and enrollment documents such as
-                        Form 137, your birth certificate, and certificate of good moral
-                        character. Collection and processing are done in accordance with the
-                        Data Privacy Act of 2012 (Republic Act No. 10173) and its implementing
-                        rules and regulations.
+                        SEN-GEN collects the personal information you provide on your Student
+                        Information Sheet — your name, birth details, civil status, contact
+                        details, address, parents' or guardian's names and numbers, and
+                        educational background — and the records of your enrollment. Your
+                        admission documents (such as Form 137 and your birth certificate) are
+                        handed in on campus; the system records only whether each was submitted
+                        and does not store copies. Collection and processing follow the Data
+                        Privacy Act of 2012 (Republic Act No. 10173) and its implementing rules.
                     </p>
 
                     <h3>3. Purpose of processing</h3>
                     <p>
                         Your data is processed solely for legitimate academic administrative
-                        purposes: verifying your enrollment requirements, registering you as a
-                        student, managing your subject enlistment, generating class schedules,
-                        and sending you enrollment-related notifications by email.
+                        purposes: verifying your admission requirements, registering you as a
+                        student, evaluating transfer credits, managing your subject enlistment,
+                        generating class schedules, and sending you enrollment-related
+                        notifications by email. The system's AI scheduling feature arranges
+                        sections, rooms, and faculty; it does not use your personal data to
+                        profile you or make decisions about you.
                     </p>
 
                     <h3>4. Access to your data</h3>
                     <p>
-                        Access is limited by role: only the Admission Officer, Registrar,
-                        Academic Head, and School Administrator of STI College Alaminos can
-                        view the records relevant to their function. Your data is not shared
-                        with third parties and is not used for marketing.
+                        Access is limited by role: the Admission Officer, Registrar, Academic
+                        Head, and administrators of STI College Alaminos see only the records
+                        their work requires, and faculty see only class counts. Your data is not
+                        sold or used for marketing. It is handled only by the school's hosting
+                        and email providers on the school's behalf, and shared with government
+                        agencies only when the law requires.
                     </p>
 
                     <h3>5. Retention and security</h3>
                     <p>
                         Records are kept only as long as required by the school's academic
-                        records policy and applicable regulations. Passwords are stored in
-                        hashed form and all access to the system is logged.
+                        records policy and applicable regulations. Connections are encrypted,
+                        passwords are stored in hashed form, repeated failed sign-ins lock the
+                        account temporarily, and changes to records are logged.
                     </p>
 
                     <h3>6. Your responsibilities</h3>
@@ -102,8 +109,9 @@ function TermsDialog({ onClose, onAgree }) {
                     <h3>7. Acknowledgment</h3>
                     <p>
                         The date and time of your agreement are recorded together with your
-                        registration as proof of this acknowledgment. For privacy concerns,
-                        contact the Registrar's Office of STI College Alaminos.
+                        registration as proof of this acknowledgment. To access or correct your
+                        data, or for privacy concerns, contact the Data Protection Officer through
+                        the Registrar's Office of STI College Alaminos.
                     </p>
                     <p>
                         This is a summary. The complete{' '}

@@ -4,10 +4,11 @@
 // consent pop-up never covers them. To host them on another website instead (for example the
 // school's own policy pages), set VITE_TERMS_URL / VITE_PRIVACY_URL at build time; no code change.
 //
-// POLICY_VERSION is the effective date of the current documents. Change it whenever either document
-// changes: every visitor is then asked to agree again, because they agreed to the old text.
+// POLICY_VERSION is the effective date of the current documents plus their version number (shown as
+// "Version N" at the top of both pages). Change it whenever either document changes: every visitor
+// is then asked to agree again, because they agreed to the old text.
 
-export const POLICY_VERSION = '2026-11-23';
+export const POLICY_VERSION = '2026-11-23-v2';
 
 export const TERMS_URL = import.meta.env.VITE_TERMS_URL || '/legal/terms.html';
 export const PRIVACY_URL = import.meta.env.VITE_PRIVACY_URL || '/legal/privacy.html';

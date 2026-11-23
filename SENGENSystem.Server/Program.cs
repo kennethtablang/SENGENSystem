@@ -121,9 +121,9 @@ namespace SENGENSystem.Server
             {
                 options.SwaggerDoc("v1", new OpenApiInfo
                 {
-                    Title = "SEN-GEN AI API",
+                    Title = "SEN-GEN API",
                     Version = "v1",
-                    Description = "SEN-GEN AI scheduling & enrollment system API."
+                    Description = "SEN-GEN scheduling & enrollment system API."
                 });
 
                 // JwtBearerDefaults.AuthenticationScheme == "Bearer"
@@ -299,8 +299,8 @@ namespace SENGENSystem.Server
                 app.UseSwagger();
                 app.UseSwaggerUI(options =>
                 {
-                    options.SwaggerEndpoint("/swagger/v1/swagger.json", "SEN-GEN AI API v1");
-                    options.DocumentTitle = "SEN-GEN AI API";
+                    options.SwaggerEndpoint("/swagger/v1/swagger.json", "SEN-GEN API v1");
+                    options.DocumentTitle = "SEN-GEN API";
                 });
             }
 

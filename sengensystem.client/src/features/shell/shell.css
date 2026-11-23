@@ -81,25 +81,11 @@
   transition: transform 0.25s ease;
 }
 
-/* In the 248px sidebar the name "SEN·GEN AI" and the campus label don't fit on one line beside the
-   collapse button, so the campus label sits under the name, both beside the logo. */
 .sidebar .wordmark {
   color: #fff;
-  display: grid;
-  grid-template-columns: auto auto;
-  column-gap: 0.55rem;
-  row-gap: 0.25rem;
-  align-items: center;
-}
-
-.sidebar .wordmark img {
-  grid-row: 1 / span 2;
 }
 
 .sidebar .wordmark-campus {
-  grid-column: 2;
-  align-self: start;
-  padding-bottom: 0;
   color: rgba(255, 255, 255, 0.65);
   white-space: nowrap;
   font-size: 0.62rem;

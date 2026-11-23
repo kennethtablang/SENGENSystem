@@ -28,7 +28,7 @@ function FirstLoginPasswordChange() {
             // Re-fetch so the cleared MustChangePassword flag lets the app through.
             const fresh = await fetchCurrentUser();
             updateUser(fresh ?? { ...user, mustChangePassword: false });
-            notifySuccess('Password updated. Welcome to SEN-GEN AI.');
+            notifySuccess('Password updated. Welcome to SEN-GEN.');
         } catch (err) {
             const field = err.fieldErrors?.newPassword?.[0] || err.fieldErrors?.currentPassword?.[0];
             setError(field || err.message);

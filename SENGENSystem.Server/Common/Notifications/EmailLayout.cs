@@ -23,7 +23,7 @@ namespace SENGENSystem.Server.Common.Notifications
             "<div style=\"font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.5\">" +
             inner +
             "<hr style=\"border:none;border-top:1px solid #e5e5e5;margin:24px 0\">" +
-            $"<p style=\"font-size:12px;color:#888\">{InstitutionSlot} — SEN-GEN AI. " +
+            $"<p style=\"font-size:12px;color:#888\">{InstitutionSlot} — SEN-GEN. " +
             "This is an automated message — please do not reply.</p>" +
             "</div>";
 

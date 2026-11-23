@@ -56,7 +56,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         public DocumentMetadata GetMetadata() => new()
         {
             Title = $"Curriculum Prospectus — {programCode}",
-            Author = "SEN-GEN AI",
+            Author = "SEN-GEN",
             Subject = "Subjects by year level"
         };
 
@@ -72,7 +72,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 page.Content().PaddingTop(10).Element(Body);
                 page.Footer().PaddingTop(6).Row(row =>
                 {
-                    row.RelativeItem().Text($"Generated {generatedAt:dd MMM yyyy HH:mm} · SEN-GEN AI")
+                    row.RelativeItem().Text($"Generated {generatedAt:dd MMM yyyy HH:mm} · SEN-GEN")
                         .FontSize(7).FontColor(Muted);
                     row.ConstantItem(120).AlignRight().Text(t =>
                     {

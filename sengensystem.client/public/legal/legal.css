@@ -49,25 +49,23 @@ main {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  color: #fff;
+  text-decoration: none;
   font-weight: 700;
   letter-spacing: 0.03em;
   font-size: 1.05rem;
 }
 
-.brand .ai {
-  display: inline-block;
-  margin-left: 0.3em;
-  padding: 0.15em 0.4em 0.12em;
-  border-radius: 999px;
-  background: var(--gold);
-  color: var(--blue);
-  font-size: 0.62em;
-  font-weight: 800;
-  vertical-align: 0.25em;
+.brand img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
 }
 
 .brand .campus {
-  margin-left: 0.5em;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -147,6 +145,31 @@ th { color: var(--text-1); font-weight: 600; }
 
 .table-wrap { overflow-x: auto; }
 
+.defs {
+  margin: 10px 0;
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 6px 16px;
+}
+
+.defs dt { color: var(--text-1); font-weight: 600; }
+.defs dd { margin: 0; color: var(--text-2); }
+
+@media (max-width: 520px) {
+  .defs { grid-template-columns: 1fr; gap: 2px; }
+  .defs dd { margin-bottom: 8px; }
+}
+
+.contact {
+  background: var(--wash);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 10px 0;
+}
+
+.contact p { margin: 0; }
+
 footer {
   max-width: 820px;
   margin: 0 auto 32px;
@@ -158,6 +181,7 @@ footer {
 
 @media print {
   .bar { background: none; color: var(--text-1); border-bottom: 2px solid var(--blue); }
+  .brand { color: var(--text-1); }
   body { background: #fff; }
   main { border: 0; margin: 0; padding: 0; }
   a { color: inherit; }

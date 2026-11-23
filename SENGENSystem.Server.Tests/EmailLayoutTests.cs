@@ -18,7 +18,7 @@ namespace SENGENSystem.Server.Tests
 
             var sent = EmailLayout.Brand(body, "STI College Dagupan");
             Assert.DoesNotContain(EmailLayout.InstitutionSlot, sent);
-            Assert.Contains("STI College Dagupan — SEN-GEN AI", sent);
+            Assert.Contains("STI College Dagupan — SEN-GEN", sent);
         }
 
         [Fact]

@@ -199,10 +199,10 @@ namespace SENGENSystem.Server.Features.Survey
                     notifier.Notify(
                         user.Id,
                         NotificationKind.Survey,
-                        "Please answer the SEN-GEN AI evaluation survey",
+                        "Please answer the SEN-GEN evaluation survey",
                         string.IsNullOrWhiteSpace(note)
-                            ? "You've been invited to rate SEN-GEN AI using the ISO/IEC 25010 evaluation. " +
-                              "Inaanyayahan kang suriin ang SEN-GEN AI — bukas ang sagutan sa English at Filipino."
+                            ? "You've been invited to rate SEN-GEN using the ISO/IEC 25010 evaluation. " +
+                              "Inaanyayahan kang suriin ang SEN-GEN — bukas ang sagutan sa English at Filipino."
                             : note,
                         "/survey");
                 }
@@ -272,7 +272,7 @@ namespace SENGENSystem.Server.Features.Survey
                     notifier.Notify(
                         invite.UserId,
                         NotificationKind.Survey,
-                        "Reminder: the SEN-GEN AI evaluation survey is waiting",
+                        "Reminder: the SEN-GEN evaluation survey is waiting",
                         string.IsNullOrWhiteSpace(note)
                             ? "Your evaluation hasn't been submitted yet. It takes only a few minutes. " +
                               "Hindi pa naipapasa ang iyong pagsusuri — ilang minuto lang ito."

@@ -520,27 +520,7 @@ select option {
   color: transparent;
 }
 
-/* The product name never breaks across lines ("AI" must stay beside "SEN·GEN"). */
-.wordmark .wordmark-name {
-  white-space: nowrap;
-}
-
-/* "AI" in the product name SEN-GEN AI: a small gold pill (blue text on gold, the STI rule for
-   gold). */
-.wordmark .wordmark-ai {
-  display: inline-block;
-  margin-left: 0.3em;
-  padding: 0.18em 0.38em 0.14em;
-  border-radius: var(--radius-pill);
-  background: var(--sti-yellow);
-  color: var(--sti-blue-solid);
-  font: 800 0.6em/1 var(--sans);
-  letter-spacing: 0.06em;
-  vertical-align: 0.28em;
-}
-
 .wordmark .wordmark-campus {
-  white-space: nowrap;
   font: 600 0.68rem/1 var(--sans);
   color: var(--text-3);
   letter-spacing: 0.1em;

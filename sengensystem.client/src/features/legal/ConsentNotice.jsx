@@ -51,7 +51,7 @@ function ConsentDialog({ onAgree }) {
 
                 <div className="modal-body" id="consent-body">
                     <p>
-                        Welcome to <strong>SEN-GEN AI</strong>, the enrollment and class scheduling
+                        Welcome to <strong>SEN-GEN</strong>, the enrollment and class scheduling
                         system of STI College Alaminos.
                     </p>
                     <p>

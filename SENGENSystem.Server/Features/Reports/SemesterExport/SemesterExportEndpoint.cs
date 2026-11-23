@@ -80,7 +80,7 @@ namespace SENGENSystem.Server.Features.Reports.SemesterExport
             int registrationCount, int sectionCount, int classCount, int publishedCount)
         {
             var sheet = workbook.AddWorksheet("Overview");
-            sheet.Cell(1, 1).Value = $"SEN-GEN AI semester data export — {semester.Name}";
+            sheet.Cell(1, 1).Value = $"SEN-GEN semester data export — {semester.Name}";
             sheet.Cell(1, 1).Style.Font.Bold = true;
 
             var status = semester.IsActive ? "Active"

@@ -51,7 +51,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
         public DocumentMetadata GetMetadata() => new()
         {
             Title = $"Transferee Credit Evaluation — {studentName}",
-            Author = "SEN-GEN AI",
+            Author = "SEN-GEN",
             Subject = "Transferee subject credit evaluation"
         };
 
@@ -67,7 +67,7 @@ namespace SENGENSystem.Server.Features.Reports.Prospectus
                 page.Content().PaddingTop(8).Element(Body);
                 page.Footer().PaddingTop(6).Row(row =>
                 {
-                    row.RelativeItem().Text($"Generated {generatedAt:dd MMM yyyy HH:mm} · SEN-GEN AI")
+                    row.RelativeItem().Text($"Generated {generatedAt:dd MMM yyyy HH:mm} · SEN-GEN")
                         .FontSize(7).FontColor(Muted);
                     row.ConstantItem(120).AlignRight().Text(t =>
                     {
