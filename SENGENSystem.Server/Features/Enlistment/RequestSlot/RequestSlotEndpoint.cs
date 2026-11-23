@@ -98,10 +98,28 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
             // Falls open for a student with no academic history at all: see AcademicHistory
             // .IsEnforceable for why that is the honest reading of an empty record rather than a
             // loophole.
+            // Only this term's live requests. Every check below — co-requisites, duplicate subject,
+            // the per-student unit ceiling, time overlap — is a statement about one semester's load,
+            // so carrying a previous term's approvals in would tell a returning student they
+            // "already have" the subject they are re-enrolling in and count last term's units
+            // against this term's cap.
+            var active = await db.SlotRequests
+                .Include(r => r.Section).ThenInclude(s => s!.Subject)
+                .Where(r => r.StudentRegistrationId == registration.Id
+                    && r.Section!.SemesterId == semester.Id
+                    && (r.Status == SlotRequestStatus.Requested || r.Status == SlotRequestStatus.Approved))
+                .ToListAsync(cancellationToken);
+
             var history = await AcademicHistory.LoadAsync(db, registration.Id, cancellationToken);
             if (history.IsEnforceable)
             {
-                var unmet = await history.UnmetPrerequisitesAsync(db, section.SubjectId, cancellationToken);
+                // A co-requisite is met by a seat (requested or approved) in it this term.
+                var takingThisTerm = active
+                    .Select(r => r.Section?.SubjectId)
+                    .OfType<Guid>()
+                    .ToHashSet();
+                var unmet = await history.UnmetPrerequisitesAsync(
+                    db, section.SubjectId, cancellationToken, takingThisTerm);
                 if (unmet.Count > 0)
                 {
                     var code = section.Subject?.Code ?? "this subject";
@@ -113,7 +131,7 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
 
                     return Results.Json(new
                     {
-                        message = AcademicHistory.Refusal(code, unmet, aboutSelf: true),
+                        message = AcademicHistory.Refusal(code, unmet, aboutSelf: true, section.Subject),
                         reasons = unmet.Select(s => $"{s.Code} — {s.Title}").ToList()
                     }, statusCode: StatusCodes.Status409Conflict);
                 }
@@ -124,17 +142,6 @@ namespace SENGENSystem.Server.Features.Enlistment.RequestSlot
             {
                 return Results.BadRequest(new { message = "This section's schedule has not been published yet." });
             }
-
-            // Only this term's live requests. Every check below — duplicate subject, the per-student
-            // unit ceiling, time overlap — is a statement about one semester's load, so carrying a
-            // previous term's approvals in would tell a returning student they "already have" the
-            // subject they are re-enrolling in and count last term's units against this term's cap.
-            var active = await db.SlotRequests
-                .Include(r => r.Section).ThenInclude(s => s!.Subject)
-                .Where(r => r.StudentRegistrationId == registration.Id
-                    && r.Section!.SemesterId == semester.Id
-                    && (r.Status == SlotRequestStatus.Requested || r.Status == SlotRequestStatus.Approved))
-                .ToListAsync(cancellationToken);
 
             if (active.Any(r => r.SectionId == section.Id))
             {

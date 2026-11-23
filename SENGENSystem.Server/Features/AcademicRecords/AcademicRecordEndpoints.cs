@@ -485,8 +485,8 @@ namespace SENGENSystem.Server.Features.AcademicRecords
         }
 
         /// <summary>
-        /// The curriculum a student's sheet is read against — the active catalog for their program,
-        /// or the one their transferee evaluation was pinned to. Same convention as the evaluation
+        /// The curriculum a student's sheet is read against — the one their transferee evaluation was
+        /// pinned to, otherwise the catalog for the school year they entered (StudentCurriculum). Same convention as the evaluation
         /// sheet and the enlistment plan, so all three show the same subject list.
         /// </summary>
         internal static async Task<Domain.Curriculum?> ResolveCurriculumAsync(
@@ -499,10 +499,7 @@ namespace SENGENSystem.Server.Features.AcademicRecords
             var program = registration.Program.ToString();
             if (pinned is not null && pinned.ProgramCode == program) return pinned;
 
-            return await db.Curricula.AsNoTracking()
-                .Where(c => !c.IsArchived && c.ProgramCode == program)
-                .OrderByDescending(c => c.IsActive)
-                .FirstOrDefaultAsync(ct);
+            return await StudentCurriculum.ResolveAsync(db, registration, ct);
         }
 
         private static string? Iso(DateTime? value) =>

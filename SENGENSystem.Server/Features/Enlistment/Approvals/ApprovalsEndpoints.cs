@@ -80,9 +80,6 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
 
     public static class ApprovalsEndpoints
     {
-        // Guard rail on the override so a typo can't create a 10,000-seat section.
-        private const int MaxOverrideCapacity = 200;
-
         public static IEndpointRouteBuilder MapEnlistmentApprovals(this IEndpointRouteBuilder app)
         {
             var group = app.MapGroup("/api/enlistment/approvals")
@@ -392,7 +389,19 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
             var history = await AcademicHistory.LoadAsync(db, request.StudentRegistrationId, cancellationToken);
             if (history.IsEnforceable)
             {
-                var unmet = await history.UnmetPrerequisitesAsync(db, section.SubjectId, cancellationToken);
+                // A co-requisite is met by a live seat (requested or approved) in it this term — the
+                // same reading the request leg uses, so a pair the student could request is a pair
+                // the Registrar can approve, in either order.
+                var takingThisTerm = (await db.SlotRequests.AsNoTracking()
+                        .Where(r => r.StudentRegistrationId == request.StudentRegistrationId
+                            && r.Id != request.Id
+                            && r.Section!.SemesterId == section.SemesterId
+                            && (r.Status == SlotRequestStatus.Requested || r.Status == SlotRequestStatus.Approved))
+                        .Select(r => r.Section!.SubjectId)
+                        .ToListAsync(cancellationToken))
+                    .ToHashSet();
+                var unmet = await history.UnmetPrerequisitesAsync(
+                    db, section.SubjectId, cancellationToken, takingThisTerm);
                 if (unmet.Count > 0)
                 {
                     var code = section.Subject?.Code ?? "this subject";
@@ -400,7 +409,7 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                         $"Approval of {request.StudentRegistration!.StudentNumber}'s seat in {code} was " +
                         $"refused — unmet prerequisite(s): {string.Join(", ", unmet.Select(s => s.Code))}.",
                         "SlotRequest", request.Id.ToString());
-                    return (false, AcademicHistory.Refusal(code, unmet, aboutSelf: false));
+                    return (false, AcademicHistory.Refusal(code, unmet, aboutSelf: false, section.Subject));
                 }
             }
 
@@ -647,7 +656,8 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
 
         // POST /api/enlistment/approvals/sections/{sectionId}/capacity — raise a section's seat cap
         // so a section short of a full block can be completed (FR-ENL-03). The new cap can never be
-        // set below the seats already approved, and is bounded so a typo can't create a huge section.
+        // set below the seats already approved, nor raised past the institutional SectionCapacityCap
+        // or the smallest room the section meets in (FR-ENL-10).
         private static async Task<IResult> OverrideCapacityAsync(
             Guid sectionId,
             OverrideCapacityRequest body,
@@ -665,12 +675,42 @@ namespace SENGENSystem.Server.Features.Enlistment.Approvals
                 return Results.NotFound(new { message = "Section not found." });
             }
 
-            if (body.Capacity < 1 || body.Capacity > MaxOverrideCapacity)
+            if (body.Capacity < 1)
             {
-                return Results.BadRequest(new
+                return Results.BadRequest(new { message = "Capacity must be at least 1 seat." });
+            }
+
+            // FR-ENL-03/10: an override completes a section *within* the institutional ceiling — it
+            // is not a way past it. And a section cannot hold more students than the smallest room
+            // it meets in: a 40-seat cap is meaningless for a lab meeting in a room of 30 PCs. A
+            // section that is already above the ceiling (the cap was lowered after it was set) may
+            // still be lowered towards it; only raising past the limit is refused.
+            var institutionalCap = await db.GetSectionCapacityCapAsync(cancellationToken);
+            var smallestRoom = await db.ScheduleAssignments.AsNoTracking()
+                .Where(a => a.SectionId == section.Id && a.Room!.Capacity > 0)
+                .OrderBy(a => a.Room!.Capacity)
+                .Select(a => new { a.Room!.Name, a.Room.Capacity })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (body.Capacity > section.Capacity)
+            {
+                if (body.Capacity > institutionalCap)
                 {
-                    message = $"Capacity must be between 1 and {MaxOverrideCapacity} seats."
-                });
+                    return Results.Conflict(new
+                    {
+                        message = $"The institutional seat cap is {institutionalCap} per section — " +
+                                  $"{section.SectionCode} can't be raised to {body.Capacity}. " +
+                                  "Open another section instead."
+                    });
+                }
+                if (smallestRoom is not null && body.Capacity > smallestRoom.Capacity)
+                {
+                    return Results.Conflict(new
+                    {
+                        message = $"{section.SectionCode} meets in {smallestRoom.Name}, which seats " +
+                                  $"{smallestRoom.Capacity} — the cap can't be raised past that. " +
+                                  "Move the class to a larger room, or open another section."
+                    });
+                }
             }
             if (body.Capacity < section.EnrolledCount)
             {

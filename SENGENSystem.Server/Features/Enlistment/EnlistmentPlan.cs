@@ -145,9 +145,8 @@ namespace SENGENSystem.Server.Features.Enlistment
 
         /// <summary>
         /// The curriculum this student's subjects come from: the one their evaluation was pinned to
-        /// if it is still their program's, otherwise the active catalog for the program on their SIS
-        /// (<see cref="StudentRegistration.Program"/> matched to <see cref="Domain.Curriculum.ProgramCode"/>,
-        /// the same convention the transferee evaluation reads by).
+        /// if it is still their program's, otherwise the catalog in force for their program in the
+        /// school year they entered (<see cref="StudentCurriculum"/>).
         /// <para>
         /// Deliberately stricter than the evaluation's resolution, which falls back to <i>any</i>
         /// curriculum so a staff sheet is never blank. Here that fallback would be the exact bug
@@ -173,10 +172,8 @@ namespace SENGENSystem.Server.Features.Enlistment
                 }
             }
 
-            return await db.Curricula.AsNoTracking()
-                .Where(c => !c.IsArchived && c.ProgramCode == program)
-                .OrderByDescending(c => c.IsActive)
-                .FirstOrDefaultAsync(cancellationToken);
+            // The catalog they entered under, not whichever is active now (StudentCurriculum).
+            return await StudentCurriculum.ResolveAsync(db, registration, cancellationToken);
         }
     }
 }

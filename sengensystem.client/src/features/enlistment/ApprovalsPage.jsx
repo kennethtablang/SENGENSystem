@@ -395,7 +395,7 @@ function ApprovalsPage() {
                                         {capEditing?.sectionId === row.sectionId ? (
                                             <div className="enl-cap-form">
                                                 <input
-                                                    type="number" min="1" max="200" step="1"
+                                                    type="number" min="1" step="1"
                                                     aria-label="New seat capacity"
                                                     value={capEditing.capacity}
                                                     onChange={e => setCapEditing({ ...capEditing, capacity: e.target.value })}

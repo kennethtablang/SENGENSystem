@@ -45,6 +45,65 @@ namespace SENGENSystem.Server.Tests.Integration
         }
 
         [SqlFact]
+        public async Task Request_leg_accepts_a_corequisite_the_student_is_already_taking_this_term()
+        {
+            // The scenario's two subjects are both year 1 of the same term, so the edge between
+            // them is a co-requisite. A continuing student (history on file) who holds a request in
+            // the first must be let into the second — they are meant to be taken together.
+            var term = await scenario.ActiveTermAsync();
+            var past = await scenario.PastTermAsync();
+            var subjects = await scenario.SubjectsAsync(term, 3, secondRequiresFirst: true);
+            var coRequisite = await scenario.SectionAsync(subjects[0], term, publishedAt: (DayOfWeek.Monday, 8 * 60, 10 * 60));
+            var dependent = await scenario.SectionAsync(subjects[1], term, publishedAt: (DayOfWeek.Tuesday, 8 * 60, 10 * 60));
+            var (student, email) = await scenario.StudentAsync(term);
+            await scenario.RecordAsync(student, subjects[2], past, SubjectVerdict.Passed); // the gate is enforced
+            await scenario.RequestAsync(student, coRequisite);
+
+            var client = await app.SignedInAsync(email, StudentPassword);
+            var response = await client.PostAsJsonAsync("/api/enlistment/requests", new { sectionId = dependent.Id });
+
+            Assert.True(response.StatusCode == HttpStatusCode.Created,
+                $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        }
+
+        [SqlFact]
+        public async Task Request_leg_names_the_corequisite_to_request_first()
+        {
+            var term = await scenario.ActiveTermAsync();
+            var past = await scenario.PastTermAsync();
+            var subjects = await scenario.SubjectsAsync(term, 3, secondRequiresFirst: true);
+            var dependent = await scenario.SectionAsync(subjects[1], term, publishedAt: (DayOfWeek.Tuesday, 8 * 60, 10 * 60));
+            var (student, email) = await scenario.StudentAsync(term);
+            await scenario.RecordAsync(student, subjects[2], past, SubjectVerdict.Passed);
+
+            var client = await app.SignedInAsync(email, StudentPassword);
+            var response = await client.PostAsJsonAsync("/api/enlistment/requests", new { sectionId = dependent.Id });
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Contains($"taken together with {subjects[0].Code}", await MessageAsync(response));
+        }
+
+        [SqlFact]
+        public async Task Approval_leg_approves_a_corequisite_pair_in_either_order()
+        {
+            var term = await scenario.ActiveTermAsync();
+            var past = await scenario.PastTermAsync();
+            var subjects = await scenario.SubjectsAsync(term, 3, secondRequiresFirst: true);
+            var coRequisite = await scenario.SectionAsync(subjects[0], term, publishedAt: (DayOfWeek.Monday, 8 * 60, 10 * 60));
+            var dependent = await scenario.SectionAsync(subjects[1], term, publishedAt: (DayOfWeek.Tuesday, 8 * 60, 10 * 60));
+            var (student, _) = await scenario.StudentAsync(term);
+            await scenario.RecordAsync(student, subjects[2], past, SubjectVerdict.Passed);
+            await scenario.RequestAsync(student, coRequisite); // still pending
+            var requestId = await scenario.RequestAsync(student, dependent);
+
+            var registrar = await app.SignedInAsync(Registrar, StaffPassword);
+            var response = await registrar.PostAsync($"/api/enlistment/approvals/{requestId}/approve", null);
+
+            Assert.True(response.StatusCode == HttpStatusCode.OK,
+                $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        }
+
+        [SqlFact]
         public async Task Request_leg_falls_open_for_a_student_with_no_history_on_file()
         {
             // An empty record is not "every prerequisite unmet" (AcademicHistory.IsEnforceable).

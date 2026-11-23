@@ -667,7 +667,7 @@ namespace SENGENSystem.Server.Features.Scheduling.GenerateSchedule
                     continue;
                 }
 
-                if (CurriculumOrder(prerequisite) == CurriculumOrder(dependent))
+                if (SubjectPrerequisite.IsCoRequisitePair(dependent, prerequisite))
                 {
                     // Same year/term — a co-requisite pair: each cohort taking the dependent
                     // this semester must be offered the co-requisite alongside it.

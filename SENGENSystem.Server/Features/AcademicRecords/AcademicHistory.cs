@@ -113,16 +113,31 @@ namespace SENGENSystem.Server.Features.AcademicRecords
         /// met, or when there is no history to judge by — callers check
         /// <see cref="IsEnforceable"/> for the last case rather than reading an empty list as "met".
         /// </summary>
+        /// <param name="takingThisTerm">
+        /// The subjects the student holds a live (requested or approved) seat in this term. A
+        /// <b>co-requisite</b> (<see cref="SubjectPrerequisite.IsCoRequisitePair"/>) is met when it
+        /// is passed <i>or</i> in this set — it is meant to be taken alongside, so requiring it to
+        /// be passed first would refuse every student the dependent subject until a term after the
+        /// curriculum says to take it. An ordinary prerequisite is never met by this set: taking
+        /// it now is not having passed it.
+        /// </param>
         public async Task<List<Subject>> UnmetPrerequisitesAsync(
-            AppDbContext db, Guid subjectId, CancellationToken cancellationToken)
+            AppDbContext db, Guid subjectId, CancellationToken cancellationToken,
+            IReadOnlySet<Guid>? takingThisTerm = null)
         {
-            var prerequisites = await db.SubjectPrerequisites.AsNoTracking()
+            var edges = await db.SubjectPrerequisites.AsNoTracking()
                 .Where(p => p.SubjectId == subjectId)
-                .Select(p => p.PrerequisiteSubject!)
-                .OrderBy(s => s.YearLevel).ThenBy(s => s.Code)
+                .Select(p => new { Dependent = p.Subject!, Prerequisite = p.PrerequisiteSubject! })
                 .ToListAsync(cancellationToken);
 
-            return prerequisites.Where(p => !HasPassed(p.Id)).ToList();
+            return edges
+                .Where(e => !HasPassed(e.Prerequisite.Id))
+                .Where(e => !(takingThisTerm is not null
+                    && takingThisTerm.Contains(e.Prerequisite.Id)
+                    && SubjectPrerequisite.IsCoRequisitePair(e.Dependent, e.Prerequisite)))
+                .Select(e => e.Prerequisite)
+                .OrderBy(s => s.YearLevel).ThenBy(s => s.Code)
+                .ToList();
         }
 
         /// <summary>
@@ -143,11 +158,9 @@ namespace SENGENSystem.Server.Features.AcademicRecords
         {
             if (!IsEnforceable) return null;
 
-            var program = registration.Program.ToString();
-            var curriculum = await db.Curricula.AsNoTracking()
-                .Where(c => !c.IsArchived && c.ProgramCode == program)
-                .OrderByDescending(c => c.IsActive)
-                .FirstOrDefaultAsync(cancellationToken);
+            // Earned units are measured against the catalog the student is actually on — their
+            // passed subjects are rows of it, so any other catalog would count them as nothing.
+            var curriculum = await StudentCurriculum.ResolveAsync(db, registration, cancellationToken);
             if (curriculum is null) return null;
 
             var unitsByYear = await db.Subjects.AsNoTracking()
@@ -166,16 +179,41 @@ namespace SENGENSystem.Server.Features.AcademicRecords
         /// same thing about the same student — and because the sentence has to name the subjects
         /// and point at the remedy, since a student cannot fix a missing record themselves.
         /// </summary>
-        public static string Refusal(string subjectCode, IReadOnlyList<Subject> unmet, bool aboutSelf)
+        /// <param name="dependent">
+        /// The subject being refused. When given, unmet co-requisites are worded as "take it
+        /// alongside" rather than "pass it first" — the remedy is different, and telling a student
+        /// to pass a subject the curriculum schedules for this very term would be wrong.
+        /// </param>
+        public static string Refusal(
+            string subjectCode, IReadOnlyList<Subject> unmet, bool aboutSelf, Subject? dependent = null)
         {
-            var list = string.Join(", ", unmet.Select(s => s.Code));
-            var subject = aboutSelf ? "You have" : "This student has";
-            var remedy = aboutSelf
-                ? "If you have already taken " + (unmet.Count == 1 ? "it" : "them") +
-                  ", see the Registrar — your academic record may not be complete."
-                : "If their record is incomplete, add the missing subjects under Academic records first.";
-            return $"{subject} not passed the prerequisite" + (unmet.Count == 1 ? "" : "s") +
-                   $" for {subjectCode}: {list}. {remedy}";
+            var coRequisites = dependent is null
+                ? []
+                : unmet.Where(p => SubjectPrerequisite.IsCoRequisitePair(dependent, p)).ToList();
+            var prerequisites = unmet.Except(coRequisites).ToList();
+
+            var sentences = new List<string>();
+            if (prerequisites.Count > 0)
+            {
+                var list = string.Join(", ", prerequisites.Select(s => s.Code));
+                var subject = aboutSelf ? "You have" : "This student has";
+                var remedy = aboutSelf
+                    ? "If you have already taken " + (prerequisites.Count == 1 ? "it" : "them") +
+                      ", see the Registrar — your academic record may not be complete."
+                    : "If their record is incomplete, add the missing subjects under Academic records first.";
+                sentences.Add($"{subject} not passed the prerequisite" + (prerequisites.Count == 1 ? "" : "s") +
+                              $" for {subjectCode}: {list}. {remedy}");
+            }
+            if (coRequisites.Count > 0)
+            {
+                var list = string.Join(", ", coRequisites.Select(s => s.Code));
+                sentences.Add(aboutSelf
+                    ? $"{subjectCode} is taken together with {list}. Request a seat in {list} first, " +
+                      $"then request {subjectCode} again."
+                    : $"{subjectCode} is taken together with {list}, and this student holds no seat or " +
+                      $"pending request in {list} this term.");
+            }
+            return string.Join(" ", sentences);
         }
     }
 }

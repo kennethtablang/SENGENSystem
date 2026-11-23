@@ -463,11 +463,9 @@ namespace SENGENSystem.Server.Features.Registration.TransfereeEvaluation
                 if (existing is not null) return existing;
             }
 
-            var program = registration.Program.ToString();
-            return await db.Curricula.AsNoTracking()
-                .Where(c => !c.IsArchived && c.ProgramCode == program)
-                .OrderByDescending(c => c.IsActive)
-                .FirstOrDefaultAsync(ct)
+            // Unpinned: the catalog for the year they entered (StudentCurriculum), so a new sheet is
+            // pinned to the same curriculum their enlistment plan reads.
+            return await StudentCurriculum.ResolveAsync(db, registration, ct)
                 ?? await db.Curricula.AsNoTracking()
                     .Where(c => !c.IsArchived)
                     .OrderByDescending(c => c.IsActive)

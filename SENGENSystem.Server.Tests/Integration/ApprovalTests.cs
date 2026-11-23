@@ -1,5 +1,7 @@
 using System.Net;
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
+using SENGENSystem.Server.Common.Persistence;
 using SENGENSystem.Server.Domain;
 using static SENGENSystem.Server.Tests.Integration.EnlistmentScenario;
 
@@ -147,6 +149,80 @@ namespace SENGENSystem.Server.Tests.Integration
             Assert.Equal(1, (await db.Sections.SingleAsync(s => s.Id == section.Id)).EnrolledCount);
             Assert.Equal(1, await db.SlotRequests.CountAsync(r =>
                 r.SectionId == section.Id && r.Status == SlotRequestStatus.Approved));
+        }
+
+        // ---- Capacity override (FR-ENL-10): within the institutional cap and the room ----
+
+        private async Task<HttpResponseMessage> OverrideAsync(Guid sectionId, int capacity)
+        {
+            var registrar = await app.SignedInAsync(Registrar, StaffPassword);
+            return await registrar.PostAsJsonAsync(
+                $"/api/enlistment/approvals/sections/{sectionId}/capacity", new { capacity, reason = "test" });
+        }
+
+        private async Task<int> CapacityAsync(Guid sectionId)
+        {
+            await using var scope = app.Scope(out var db);
+            return (await db.Sections.SingleAsync(s => s.Id == sectionId)).Capacity;
+        }
+
+        [SqlFact]
+        public async Task An_override_past_the_institutional_seat_cap_is_refused()
+        {
+            // The override used to accept anything up to a hard-coded 200, so "max 40 per section"
+            // held only until someone typed a bigger number.
+            var term = await scenario.ActiveTermAsync();
+            var subject = (await scenario.SubjectsAsync(term, 1))[0];
+            var section = await scenario.SectionAsync(subject, term, capacity: 1, publishedAt: Monday8To10);
+            int cap;
+            await using (var scope = app.Scope(out var db))
+            {
+                cap = (await db.GetSettingsAsync()).SectionCapacityCap;
+            }
+
+            var response = await OverrideAsync(section.Id, cap + 1);
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Contains("institutional seat cap", await MessageAsync(response));
+            Assert.Equal(1, await CapacityAsync(section.Id));
+        }
+
+        [SqlFact]
+        public async Task An_override_past_the_room_the_section_meets_in_is_refused()
+        {
+            // A section can't seat more students than its smallest room holds — the computer lab's
+            // PC count, say — however much room the institutional cap leaves.
+            var term = await scenario.ActiveTermAsync();
+            var subject = (await scenario.SubjectsAsync(term, 1))[0];
+            var section = await scenario.SectionAsync(subject, term, capacity: 3);
+            var roomName = $"Small room {Guid.NewGuid().ToString("N")[..6]}";
+            await using (var scope = app.Scope(out var db))
+            {
+                var room = new Room { Name = roomName, Capacity = 5, Kind = RoomKind.LectureRoom };
+                var slot = new TimeSlot { Day = DayOfWeek.Friday, StartMinutes = 13 * 60, EndMinutes = 15 * 60, IsAllowable = false };
+                db.Rooms.Add(room);
+                db.TimeSlots.Add(slot);
+                db.ScheduleAssignments.Add(new ScheduleAssignment
+                {
+                    SemesterId = term.Id,
+                    SectionId = section.Id,
+                    Room = room,
+                    TimeSlot = slot,
+                    FacultyProfileId = await db.FacultyProfiles.OrderBy(p => p.EmployeeId).Select(p => p.Id).FirstAsync(),
+                    IsFinalized = true,
+                    IsPublished = true
+                });
+                await db.SaveChangesAsync();
+            }
+
+            var over = await OverrideAsync(section.Id, 6);
+            Assert.Equal(HttpStatusCode.Conflict, over.StatusCode);
+            Assert.Contains(roomName, await MessageAsync(over));
+            Assert.Equal(3, await CapacityAsync(section.Id));
+
+            var fits = await OverrideAsync(section.Id, 5);
+            Assert.Equal(HttpStatusCode.OK, fits.StatusCode);
+            Assert.Equal(5, await CapacityAsync(section.Id));
         }
     }
 }

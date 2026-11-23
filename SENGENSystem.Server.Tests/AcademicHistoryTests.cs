@@ -136,5 +136,73 @@ namespace SENGENSystem.Server.Tests
 
             Assert.Empty(unmet);
         }
+
+        // ---- Co-requisites: same year level and term, so taken together ----
+        // In the fixture IT102 requires IT101 and both are year 1, first semester, which makes the
+        // pair a co-requisite (SubjectPrerequisite.IsCoRequisitePair) — the same reading the
+        // schedule generator uses.
+
+        [Fact]
+        public async Task A_corequisite_held_this_term_is_met_without_having_been_passed()
+        {
+            // The bug: a continuing student (history on file) was refused IT102 because IT101 was
+            // not *passed* — yet the curriculum schedules the two for the same term. Holding a seat
+            // or a pending request in IT101 this term is what the pair asks for.
+            using var fixture = TestDb.Create();
+            fixture.Record(fixture.Standalone, SubjectVerdict.Passed); // makes the gate enforceable
+            var history = await AcademicHistory.LoadAsync(fixture.Db, fixture.Student.Id, default);
+
+            var unmet = await history.UnmetPrerequisitesAsync(
+                fixture.Db, fixture.Advanced.Id, default, new HashSet<Guid> { fixture.Basic.Id });
+
+            Assert.True(history.IsEnforceable);
+            Assert.Empty(unmet);
+        }
+
+        [Fact]
+        public async Task A_corequisite_not_held_this_term_is_still_unmet()
+        {
+            using var fixture = TestDb.Create();
+            fixture.Record(fixture.Standalone, SubjectVerdict.Passed);
+            var history = await AcademicHistory.LoadAsync(fixture.Db, fixture.Student.Id, default);
+
+            var unmet = await history.UnmetPrerequisitesAsync(
+                fixture.Db, fixture.Advanced.Id, default, new HashSet<Guid>());
+
+            Assert.Equal("IT101", Assert.Single(unmet).Code);
+        }
+
+        [Fact]
+        public async Task An_earlier_term_prerequisite_is_not_met_by_taking_it_now()
+        {
+            // IT201 (year 2) requires IT101 (year 1): a real prerequisite, not a co-requisite. A
+            // student re-taking IT101 this term has still not passed it.
+            using var fixture = TestDb.Create(yearLevel: 2);
+            fixture.Db.SubjectPrerequisites.Add(new SubjectPrerequisite
+            {
+                SubjectId = fixture.SecondYear.Id,
+                PrerequisiteSubjectId = fixture.Basic.Id
+            });
+            fixture.Db.SaveChanges();
+            fixture.Record(fixture.Basic, SubjectVerdict.Failed);
+            var history = await AcademicHistory.LoadAsync(fixture.Db, fixture.Student.Id, default);
+
+            var unmet = await history.UnmetPrerequisitesAsync(
+                fixture.Db, fixture.SecondYear.Id, default, new HashSet<Guid> { fixture.Basic.Id });
+
+            Assert.Equal("IT101", Assert.Single(unmet).Code);
+        }
+
+        [Fact]
+        public void An_unmet_corequisite_is_worded_as_take_it_together_not_pass_it_first()
+        {
+            using var fixture = TestDb.Create();
+
+            var message = AcademicHistory.Refusal(
+                fixture.Advanced.Code, [fixture.Basic], aboutSelf: true, fixture.Advanced);
+
+            Assert.Contains("taken together with IT101", message);
+            Assert.DoesNotContain("not passed", message);
+        }
     }
 }
