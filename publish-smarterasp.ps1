@@ -17,6 +17,25 @@ if (-not (Test-Path $prodSettings)) {
     throw "Missing SENGENSystem.Server\appsettings.Production.json - copy appsettings.Production.example.json and fill it in first."
 }
 
+# Refuse to build while any placeholder from the example file is still in place.
+$text = Get-Content $prodSettings -Raw
+try { $settings = $text | ConvertFrom-Json } catch { throw "appsettings.Production.json is not valid JSON: $($_.Exception.Message)" }
+$placeholders = [ordered]@{
+    'SQLxxxx'                 = 'ConnectionStrings:DefaultConnection (database server)'
+    'db_xxxxx'                = 'ConnectionStrings:DefaultConnection (database name / user)'
+    'YOUR-DATABASE-PASSWORD'  = 'ConnectionStrings:DefaultConnection (database password)'
+    'PASTE-A-LONG-RANDOM'     = 'Jwt:Key'
+    'your-school.edu.ph'      = 'Seed:SuperAdminEmail / Seed:AdminEmail'
+    'A-STRONG-FIRST-PASSWORD' = 'Seed:SuperAdminPassword / Seed:AdminPassword'
+    'GMAIL-APP-PASSWORD'      = 'Email:Password'
+    'your-site-address'       = 'Email:ClientBaseUrl'
+}
+$unfilled = @($placeholders.Keys | Where-Object { $text.Contains($_) } | ForEach-Object { $placeholders[$_] } | Select-Object -Unique)
+if ($unfilled.Count -gt 0) {
+    throw ("appsettings.Production.json still has placeholders. Fill in:`n  - " + ($unfilled -join "`n  - "))
+}
+if ("$($settings.Jwt.Key)".Length -lt 32) { throw 'Jwt:Key must be at least 32 characters.' }
+
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 if (Test-Path $zip) { Remove-Item $zip -Force }
 

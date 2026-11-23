@@ -40,8 +40,8 @@ password from a server, so:
 |---|---|
 | `DefaultConnection` | The **server, database, user, password** from Step 1 |
 | `Jwt:Key` | Any long random text, 40+ characters (a password manager can generate one). Keep it secret |
-| `SuperAdminEmail` / `SuperAdminPassword` | The Super Admin's email and a first password |
-| `AdminEmail` / `AdminPassword` | The School Admin's email and a first password |
+| `SuperAdminEmail` / `SuperAdminPassword` | The Super Admin's real email, and a strong password |
+| `AdminEmail` / `AdminPassword` | The School Admin's real email, and a strong password |
 | `Email:Password` | The Gmail app password from Step 2 |
 | `Email:ClientBaseUrl` | The site's address, e.g. `https://sengen.yourschool.edu.ph` (used in emailed links) |
 
@@ -58,6 +58,8 @@ Open PowerShell in the repository folder and run:
 ```
 
 It builds the server and the web client together and produces **`publish.zip`** (about 24 MB).
+If any placeholder from Step 3 is still in the settings file, it stops and lists which fields are
+left to fill in.
 
 ---
 
@@ -76,8 +78,9 @@ works, if you prefer that.)
 
 1. Browse to the site. The first visit takes up to a minute while it sets up the database
    (tables, the STI programs and subjects, and the two admin accounts).
-2. Sign in as the **School Admin** and the **Super Admin** with the first passwords from Step 3.
-   Each is asked to choose a new password right away.
+2. Sign in as the **School Admin** and the **Super Admin** with the passwords from Step 3.
+   The system does **not** ask for a new one, so change each from **Profile → Change password**
+   if anyone else has seen the settings file.
 3. In **System parameters**, set the institution name, seat cap, and Program Heads.
 4. Add the real staff in **User management**, then set up the term, buildings, and rooms.
 
