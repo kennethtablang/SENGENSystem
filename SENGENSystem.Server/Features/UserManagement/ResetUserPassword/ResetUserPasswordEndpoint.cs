@@ -17,8 +17,7 @@ namespace SENGENSystem.Server.Features.UserManagement.ResetUserPassword
         public static IEndpointRouteBuilder MapResetUserPassword(this IEndpointRouteBuilder app)
         {
             app.MapPost("/api/users/{id:guid}/password", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(
-                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
+                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SuperAdmin)));
             return app;
         }
 

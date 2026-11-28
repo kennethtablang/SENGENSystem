@@ -23,8 +23,7 @@ namespace SENGENSystem.Server.Features.UserManagement.CreateUser
         public static IEndpointRouteBuilder MapCreateUser(this IEndpointRouteBuilder app)
         {
             app.MapPost("/api/users", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(
-                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
+                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SuperAdmin)));
             return app;
         }
 

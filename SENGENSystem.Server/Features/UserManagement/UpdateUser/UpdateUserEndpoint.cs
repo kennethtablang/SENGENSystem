@@ -18,8 +18,7 @@ namespace SENGENSystem.Server.Features.UserManagement.UpdateUser
         public static IEndpointRouteBuilder MapUpdateUser(this IEndpointRouteBuilder app)
         {
             app.MapPut("/api/users/{id:guid}", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(
-                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
+                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SuperAdmin)));
             return app;
         }
 

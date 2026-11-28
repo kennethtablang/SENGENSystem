@@ -101,7 +101,7 @@ const faqs = [
     },
     {
         q: 'I forgot my password. What do I do?',
-        a: 'Ask the School Admin (or your department’s office) to reset it from User management. You can change it yourself afterwards under Profile settings.'
+        a: 'Ask the Super Admin to reset it from User management. You can change it yourself afterwards under Profile settings.'
     }
 ];
 

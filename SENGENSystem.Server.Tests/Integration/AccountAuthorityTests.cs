@@ -80,16 +80,43 @@ namespace SENGENSystem.Server.Tests.Integration
         }
 
         [SqlFact]
-        public async Task Managing_downwards_still_works()
+        public async Task The_super_admin_manages_other_accounts()
         {
-            // The rule refuses upwards only: a School Admin still manages staff, as before.
             var (_, email) = await new EnlistmentScenario(app).StudentAsync(await new EnlistmentScenario(app).ActiveTermAsync());
             var student = await UserAsync(email);
-            var admin = await app.SignedInAsync(SchoolAdmin, SchoolAdminPassword);
+            var super = await app.SignedInAsync(SuperAdmin, SuperAdminPassword);
 
-            var reset = await admin.PostAsJsonAsync($"/api/users/{student.Id}/password", new { newPassword = "Reset2026ok" });
+            var reset = await super.PostAsJsonAsync($"/api/users/{student.Id}/password", new { newPassword = "Reset2026ok" });
 
             Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        }
+
+        [SqlFact]
+        public async Task User_management_is_super_admin_only()
+        {
+            // School Admin and Academic Head no longer reach any user-management endpoint,
+            // not even for accounts below them.
+            var (_, email) = await new EnlistmentScenario(app).StudentAsync(await new EnlistmentScenario(app).ActiveTermAsync());
+            var student = await UserAsync(email);
+
+            foreach (var client in new[]
+                     {
+                         await app.SignedInAsync(SchoolAdmin, SchoolAdminPassword),
+                         await app.SignedInAsync(AcademicHead, StaffPassword)
+                     })
+            {
+                Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/users")).StatusCode);
+                Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/users",
+                    new { firstName = "New", lastName = "Staff", email = "new.staff@example.test", role = "Registrar", password = "Staff2026ok" })).StatusCode);
+                Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync(
+                    $"/api/users/{student.Id}/password", new { newPassword = "Reset2026ok" })).StatusCode);
+                Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync(
+                    $"/api/users/{student.Id}/active", new { isActive = false })).StatusCode);
+            }
+
+            var after = await UserAsync(email);
+            Assert.Equal(student.Hash, after.Hash);
+            Assert.True(after.Active);
         }
 
         [SqlFact]

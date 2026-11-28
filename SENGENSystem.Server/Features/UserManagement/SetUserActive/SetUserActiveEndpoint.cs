@@ -18,8 +18,7 @@ namespace SENGENSystem.Server.Features.UserManagement.SetUserActive
         public static IEndpointRouteBuilder MapSetUserActive(this IEndpointRouteBuilder app)
         {
             app.MapPost("/api/users/{id:guid}/active", HandleAsync)
-                .RequireAuthorization(policy => policy.RequireRole(
-                    nameof(UserRole.SchoolAdmin), nameof(UserRole.AcademicHead)));
+                .RequireAuthorization(policy => policy.RequireRole(nameof(UserRole.SuperAdmin)));
             return app;
         }
 

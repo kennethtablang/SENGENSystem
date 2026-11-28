@@ -285,7 +285,9 @@ export const navGroups = [
                 to: '/users',
                 label: 'User management',
                 icon: 'users',
-                roles: ['AcademicHead'],
+                roles: ['SuperAdmin'],
+                // Super-admin-only: kept from the School Admin wildcard.
+                hideFor: ['SchoolAdmin'],
                 desc: 'Create, update, and deactivate accounts across all roles.'
             },
             {
