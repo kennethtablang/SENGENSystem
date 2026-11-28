@@ -490,20 +490,6 @@
   accent-color: var(--sti-blue);
 }
 
-.modal-foot .setup-foot-spacer {
-  margin-right: auto;
-}
-
-.chip-active {
-  background: var(--up-dim, rgba(10, 158, 99, 0.12));
-  color: var(--up);
-}
-
-.chip-lab {
-  background: var(--sti-blue-dim);
-  color: var(--sti-blue);
-}
-
 /* ---------- Delivery (lecture / laboratory split) ---------- */
 
 .curr-subj-split {

@@ -481,6 +481,9 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Property<Guid>("StudentRegistrationId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateOnly?>("SubmittedOn")
+                        .HasColumnType("date");
+
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -1569,6 +1572,9 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("AvatarUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -1662,6 +1668,28 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                         .HasFilter("[ProgramHeadOf] IS NOT NULL");
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("SENGENSystem.Server.Domain.UserAvatar", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserAvatars");
                 });
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.AdmissionRequirementProgram", b =>
@@ -2034,6 +2062,17 @@ namespace SENGENSystem.Server.Common.Persistence.Migrations
                     b.Navigation("Subject");
 
                     b.Navigation("TransfereeEvaluation");
+                });
+
+            modelBuilder.Entity("SENGENSystem.Server.Domain.UserAvatar", b =>
+                {
+                    b.HasOne("SENGENSystem.Server.Domain.User", "User")
+                        .WithOne()
+                        .HasForeignKey("SENGENSystem.Server.Domain.UserAvatar", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("SENGENSystem.Server.Domain.AdmissionRequirement", b =>

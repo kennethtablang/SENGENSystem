@@ -62,7 +62,7 @@ Requirement IDs are grouped by module. Each module maps to one FDD feature set a
 | FR-AUTH-04 | The system shall **validate all registration inputs** (required fields, email format, password strength) and present clear validation prompts for incomplete/invalid entries (addresses documented apply.sti.edu gap). | ✅ |
 | FR-AUTH-05 | The system shall authenticate users via email + password login and issue a session token (JWT) carrying the user's role. | ✅ |
 | FR-AUTH-06 | Passwords shall be stored only as salted cryptographic hashes — never in plain text (RA 10173 Data Privacy Act). | ✅ |
-| FR-AUTH-07 | The School Admin shall be able to create, update, deactivate, and assign roles to user accounts for all six roles. | ✅ |
+| FR-AUTH-07 | The Super Admin shall be able to create, update, deactivate, and assign roles to user accounts for all roles; no other role (School Admin included) has user management. | ✅ |
 | FR-AUTH-08 | Every API endpoint shall be guarded by role-based authorization middleware; users must never access functions or data outside their role. | ✅ |
 | FR-AUTH-09 | Duplicate account registration (same email) shall be rejected with a clear message. | ✅ |
 | FR-AUTH-10 | Users shall be able to **recover their own account** without staff intervention: a self-service forgot-password flow that emails a single-use, time-limited reset link. | ✅ |
@@ -387,43 +387,91 @@ Requirement IDs are grouped by module. Each module maps to one FDD feature set a
 
 ## 4. Non-Functional Requirements (ISO/IEC 25010:2023)
 
-The system will be evaluated by 45 purposively sampled respondents (30 students, 10 faculty, 5 administrative staff) using a 5-point Likert ISO 25010 questionnaire across six dimensions. **Target: overall weighted mean ≥ 4.00 ("Very Good")** — the empirically established threshold for sustainable adoption.
+The system will be evaluated by 45 purposively sampled respondents (30 students, 10 faculty, 5 administrative staff) using a bilingual (English/Filipino) 5-point Likert ISO 25010 questionnaire covering **eight characteristics**: Functional Suitability, Performance Efficiency, Compatibility, Usability, Reliability, Security, Maintainability, and Portability (the same eight the built-in survey asks, `Features/Survey/SurveyContent.cs`). **Target: overall weighted mean ≥ 4.00 ("Very Good")**, the empirically established threshold for sustainable adoption.
+
+*ISO/IEC 25010:2023 renames Usability to **Interaction capability** and Portability to **Flexibility**, and adds **Safety**. This document keeps the names the survey uses. Safety does not apply to an enrollment and scheduling system beyond the data-protection duties in NFR-7.*
+
+*The full requirement-by-requirement breakdown, with targets, evidence, the tests that verify each point, the operational requirements, and the open items, is in **`Non-Functional.md`**. This section is the summary.*
 
 **Per-point status uses the same legend:** ✅ Done · 🟡 Partial · ⬜ Planned.
 
 ### NFR-1 Functional Suitability
-- ✅ Generated schedules must have **zero hard-constraint violations** (100% hard-constraint satisfaction; benchmark systems fulfill ~78% of soft constraints). — enforced by construction: `SearchState.IsConsistent` rejects any assignment that would break a hard constraint.
-- ✅ Automated outputs (schedules, enrollment confirmations, capacity counts) must be accurate. — schedule output is accurate, confirmation emails are sent, and enlistment capacity counts are transactional (`EnrolledCount` under optimistic concurrency + DB CHECK).
+- ✅ Generated schedules must have **zero hard-constraint violations** (100% hard-constraint satisfaction; benchmark systems fulfill ~78% of soft constraints). Enforced by construction: `SearchState.IsConsistent` rejects any assignment that would double-book a room or a faculty member, overlap a cohort, overfill a room, or use the wrong room kind; faculty load ceilings are checked on the allocation before the search; the manual board runs the same checks on every edit. Verified by `CspSchedulerHardConstraintTests`.
+- ✅ Automated outputs (schedules, enrollment confirmations, capacity counts) must be accurate. Schedule output is accurate, confirmation emails are sent, and enlistment capacity counts are transactional (`EnrolledCount` under optimistic concurrency + DB CHECK).
+- ✅ Enlistment offers and allows only the subjects a student owes. One planner (`EnlistmentPlanner`) serves both the page and the request, and prerequisites are re-checked at request and at approval; year level and "enrolled for the term" are derived on read, so they are never stale.
+- ✅ Printed outputs reproduce the school's own instruments: Confirmation of Faculty Loading, scheduling grid, prospectus, transferee evaluation, and certificate of registration (`ReportFidelityTests`, `ReportSmokeTests`).
 
 ### NFR-2 Performance Efficiency
-- ✅ Schedule generation completes in practical time for STI Alaminos-scale data (dozens of sections; benchmark: comparable engines flagged when generation exceeded 30 s). — most-constrained-variable ordering plus **wall-clock and search-step budgets** bound the search; both budgets are staff-tunable in system parameters (default 20 s), so the operational ceiling is a configuration decision rather than a code constant.
-- 🟡 The system remains responsive under concurrent multi-user access during peak enrollment periods. — the enlistment slice is built; formal load testing is still to be run.
-- ✅ Real-time capacity counts must be consistent under concurrent enlistment (transactional enforcement of the 40-slot cap). — optimistic concurrency (`Section.RowVersion`) + DB CHECK constraint; a concurrent-approval race test confirms exactly one approval wins the last seat.
+- ✅ Schedule generation completes in practical time for STI Alaminos-scale data (dozens of sections; benchmark: comparable engines flagged when generation exceeded 30 s). Most-constrained-variable ordering plus **wall-clock and search-step budgets** bound the search. Both budgets are staff-tunable in system parameters (default 20 s), so the operational ceiling is a configuration decision rather than a code constant. The engine is deterministic (`CspSchedulerReproducibilityTests`).
+- ✅ Lists stay fast as records grow. Server-side filtering, sorting, and paging on the large queues; read-only `AsNoTracking` queries; 34 indexes declared in `AppDbContext`.
+- ✅ Bulk email never blocks the user. Reminders and publish notices are written to an **outbox** in the same transaction and sent by a background dispatcher in batches of 25.
+- ✅ Report pages refresh live (SignalR `/hubs/reports`, 500 ms debounce) instead of polling.
+- 🟡 The system remains responsive under concurrent multi-user access during peak enrollment periods. The design supports it (paging, background mail, row-version concurrency, rate limits sized for a campus lab behind one address), but formal load testing is still to be run.
+- ✅ Real-time capacity counts must be consistent under concurrent enlistment (transactional enforcement of the 40-slot cap). Optimistic concurrency (`Section.RowVersion`) + DB CHECK constraint; a concurrent-approval race test confirms exactly one approval wins the last seat.
 
-### NFR-3 Usability
-- ✅ Role-differentiated interfaces tailored to each user type's functional needs. — RBAC-filtered navigation (`features/shell/nav.js`) shows each role only its functions.
-- ✅ Student-facing modules optimized for minimal cognitive load and intuitive navigation. — auth, shell, live journey dashboard, document checklist, enlistment (cards with availability badges and one-click requests), and My schedule are all built to this standard; no student placeholder pages remain.
-- ✅ Mobile-responsive web interface (accessible via web and mobile browsers). — responsive shell with off-canvas sidebar and mobile breakpoints.
-- ✅ Users can find and understand functions without training. — a top-bar **search** over everything the signed-in role may open, per-item descriptions carried in the nav config, an **enrollment-stage ticker** telling every user where the term stands, role-scoped **badges** for outstanding work, a `/help` "how SEN-GEN works" page, and a `/settings` page for application preferences. Shared **table controls** (`features/shell/useTableControls.js` + `tableControls.jsx`) give every list the same behaviour — click a header to sort ascending, again for descending, a third time to clear; type to filter; page at a chosen page size — so a screen learned once is every screen learned. Applied across the system: users, audit trail, school years, semesters, buildings, rooms, class sections, subjects and curriculum, faculty load, enlistment approvals, student enlistment, assign student number, registration, document requirements, pre-authorization, transferee evaluation, term activations, pre-enrollment import results, publishing, the schedule tables, reports, faculty-load reports, system parameters, and the survey admin and recipient lists. Three views take **filtering and sorting but not paging**, and on purpose: the schedule tables, the class-section cards, and the curriculum catalog are *grouped* — one card per block, per course, per year — and their grouping is the information (a curriculum's order is the sequence a student takes it in), so paging would cut a timetable or a ladder in half rather than making it readable.
+### NFR-3 Usability (Interaction capability)
+- ✅ Role-differentiated interfaces tailored to each user type's functional needs. RBAC-filtered navigation (`features/shell/nav.js`) shows each role only its functions, and the server enforces the same boundaries.
+- ✅ Student-facing modules optimized for minimal cognitive load and intuitive navigation. Auth, shell, live journey dashboard, document checklist, enlistment (opens on the student's own plan, with availability badges and one-click requests), and My subjects are all built to this standard; no student placeholder pages remain.
+- ✅ Mobile-responsive web interface (accessible via web and mobile browsers). Responsive shell with off-canvas sidebar and mobile breakpoints across the feature stylesheets.
+- ✅ Users can find and understand functions without training:
+  - a top-bar **search** over everything the signed-in role may open;
+  - per-item descriptions carried in the nav config;
+  - an **enrollment-stage ticker** telling every user where the term stands;
+  - role-scoped **badges** for outstanding work;
+  - a `/help` "how SEN-GEN works" page;
+  - a `/settings` page for theme, density, text size, accent color, and sidebar.
+
+  Shared **table controls** give every list the same behaviour (click a header to sort ascending, again for descending, a third time to clear; type to filter; page at a chosen page size), so a screen learned once is every screen learned. They are applied across about 25 screens. The large queues page on the server (`useServerTable`); the rest use `useTableControls`. Three views take **filtering and sorting but not paging**, on purpose: the schedule tables, the class-section cards, and the curriculum catalog are *grouped* (one card per block, per course, per year). Their grouping is the information (a curriculum's order is the sequence a student takes it in), so paging would cut a timetable or a ladder in half rather than making it readable.
+- ✅ User errors are prevented or reversible. Inline validation with plain messages; confirmation before outward-facing or heavy actions (publish, regenerate over a published schedule, editing a published class); archive instead of delete; Reopen for finalized schedules and evaluations; every API error is a ProblemDetails body with a readable message and, for unexpected errors, a reference to quote.
+- ✅ The evaluation survey is fully bilingual (English and Filipino).
+- 🟡 Accessible by keyboard and screen reader (WCAG 2.1 AA as the reference). Semantic headings and tables, labelled controls, and ARIA labels, pressed states, and alert/status roles are in place; no formal WCAG audit has been run yet.
 
 ### NFR-4 Reliability
-- ✅ Data integrity through transactional database operations. — EF Core `SaveChanges` unit-of-work throughout; the enlistment cap adds optimistic concurrency and a database CHECK constraint.
-- ⬜ Reliable availability during peak enrollment periods (IIS-hosted application layer). — deployment/hosting not yet exercised.
-- ✅ ETL import must not corrupt or duplicate records (duplicate detection on load). — duplicates are detected by email and by name+birthdate (in-file and against the DB); a re-import of the same workbook was verified to load nothing twice.
+- ✅ Data integrity through transactional database operations. EF Core `SaveChanges` unit-of-work throughout, with each action and its audit entry committed together. Invalid states are blocked in the database itself: CHECK constraints (seat count ≤ capacity; the institutional seat cap within range), 22 unique indexes (for example one official student number per student, one login per SIS record, one program head per program), and row-version concurrency on sections (`DatabaseConstraintTests`).
+- ✅ Failures are contained. A mail outage never rolls back an action: mail is sent after commit, and outbox mail retries with exponential backoff (1, 2, 4, 8 min; up to 5 attempts) before being marked failed and retryable from `/outbox`. The live-refresh broadcaster never throws. A global exception handler confines an unexpected error to one request.
+- 🟡 Reliable availability during peak enrollment periods (IIS-hosted application layer). Hosting, deployment, and monitoring are defined in `deploy/deploymentplan.md`: SmarterASP.NET IIS + SQL Server, anonymous `/health/live` and `/health` probes for a 5-minute uptime monitor, and no deploys during enrollment week. Uptime under real enrollment traffic has not yet been observed.
+- 🟡 Recoverable after a failure or bad deploy. Backups before every deploy, weekly, daily in enrollment week, and at term end, kept off the server; rollback procedure in `deploy/deploymentplan.md` §8–9. The pre-go-live restore test has not yet been recorded.
+- ✅ ETL import must not corrupt or duplicate records (duplicate detection on load). Duplicates are detected by email and by name+birthdate (in-file and against the DB); a re-import of the same workbook was verified to load nothing twice.
 
 ### NFR-5 Maintainability
-- ✅ Modular, component-based architecture: ASP.NET Core dependency injection; React component hierarchy; **vertical slices per feature** so features can be built, tested, and accepted independently (FDD). — established: `Features/*` slices server-side, `src/features/*` client-side.
-- ✅ EF Core code-first migrations keep schema consistent and evolvable. — 32 code-first migrations track every schema change to date (auth, scheduling, academic setup, curriculum, class sections, faculty load, subject hours, audit, registration, enlistment, notifications, archiving, enrollment stage, room kinds and subject delivery, schedule finalization, official student numbers, requirement catalog, constraint weights, time-slot allowability, enrollment and engine parameters, two-factor auth, rating survey).
-- ✅ Behaviour that varies by institution is **data, not code**. — the requirements checklist, the teaching time grid, seat caps, unit ceilings, faculty load limits, and the engine's soft weights and budgets are all editable rows rather than constants, so adapting SEN-GEN to a policy change is a screen edit rather than a redeployment.
+- ✅ Modular, component-based architecture: ASP.NET Core dependency injection; React component hierarchy; **vertical slices per feature** so features can be built, tested, and accepted independently (FDD). Established: `Features/*` slices server-side, `src/features/*` client-side. Shared rules live once (`PasswordPolicy`, `YearLevelPolicy`, `EnrollmentCyclePolicy`, `EnlistmentEligibility`, `DocumentChecklist`, `AcademicHistory`, `SisText`).
+- ✅ EF Core code-first migrations keep schema consistent and evolvable. **43 code-first migrations** track every schema change to date (auth, scheduling, academic setup, curriculum, class sections, faculty load, subject hours, audit, registration, enlistment, notifications, archiving, enrollment stage, room kinds and subject delivery, schedule finalization, official student numbers, requirement catalog, constraint weights, time-slot allowability, enrollment and engine parameters, two-factor auth, rating survey and collection control, requirement applicability and class start, transferee evaluation and year level, term-activation control, seat drop, student subject records, checklist provenance and schedule concurrency, login lockout, email outbox and reminder interval, institution name, report-fidelity fields). They are applied on start, with a SQL script available for manual migration (`deploy/make-migrate-sql.ps1`).
+- ✅ Behaviour that varies by institution is **data, not code**. The requirements checklist, the teaching time grid, seat caps, unit ceilings, faculty load limits, the engine's soft weights and budgets, the class-day start, the institution name, the lab credit factor, and program heads are all editable rows rather than constants. A policy change is a screen edit, not a redeployment.
+- ✅ Testable and analysable. About **117 test methods** across 35 test files cover the engine, domain rules, security, the outbox, and integration against a real SQL Server database. Each API call writes a structured log line (method, path, status, duration, user, trace id); the audit trail records 64+ action types; Swagger/OpenAPI is available in development.
 
-### NFR-6 Portability
-- ✅ Cross-platform runtime (ASP.NET Core) and component-based front-end (React) working across diverse device and browser configurations.
+### NFR-6 Portability (Flexibility)
+- ✅ Cross-platform runtime (ASP.NET Core, .NET 10) and component-based front-end (React) working across diverse device and browser configurations. Currently targeted at Windows/IIS shared hosting with SQL Server.
+- ✅ Installable by school IT from a written procedure. `deploy/publish-smarterasp.ps1` builds a single `publish.zip`; Visual Studio publish profiles; a deployment plan with a go-live checklist and smoke tests. Environment specifics live in `appsettings.Production.json`, kept out of git.
+- ✅ No external runtime dependencies. Fonts, icons, and the PSGC address dataset are bundled; the only outbound service is SMTP email.
 
 ### NFR-7 Security & Compliance (cross-cutting)
-- ✅ **RA 10173 (Data Privacy Act of 2012)**: secure handling of student and faculty personal data; passwords hashed; least-privilege RBAC; audit trail. — passwords hashed, least-privilege RBAC on every endpoint, and the audit trail (FR-AUD) records every listed action category.
-- ✅ Authentication middleware at the application layer; role-based middleware validation on every request. — JWT authentication + `RequireRole` authorization applied across all slices (FR-AUTH-08).
-- ✅ Account-takeover resistance on the public, account-less flows. — account linking requires **three matching facts** and there is deliberately no auto-link at sign-up; every one-time credential (password reset, email confirmation, 2FA code, survey link) is stored **hashed**, single-use, and expiring; forgot-password answers identically for known and unknown addresses so it cannot enumerate accounts; provisioned student passwords are temporary and must be changed at first sign-in; 2FA is available for any account.
-- ✅ No financial data is stored in the system (out of scope). — holds by design.
+- ✅ **RA 10173 (Data Privacy Act of 2012)**: secure handling of student and faculty personal data; passwords hashed; least-privilege RBAC; audit trail. Terms and privacy consent are timestamped on account and SIS; passwords are salted hashes (Identity `PasswordHasher`); least-privilege RBAC on every endpoint; the audit trail (FR-AUD) records every listed action category in the same transaction as the action.
+- ✅ Authentication middleware at the application layer; role-based middleware validation on every request. JWT authentication (issuer, audience, lifetime, and signature validated; 480-minute lifetime; production refuses a missing or weak key) + `RequireRole` authorization applied across all slices (FR-AUTH-08). Verified by `AuthorizationSweepTests`, `EndpointGateTests`, and `JwtKeyGuardTests`.
+- ✅ Brute-force and abuse resistance:
+  - passwords need at least 8 characters with letters and digits;
+  - an account locks for 15 minutes after 5 failed sign-ins (`LoginThrottle`);
+  - a per-IP limit of **20/min** applies to login, 2FA, and forgot/reset password;
+  - a per-IP limit of **30/min** applies to registration, the public SIS, term-activation lookup and request, email change, and survey submission (429 when exceeded).
+- ✅ Account-takeover resistance on the public, account-less flows. Account linking requires **three matching facts**, and there is deliberately no auto-link at sign-up. Every one-time credential (password reset, email confirmation, 2FA code, survey link) is stored **hashed**, single-use, and expiring. Forgot-password answers identically for known and unknown addresses, so it cannot enumerate accounts. Provisioned student passwords are temporary and server-gated until changed at first sign-in. Opt-in 2FA (6-digit emailed code, 10 minutes, 5 attempts) is available for any account.
+- ✅ Browser and transport hardening. HTTPS redirection, plus security headers on every response:
+  - a Content-Security-Policy with no external sources and `frame-ancestors 'none'`;
+  - `X-Frame-Options: DENY`;
+  - `X-Content-Type-Options: nosniff`;
+  - `Referrer-Policy: strict-origin-when-cross-origin`;
+  - a restrictive `Permissions-Policy`.
+
+  Errors never expose internals, and CSV export defuses formula injection.
+- ✅ No financial data is stored in the system (out of scope). Holds by design, as does data minimisation: no uploaded documents and no grades (only passed / failed / dropped verdicts).
+
+### NFR-8 Compatibility
+- ✅ Co-exists with the school's student-records system. The official student number is recorded from it, SEN-GEN keeps subject verdicts rather than grades, and SIS data is stored in ALL CAPS to match it.
+- ✅ Interoperates with the tools the school already uses:
+  - **.xlsx** import and export (ClosedXML);
+  - **PDF** official forms (QuestPDF);
+  - a survey **CSV** with a byte-order mark, so Filipino text opens correctly in Excel;
+  - standard **SMTP** email.
+
+  Timestamps are stored in UTC and shown in Philippine time (`InstitutionClock`).
 
 ---
 

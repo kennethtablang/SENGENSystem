@@ -144,17 +144,6 @@
   padding: 1.5rem 0;
 }
 
-/* Active / lab pills. */
-.chip-active {
-  background: var(--up-dim, rgba(10, 158, 99, 0.12));
-  color: var(--up);
-}
-
-.chip-lab {
-  background: var(--sti-blue-dim);
-  color: var(--sti-blue);
-}
-
 /* ---------- Modal internals (uses the global .modal shell) ---------- */
 
 .setup-checkbox {
@@ -173,9 +162,48 @@
   accent-color: var(--sti-blue);
 }
 
-/* Left-aligned destructive action balancing the footer's save/cancel. */
-.modal-foot .setup-foot-spacer {
-  margin-right: auto;
+/* Record-level actions inside an edit modal (set active, archive, export): one row each, the
+   explanation on the left and its button on the right; they stack on a narrow screen. */
+.setup-actions {
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.setup-actions h3 {
+  margin: 0 0 0.35rem;
+}
+
+.setup-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.45rem 0;
+}
+
+.setup-action + .setup-action {
+  border-top: 1px dashed var(--line);
+}
+
+.setup-action p {
+  margin: 0;
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.setup-action .btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 30rem) {
+  .setup-action {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 /* .btn-sm / .btn-danger moved to index.css — shared by every feature. */

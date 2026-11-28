@@ -28,3 +28,14 @@ export function enableTwoFactor(code) {
 export function disableTwoFactor(password) {
     return authPost('/api/profile/2fa/disable', { password });
 }
+
+// Profile picture. The client sends the already-cropped 512×512 JPEG (see AvatarCropModal).
+export function uploadAvatar(blob) {
+    const form = new FormData();
+    form.append('file', blob, 'avatar.jpg');
+    return apiFetch('/api/profile/avatar', { method: 'PUT', body: form });
+}
+
+export function removeAvatar() {
+    return apiFetch('/api/profile/avatar', { method: 'DELETE' });
+}

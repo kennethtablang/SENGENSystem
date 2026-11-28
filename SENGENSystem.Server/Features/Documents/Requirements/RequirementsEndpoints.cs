@@ -96,9 +96,12 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
             };
 
             db.AdmissionRequirements.Add(requirement);
+            // Put the new paper on the checklists of students who have already registered.
+            var backfilled = await DocumentChecklist.BackfillAsync(db, requirement, ct);
             audit.Record(AuditAction.RequirementCreated,
                 $"Added admission requirement \"{parsed.Name}\" for {ProgramList(parsed.Programs)} " +
-                $"({StudentTypeList(parsed)}){(requirement.IsRequiredForAuthorization ? ", required for authorization" : string.Empty)}.",
+                $"({StudentTypeList(parsed)}){(requirement.IsRequiredForAuthorization ? ", required for authorization" : string.Empty)}" +
+                $"{BackfillNote(backfilled)}.",
                 "AdmissionRequirement", requirement.Id.ToString());
             await db.SaveChangesAsync(ct);
 
@@ -129,18 +132,34 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
             if (request.IsRequiredForAuthorization is { } gating) requirement.IsRequiredForAuthorization = gating;
             if (request.AcceptsCertificateOfGrades is { } cog) requirement.AcceptsCertificateOfGrades = cog;
 
-            // Reconcile the program set.
-            requirement.Programs.Clear();
-            foreach (var p in parsed.Programs)
+            // Reconcile the program set by diffing, not Clear()+re-add. Two reasons:
+            //  - A new link carries a client-generated Guid Id, so when EF finds it only through the
+            //    tracked parent's navigation it assumes the row already exists and issues an UPDATE
+            //    that matches 0 rows -> DbUpdateConcurrencyException (the 500 on PUT). Adding it via
+            //    the DbSet marks it Added explicitly.
+            //  - Deleting and re-inserting an unchanged program churns the unique
+            //    (AdmissionRequirementId, Program) index for no reason.
+            foreach (var stale in requirement.Programs.Where(rp => !parsed.Programs.Contains(rp.Program)).ToList())
             {
-                requirement.Programs.Add(new AdmissionRequirementProgram { Program = p });
+                requirement.Programs.Remove(stale);
+                db.AdmissionRequirementPrograms.Remove(stale);
             }
+            foreach (var p in parsed.Programs.Where(p => requirement.Programs.All(rp => rp.Program != p)))
+            {
+                var link = new AdmissionRequirementProgram { AdmissionRequirementId = requirement.Id, Program = p };
+                db.AdmissionRequirementPrograms.Add(link);
+                requirement.Programs.Add(link);
+            }
+
+            // A re-activated or widened requirement reaches students who registered before.
+            var backfilled = await DocumentChecklist.BackfillAsync(db, requirement, ct);
 
             audit.Record(AuditAction.RequirementUpdated,
                 $"Updated admission requirement \"{parsed.Name}\" — applies to {ProgramList(parsed.Programs)} " +
                 $"({StudentTypeList(parsed)})" +
                 $"{(requirement.IsRequiredForAuthorization ? ", required for authorization" : string.Empty)}" +
-                $"{(requirement.IsActive ? string.Empty : " (archived)")}.",
+                $"{(requirement.IsActive ? string.Empty : " (archived)")}" +
+                $"{BackfillNote(backfilled)}.",
                 "AdmissionRequirement", requirement.Id.ToString());
             await db.SaveChangesAsync(ct);
 
@@ -254,6 +273,10 @@ namespace SENGENSystem.Server.Features.Documents.Requirements
             }
             return code;
         }
+
+        private static string BackfillNote(int count) =>
+            count == 0 ? string.Empty
+            : $"; added to {count} existing student checklist{(count == 1 ? string.Empty : "s")}";
 
         private static string ProgramList(IEnumerable<ProgramTrack> programs) =>
             string.Join(", ", programs.Select(p => p.ToString()));

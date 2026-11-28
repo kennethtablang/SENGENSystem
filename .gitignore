@@ -368,3 +368,6 @@ publish.zip
 
 # Web Deploy target for deploy\deploy-webdeploy.ps1 (account identifiers; password is never stored)
 webdeploy.local.json
+
+# Plain-text temporary passwords written by deploy/make-users-seeder.py
+deploy/seed-users-credentials.csv

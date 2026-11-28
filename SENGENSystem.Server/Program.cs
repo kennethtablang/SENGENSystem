@@ -27,6 +27,7 @@ using SENGENSystem.Server.Features.Dashboard;
 using SENGENSystem.Server.Features.EnrollmentCycle;
 using SENGENSystem.Server.Features.Documents.Checklist;
 using SENGENSystem.Server.Features.Documents.Reminders;
+using SENGENSystem.Server.Features.Documents.Transfer;
 using SENGENSystem.Server.Features.Documents.Requirements;
 using SENGENSystem.Server.Features.Enlistment.Approvals;
 using SENGENSystem.Server.Features.Enlistment.SeatCounts;
@@ -52,6 +53,7 @@ using SENGENSystem.Server.Features.Auth.Register;
 using SENGENSystem.Server.Features.Profile.ChangeEmail;
 using SENGENSystem.Server.Features.Profile.ChangePassword;
 using SENGENSystem.Server.Features.Profile.UpdateProfile;
+using SENGENSystem.Server.Features.Profile.Avatar;
 using SENGENSystem.Server.Features.Publishing.GetPublishedSchedule;
 using SENGENSystem.Server.Features.Publishing.PublishSchedule;
 using SENGENSystem.Server.Features.Registration.Manage;
@@ -343,6 +345,7 @@ namespace SENGENSystem.Server
 
             // Profile slice (self-service account editing)
             app.MapUpdateProfile();
+            app.MapProfileAvatar();
             app.MapChangePassword();
             app.MapChangeEmail();
             app.MapProfileTwoFactor();
@@ -387,6 +390,7 @@ namespace SENGENSystem.Server
             app.MapDocumentChecklist();
             app.MapDocumentReminders();
             app.MapRequirements();
+            app.MapChecklistTransfer();
 
             // Pre-enrollment slice — .xlsx ETL import + Admission Officer pre-authorization (FR-PRE)
             app.MapPreEnrollmentImport();

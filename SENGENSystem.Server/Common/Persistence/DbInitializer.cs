@@ -366,7 +366,14 @@ namespace SENGENSystem.Server.Common.Persistence
                         var status = p.Docs == DocumentStatus.XeroxCopy && req.AcceptsCertificateOfGrades
                             ? DocumentStatus.CertificateOfGrades
                             : p.Docs;
-                        reg.Documents.Add(new RegistrationDocument { RequirementCode = req.Code, Status = status });
+                        reg.Documents.Add(new RegistrationDocument
+                        {
+                            RequirementCode = req.Code,
+                            Status = status,
+                            SubmittedOn = status == DocumentStatus.NotSubmitted
+                                ? null
+                                : DateOnly.FromDateTime(reg.TermsAcceptedAtUtc ?? DateTime.UtcNow)
+                        });
                     }
                     db.StudentRegistrations.Add(reg);
                 }
@@ -1096,7 +1103,8 @@ namespace SENGENSystem.Server.Common.Persistence
                     reg.Documents.Add(new RegistrationDocument
                     {
                         RequirementCode = req.Code,
-                        Status = DocumentStatus.Submitted
+                        Status = DocumentStatus.Submitted,
+                        SubmittedOn = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(-6))
                     });
                 }
                 db.StudentRegistrations.Add(reg);

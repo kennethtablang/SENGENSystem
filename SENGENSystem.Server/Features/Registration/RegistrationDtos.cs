@@ -17,13 +17,14 @@ namespace SENGENSystem.Server.Features.Registration
     /// certificate of grades is the third option.
     /// </summary>
     public record RegistrationDocumentDto(
-        string RequirementCode, string Label, string Status, IReadOnlyList<string> Statuses)
+        string RequirementCode, string Label, string Status, IReadOnlyList<string> Statuses, string? SubmittedOn)
     {
         public static RegistrationDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
             new(d.RequirementCode,
                 catalog.Label(d.RequirementCode),
                 d.Status.ToString(),
-                catalog.StatusesFor(d.RequirementCode).Select(s => s.ToString()).ToList());
+                catalog.StatusesFor(d.RequirementCode).Select(s => s.ToString()).ToList(),
+                d.SubmittedOn?.ToString("yyyy-MM-dd"));
     }
 
     /// <summary>A row in the Registrar's SIS management list (FR-SIS-04).</summary>

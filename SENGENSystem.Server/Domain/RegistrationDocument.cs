@@ -34,5 +34,15 @@ namespace SENGENSystem.Server.Domain
         public DateTime? UpdatedAtUtc { get; set; }
 
         public Guid? VerifiedByUserId { get; set; }
+
+        /// <summary>
+        /// The day the paper, in its current form, was received by the Admission Office — what the
+        /// office's own sheets record as "✅ 9/23/2026". Distinct from <see cref="UpdatedAtUtc"/>,
+        /// which is when someone last touched the row: a paper handed in on Monday and encoded on
+        /// Thursday was submitted on Monday. Defaults to today when a paper is marked received,
+        /// moves when its form changes (a photocopy later replaced by the original), is editable by
+        /// staff, and is cleared when the paper goes back to <see cref="DocumentStatus.NotSubmitted"/>.
+        /// </summary>
+        public DateOnly? SubmittedOn { get; set; }
     }
 }

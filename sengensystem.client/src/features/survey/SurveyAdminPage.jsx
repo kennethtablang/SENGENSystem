@@ -5,6 +5,11 @@ import { confirmAction } from '../shell/confirm';
 import { useTableControls } from '../shell/useTableControls';
 import { SortHeader, Pagination, TableSearch } from '../shell/tableControls';
 import { listInvitations, getResults, getCollection, setCollection, exportResults, remindInvitations } from './api';
+// The page frame (setup-*) and cards (param-card) are styled by these two sheets. Without the
+// imports the page only looked right after Academic setup or System parameters had been opened
+// in the same session; opened first, it lost its padding and indentation.
+import '../academic/academic.css';
+import '../parameters/parameters.css';
 import './survey.css';
 
 /* Super Admin dashboard for the ISO/IEC 25010 evaluation: the usability report built from every

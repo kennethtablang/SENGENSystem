@@ -20,7 +20,7 @@
   height: 17px;
   padding: 0 4px;
   border-radius: var(--radius-pill);
-  background: var(--down);
+  background: var(--down-solid);
   color: #fff;
   font: 700 0.62rem/17px var(--sans);
   text-align: center;

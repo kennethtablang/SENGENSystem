@@ -99,7 +99,7 @@
 
 .chip-up {
   background: var(--up-dim);
-  color: var(--up);
+  color: var(--up-ink);
 }
 
 .chip-down {

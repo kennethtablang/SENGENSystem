@@ -5,6 +5,11 @@ import { confirmAction } from '../shell/confirm';
 import { useTableControls } from '../shell/useTableControls';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import { getAudience, sendInvitations, remindInvitations, withdrawInvitation, getCollection } from './api';
+// The page frame (setup-*) and cards (param-card) are styled by these two sheets. Without the
+// imports the page only looked right after Academic setup or System parameters had been opened
+// in the same session; opened first, it lost its padding and indentation.
+import '../academic/academic.css';
+import '../parameters/parameters.css';
 import './survey.css';
 
 /* Super Admin page for choosing exactly who answers the ISO/IEC 25010 rating survey. This is a

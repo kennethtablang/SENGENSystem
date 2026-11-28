@@ -111,21 +111,33 @@
   background: var(--bg-wash);
 }
 
+/* Closed, the row must be truly gone: a 0fr track still leaves the pad's padding showing (a blank
+   band under every enrollee), so the padding collapses too, and `visibility` takes the hidden
+   status selects out of the tab order and out of reach of clicks. Visibility flips only after the
+   close animation, so the fade still plays. */
 .doc-expand-inner {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 0.28s ease, opacity 0.28s ease;
+  visibility: hidden;
+  transition: grid-template-rows 0.28s ease, opacity 0.28s ease, visibility 0s linear 0.28s;
 }
 
 .doc-expand-row.is-open .doc-expand-inner {
   grid-template-rows: 1fr;
   opacity: 1;
+  visibility: visible;
+  transition: grid-template-rows 0.28s ease, opacity 0.28s ease, visibility 0s;
 }
 
 .doc-expand-pad {
   overflow: hidden;
   min-height: 0;
+  padding: 0 1rem;
+  transition: padding 0.28s ease;
+}
+
+.doc-expand-row.is-open .doc-expand-pad {
   padding: 0.9rem 1rem 1.1rem;
 }
 
@@ -150,11 +162,18 @@
   gap: 0.6rem 1.2rem;
 }
 
+/* Name above its dropdown, every item lined up from the top. Centred, an item whose name has a
+   "Gates authorization" tag sat its dropdown lower than its neighbours'. */
+.doc-grid {
+  align-items: start;
+}
+
 .doc-grid-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.45rem;
   font-size: 0.83rem;
   color: var(--text-2);
 }
@@ -178,12 +197,6 @@
 
 .doc-remind-one {
   margin-top: 0.9rem;
-}
-
-.doc-footnote {
-  margin-top: 0.9rem;
-  font-size: 0.8rem;
-  color: var(--text-3);
 }
 
 /* ---------- Manage requirements modal ---------- */
@@ -365,4 +378,432 @@
   color: var(--text-3);
   font-size: 0.75rem;
   line-height: 1.4;
+}
+
+/* ---------- Board: Student ID column ---------- */
+
+.doc-no-id {
+  color: var(--text-3);
+}
+
+/* ---------- Import requirement checklist modal (FR-DOC-02) ---------- */
+
+/* Wide: it holds a row-per-student review table. Same sizing approach as the faculty assign modal. */
+.modal.dimp-modal {
+  max-width: 72rem;
+  max-height: min(90svh, 56rem);
+}
+
+.dimp-pick {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.dimp-lead {
+  max-width: 62ch;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+.dimp-scope {
+  margin: 0.3rem 0 0;
+  font-size: 0.76rem;
+  color: var(--text-3);
+}
+
+.dimp-file {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+/* The native input is visually hidden; its <label> is the button, so it keeps keyboard focus. */
+.dimp-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dimp-file-input:focus-visible + label {
+  outline: 2px solid var(--sti-blue);
+  outline-offset: 2px;
+}
+
+.dimp-file-name {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.dimp-sheets h4 {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.dimp-sheet-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.dimp-sheet {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.83rem;
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.dimp-sheet input {
+  accent-color: var(--sti-blue);
+}
+
+.dimp-sheet small {
+  color: var(--text-3);
+  font-size: 0.72rem;
+}
+
+.dimp-sheet.is-disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.dimp-warn {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--amber-text);
+}
+
+.dimp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  margin: 1rem 0 0.6rem;
+}
+
+.dimp-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.2rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-wash);
+}
+
+.dimp-tab {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.8rem;
+  border-radius: var(--radius-pill);
+  font: 600 0.78rem/1.2 var(--sans);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.dimp-tab span {
+  margin-left: 0.25rem;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.dimp-tab.is-active {
+  background: var(--surface);
+  color: var(--sti-blue);
+  box-shadow: var(--shadow-sm);
+}
+
+.dimp-options {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.dimp-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.dimp-table {
+  width: 100%;
+}
+
+.dimp-table th,
+.dimp-table td {
+  vertical-align: top;
+}
+
+.dimp-col-check {
+  width: 2.2rem;
+}
+
+.dimp-col-check input {
+  accent-color: var(--sti-blue);
+  margin-top: 0.2rem;
+}
+
+/* Rows that still need the officer: a gold edge, the same signal as a gating paper on the board. */
+.dimp-row.is-attention > td:first-child {
+  box-shadow: inset 3px 0 0 var(--sti-gold);
+}
+
+.dimp-row.is-notfound {
+  background: var(--bg-wash);
+}
+
+.dimp-file-cell,
+.dimp-student {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 12rem;
+}
+
+.dimp-file-cell strong,
+.dimp-student strong {
+  color: var(--text-1);
+  font-size: 0.85rem;
+}
+
+.dimp-meta {
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+.dimp-match {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 16rem;
+}
+
+.dimp-learn {
+  font-size: 0.74rem;
+  color: var(--up-ink);
+}
+
+.dimp-note {
+  font-size: 0.75rem;
+  color: var(--amber-text);
+  line-height: 1.4;
+}
+
+.dimp-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  max-width: 24rem;
+}
+
+.dimp-picker select {
+  width: 100%;
+}
+
+.dimp-manual {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.dimp-manual input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.dimp-manual input:focus {
+  outline: none;
+  border-color: var(--sti-blue);
+  box-shadow: 0 0 0 3px var(--sti-blue-dim);
+}
+
+.dimp-row-actions {
+  display: flex;
+  gap: 0.7rem;
+}
+
+.dimp-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: 600 0.75rem/1.3 var(--sans);
+  color: var(--sti-blue);
+  cursor: pointer;
+}
+
+.dimp-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.dimp-changes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  padding: 0.3rem 0.7rem;
+  font: 600 0.76rem/1.2 var(--sans);
+  color: var(--sti-blue);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dimp-changes:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+
+.dimp-skipped {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.dimp-caret {
+  font-size: 0.7rem;
+}
+
+.reg-table tbody tr.dimp-detail:hover,
+.dimp-detail > td {
+  background: var(--bg-wash);
+}
+
+.dimp-change-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.dimp-change-list li {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1.3fr) minmax(7rem, 1fr) minmax(10rem, 1.2fr);
+  gap: 0.2rem 0.8rem;
+  font-size: 0.78rem;
+  color: var(--text-2);
+}
+
+.dimp-change-label {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.dimp-change-raw {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.dimp-change-note {
+  grid-column: 1 / -1;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.dimp-change-list li.is-update .dimp-change-move {
+  color: var(--up-ink);
+  font-weight: 600;
+}
+
+.dimp-change-list li:not(.is-update) .dimp-change-move {
+  text-decoration: line-through;
+  color: var(--text-3);
+}
+
+.dimp-change-list li.is-unchanged .dimp-change-move {
+  text-decoration: none;
+}
+
+.dimp-bulk {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+  font-size: 0.76rem;
+  color: var(--text-3);
+}
+
+.dimp-foot-summary {
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+@media (max-width: 640px) {
+  .dimp-change-list li {
+    grid-template-columns: 1fr;
+  }
+
+  .dimp-file-name {
+    max-width: 10rem;
+  }
+}
+
+/* ---------- Dates received (FR-DOC-02) ---------- */
+
+.doc-grid-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.doc-received-input {
+  padding: 0.38rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.doc-received-input:focus {
+  outline: none;
+  border-color: var(--sti-blue);
+  box-shadow: 0 0 0 3px var(--sti-blue-dim);
+}
+
+.doc-date-missing {
+  font-size: 0.72rem;
+  color: var(--amber-text);
+}
+
+.doc-last-received {
+  white-space: nowrap;
+}
+
+.doc-received-on {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--text-3);
 }

@@ -13,9 +13,128 @@
 }
 
 .profile-avatar {
-  width: 56px;
-  height: 56px;
-  font-size: 1.05rem;
+  width: 72px;
+  height: 72px;
+  font-size: 1.3rem;
+}
+
+/* The picture is its own upload button, with a small camera badge. */
+.profile-avatar-btn {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.profile-avatar-btn:focus-visible {
+  outline: 2px solid var(--sti-blue);
+  outline-offset: 3px;
+}
+
+.profile-avatar-edit {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--sti-yellow);
+  color: var(--on-yellow);
+  border: 2px solid var(--surface);
+  transition: transform 0.15s ease;
+}
+
+.profile-avatar-btn:hover .profile-avatar-edit {
+  transform: scale(1.08);
+}
+
+.profile-photo-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+/* ---------- Profile picture crop dialog ---------- */
+
+.modal.avatar-crop-modal {
+  max-width: 24rem;
+}
+
+.avatar-crop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.avatar-crop-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.avatar-crop-stage {
+  position: relative;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-wash);
+  touch-action: none;
+}
+
+.avatar-crop-stage canvas {
+  display: block;
+  cursor: grab;
+}
+
+.avatar-crop-stage canvas:active {
+  cursor: grabbing;
+}
+
+.avatar-crop-stage canvas:focus-visible {
+  outline: 2px solid var(--sti-blue);
+  outline-offset: -2px;
+}
+
+/* Dims everything outside the circle the picture will be shown in. */
+.avatar-crop-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 999px rgba(0, 34, 112, 0.45);
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+
+.avatar-crop-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  font-size: 0.85rem;
+}
+
+.avatar-crop-zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.avatar-crop-zoom input {
+  flex: 1;
+  accent-color: var(--sti-blue);
 }
 
 .profile-head h2 {

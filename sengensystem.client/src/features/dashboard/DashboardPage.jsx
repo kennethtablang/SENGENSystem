@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { getDashboardMetrics } from './api';
+import TransparencyPanel from './TransparencyPanel';
 import { getMyLink } from '../documents/api';
 import { myEnlistment } from '../enlistment/api';
 import { getMySchedule } from '../scheduling/api';
@@ -21,6 +22,10 @@ import './dashboard.css';
    their live enrollment journey; faculty see their teaching week at a glance. */
 
 const STAFF_ROLES = ['SchoolAdmin', 'AcademicHead', 'Registrar', 'AdmissionOfficer'];
+
+// Who answers for the schedule, and so sees how it was built (FR-DASH-03). Mirrors the
+// scheduling-transparency endpoint's policy; the Admission Officer has no part in scheduling.
+const TRANSPARENCY_ROLES = ['SchoolAdmin', 'AcademicHead', 'Registrar'];
 
 // Enum names the API returns, spelled the way the SIS form spells them.
 const PROGRAM_LABEL = {
@@ -129,6 +134,7 @@ const humanize = (pascal) => pascal
 // ---------- Staff dashboard ----------
 
 function StaffDashboard() {
+    const { user } = useAuth();
     const [data, setData] = useState(null);
     const [semesterId, setSemesterId] = useState(null);
     const [error, setError] = useState(null);
@@ -686,6 +692,10 @@ function StaffDashboard() {
                     </ul>
                 </section>
             </div>
+
+            {TRANSPARENCY_ROLES.includes(user.role) && (
+                <TransparencyPanel semesterId={data.semesterId} refreshTick={refreshTick} />
+            )}
 
             {/* System census + audit tail: the "what is configured" and "what just happened"
                 context that turns a metrics page into an administrative console. */}

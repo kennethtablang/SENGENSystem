@@ -14,15 +14,19 @@ namespace SENGENSystem.Server.Features.Dashboard
             "No room is double-booked in overlapping time slots.",
             "No faculty member teaches two sections in overlapping time slots.",
             "Sections of the same student block (cohort) never overlap in time.",
-            "Room capacity is at least the section capacity, and laboratory subjects are placed in laboratories.",
-            "Every faculty member stays within their maximum load units."
+            "Room capacity is at least the section capacity.",
+            "Room kind matches the meeting: lecture hours in lecture rooms, laboratory hours in the laboratory kind the subject requires (computer or kitchen).",
+            "A lecture–laboratory subject is placed as two separate meetings, never one merged block.",
+            "Every faculty member stays within their maximum load units (checked on the allocation before the search starts)."
         ];
 
+        // Mirrors SearchState.SoftScore. Load balance is not here on purpose: who teaches what
+        // comes from the Academic Head's allocation, so the engine has no load left to balance.
         private static readonly string[] SoftFactors =
         [
-            "Faculty load is balanced across members (deviation from the mean load is penalized).",
             "Faculty preferred teaching windows are rewarded; placements outside them are penalized.",
-            "Idle gaps between a cohort's consecutive classes are minimized."
+            "Idle gaps between consecutive classes are minimized, for both the student cohort and the faculty member.",
+            "Rooms are right-sized: wasted seats are penalized so large rooms stay free for large sections."
         ];
 
         public static IEndpointRouteBuilder MapSchedulingTransparency(this IEndpointRouteBuilder app)
@@ -70,7 +74,8 @@ namespace SENGENSystem.Server.Features.Dashboard
                         : $"{Format(a.TimeSlot.StartMinutes)}–{Format(a.TimeSlot.EndMinutes)}",
                     faculty = a.FacultyProfile?.User?.FullName ?? string.Empty,
                     provenance = a.IsManualOverride ? "Manual override" : "CSP engine",
-                    isPublished = a.IsPublished
+                    isPublished = a.IsPublished,
+                    isAmended = a.IsAmended
                 })
                 .ToList();
 
@@ -89,7 +94,8 @@ namespace SENGENSystem.Server.Features.Dashboard
                     total = assignments.Count,
                     engineGenerated = assignments.Count(a => a.provenance == "CSP engine"),
                     manualOverrides = assignments.Count(a => a.provenance == "Manual override"),
-                    published = assignments.Count(a => a.isPublished)
+                    published = assignments.Count(a => a.isPublished),
+                    amended = assignments.Count(a => a.isAmended)
                 },
                 assignments
             });

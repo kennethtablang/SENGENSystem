@@ -17,7 +17,7 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
     public record LinkAccountRequest(string? StudentNumber, string? DateOfBirth);
 
     public record LinkedDocumentDto(
-        string RequirementCode, string Label, string Status, bool GatesAuthorization)
+        string RequirementCode, string Label, string Status, bool GatesAuthorization, string? SubmittedOn)
     {
         public static LinkedDocumentDto From(RegistrationDocument d, RequirementCatalog catalog) =>
             new(d.RequirementCode,
@@ -25,7 +25,9 @@ namespace SENGENSystem.Server.Features.Registration.LinkAccount
                 d.Status.ToString(),
                 // Flagged to the student so they know which papers actually hold up their
                 // clearance and which may follow (FR-PRE-02).
-                catalog.GatesAuthorization(d.RequirementCode));
+                catalog.GatesAuthorization(d.RequirementCode),
+                // The student sees when the office logged each paper as received.
+                d.SubmittedOn?.ToString("yyyy-MM-dd"));
     }
 
     public record LinkedRegistrationDto(

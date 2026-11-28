@@ -19,6 +19,15 @@ export function grantPreAuthorization(registrationId) {
     return authRequest(`/api/pre-authorization/${registrationId}`, { method: 'POST' });
 }
 
+/** Clears many students at once. Each passes the same gate as a single grant; blocked ones come
+    back in `outcomes` with their reasons rather than failing the run. */
+export function bulkGrantPreAuthorization(registrationIds) {
+    return authRequest('/api/pre-authorization/bulk', {
+        method: 'POST',
+        body: { registrationIds }
+    });
+}
+
 export function revokePreAuthorization(registrationId) {
     return authRequest(`/api/pre-authorization/${registrationId}`, { method: 'DELETE' });
 }

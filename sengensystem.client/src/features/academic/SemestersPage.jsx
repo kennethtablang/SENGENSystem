@@ -102,28 +102,6 @@ function SemesterModal({ record, schoolYears, defaultYearId, onClose, onChanged 
                     Delete
                 </button>
             )}
-            {!isCreate && (
-                <button type="button" className="btn btn-ghost" disabled={busy} onClick={exportData}
-                    title="Download every report for this semester in one workbook">
-                    Export data
-                </button>
-            )}
-            {!isCreate && !record.isActive && (
-                <button type="button" className="btn btn-ghost" disabled={busy} onClick={setActive}>
-                    Set active
-                </button>
-            )}
-            {!isCreate && !record.isActive && (
-                record.isArchived ? (
-                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={reopen}>
-                        Reopen
-                    </button>
-                ) : (
-                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={archive}>
-                        Archive schedule
-                    </button>
-                )
-            )}
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" form="sem-form" className="btn btn-primary" disabled={saving}>
                 {saving && <span className="spinner" aria-hidden="true" />}
@@ -164,6 +142,43 @@ function SemesterModal({ record, schoolYears, defaultYearId, onClose, onChanged 
                     </div>
                 </div>
             </form>
+
+            {/* Term-level actions live in the body, not the footer: with Save, Cancel and Delete
+                they made six footer buttons, more than the modal's width holds. */}
+            {!isCreate && (
+                <section className="setup-actions" aria-labelledby="sem-actions-title">
+                    <h3 id="sem-actions-title">Semester actions</h3>
+                    {!record.isActive && (
+                        <div className="setup-action">
+                            <p>Make this the term that registration, scheduling, and enlistment work on.</p>
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={setActive}>
+                                Set active
+                            </button>
+                        </div>
+                    )}
+                    {!record.isActive && (record.isArchived ? (
+                        <div className="setup-action">
+                            <p>Allow changes to this term&rsquo;s schedule again.</p>
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={reopen}>
+                                Reopen
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="setup-action">
+                            <p>Freeze this term&rsquo;s set schedule as read-only history.</p>
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={archive}>
+                                Archive schedule
+                            </button>
+                        </div>
+                    ))}
+                    <div className="setup-action">
+                        <p>Download every report for this semester in one workbook.</p>
+                        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={exportData}>
+                            Export data
+                        </button>
+                    </div>
+                </section>
+            )}
         </SetupModal>
     );
 }

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { listPreAuthorizations, grantPreAuthorization, revokePreAuthorization } from './api';
+import {
+    listPreAuthorizations, grantPreAuthorization, bulkGrantPreAuthorization, revokePreAuthorization
+} from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
+import { confirmAction } from '../shell/confirm';
 import { humanize, formatPHT } from '../registration/options';
 import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
@@ -10,7 +13,12 @@ import '../registration/registration.css';
    subject slot selection. The server enforces the gate — a Registrar-confirmed SIS AND the
    papers marked required for authorization (report card + good moral for a new enrollee,
    transcript + certificate of transfer for a transferee). The rest of the checklist may still
-   be arriving, so it is shown for follow-up rather than treated as a blocker. */
+   be arriving, so it is shown for follow-up rather than treated as a blocker.
+
+   Bulk clearance: "Start selecting students" adds a checkbox column. Only students who are ready to
+   authorize can be ticked, the selection survives paging and filter changes (so a list can be
+   built across the whole queue), and the server re-checks every one — anyone who turns out to be
+   blocked is skipped and reported with the reason, the rest are cleared. */
 
 const filters = ['All', 'Eligible', 'Authorized', 'Blocked'];
 
@@ -43,6 +51,11 @@ function PreAuthorizationPage() {
     const [reload, setReload] = useState(0);
     const [busyId, setBusyId] = useState(null);
     const [alert, setAlert] = useState(null);
+    // Selection mode for bulk clearance. `selected` maps registrationId -> full name, so the bar
+    // and the confirm dialog can name students who are on another page.
+    const [selecting, setSelecting] = useState(false);
+    const [selected, setSelected] = useState(() => new Map());
+    const [bulkBusy, setBulkBusy] = useState(false);
 
     // The eligibility chip is a server-side filter now. Applied in the browser it would narrow
     // whichever page had been fetched, so "Eligible" would show only the eligible students who
@@ -92,6 +105,80 @@ function PreAuthorizationPage() {
         }
     }
 
+    // ---- Bulk clearance ----
+
+    const pageEligible = table.pageRows.filter(r => eligibility(r) === 'Eligible');
+    const allPageSelected = pageEligible.length > 0 && pageEligible.every(r => selected.has(r.registrationId));
+
+    function startSelecting() {
+        setSelected(new Map());
+        setSelecting(true);
+        setAlert(null);
+    }
+
+    function stopSelecting() {
+        setSelecting(false);
+        setSelected(new Map());
+    }
+
+    function toggleRow(row) {
+        setSelected(prev => {
+            const next = new Map(prev);
+            if (next.has(row.registrationId)) next.delete(row.registrationId);
+            else next.set(row.registrationId, row.fullName);
+            return next;
+        });
+    }
+
+    function togglePage() {
+        setSelected(prev => {
+            const next = new Map(prev);
+            for (const r of pageEligible) {
+                if (allPageSelected) next.delete(r.registrationId);
+                else next.set(r.registrationId, r.fullName);
+            }
+            return next;
+        });
+    }
+
+    async function authorizeSelected() {
+        const count = selected.size;
+        if (count === 0) return;
+        const names = [...selected.values()];
+        const ok = await confirmAction({
+            title: `Authorize ${count} student${count === 1 ? '' : 's'}?`,
+            message: `${names.slice(0, 5).join(', ')}${count > 5 ? ` and ${count - 5} more` : ''} will be `
+                + 'cleared for online subject slot selection. Each is re-checked first — anyone whose SIS '
+                + 'is no longer confirmed or who is missing a required paper is skipped and listed.',
+            confirmLabel: `Authorize ${count}`
+        });
+        if (!ok) return;
+
+        setBulkBusy(true);
+        setAlert(null);
+        try {
+            const result = await bulkGrantPreAuthorization([...selected.keys()]);
+            const skipped = result.outcomes.filter(o => !o.authorized);
+            const text = `Authorized ${result.authorizedCount} student${result.authorizedCount === 1 ? '' : 's'}`
+                + (skipped.length > 0 ? ` · ${skipped.length} skipped.` : '.');
+            setAlert({
+                kind: result.authorizedCount === 0 ? 'error' : 'success',
+                text,
+                reasons: skipped.map(o =>
+                    `${o.studentNumber ? `${o.studentNumber} · ` : ''}${o.fullName}: ${o.reasons.join(' ')}`)
+            });
+            if (result.authorizedCount > 0) notifySuccess(text);
+            else notifyError(text);
+            stopSelecting();
+            setReload(v => v + 1);
+        } catch (err) {
+            setAlert({ kind: 'error', text: err.message });
+            notifyError(err.message);
+        } finally {
+            setBulkBusy(false);
+        }
+    }
+
     async function revoke(row) {
         setBusyId(row.registrationId);
         setAlert(null);
@@ -133,15 +220,55 @@ function PreAuthorizationPage() {
                             {filters.map(f => <option key={f} value={f}>{f}</option>)}
                         </select>
                     </label>
+                    {!selecting && (
+                        <button
+                            className="btn btn-primary" type="button"
+                            disabled={counts.eligibleCount === 0}
+                            title={counts.eligibleCount === 0
+                                ? 'No students are ready to authorize yet'
+                                : 'Tick the students to clear, then authorize them all at once'}
+                            onClick={startSelecting}
+                        >
+                            Start selecting students
+                        </button>
+                    )}
                 </div>
             </header>
+
+            {selecting && (
+                <div className="preauth-bulkbar" role="region" aria-label="Bulk authorization">
+                    <span>
+                        <strong>{selected.size}</strong> student{selected.size === 1 ? '' : 's'} selected
+                        <span className="preauth-bulkbar-hint">
+                            {' '}— only students ready to authorize can be ticked; the selection is kept across pages.
+                        </span>
+                    </span>
+                    <button
+                        className="btn btn-sm btn-ghost" type="button"
+                        disabled={bulkBusy || pageEligible.length === 0}
+                        onClick={togglePage}
+                    >
+                        {allPageSelected ? 'Unselect this page' : 'Select all on this page'}
+                    </button>
+                    <button className="btn btn-sm btn-ghost" type="button" disabled={bulkBusy} onClick={stopSelecting}>
+                        Cancel
+                    </button>
+                    <button
+                        className="btn btn-sm btn-primary" type="button"
+                        disabled={bulkBusy || selected.size === 0}
+                        onClick={authorizeSelected}
+                    >
+                        {bulkBusy ? 'Authorizing…' : `Authorize ${selected.size || ''}`.trim()}
+                    </button>
+                </div>
+            )}
 
             {alert && (
                 <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
                     role={alert.kind === 'success' ? 'status' : 'alert'}>
                     <p>{alert.text}</p>
                     {alert.reasons?.length > 0 && (
-                        <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem' }}>
+                        <ul className="preauth-skipped">
                             {alert.reasons.map((r, i) => <li key={i}>{r}</li>)}
                         </ul>
                     )}
@@ -157,6 +284,17 @@ function PreAuthorizationPage() {
                     <table className="reg-table">
                         <thead>
                             <tr>
+                                {selecting && (
+                                    <th className="preauth-check-col">
+                                        <input
+                                            type="checkbox"
+                                            aria-label="Select every student ready to authorize on this page"
+                                            checked={allPageSelected}
+                                            disabled={bulkBusy || pageEligible.length === 0}
+                                            onChange={togglePage}
+                                        />
+                                    </th>
+                                )}
                                 <SortHeader label="Student no." sortKey="studentNumber" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Name" sortKey="fullName" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Program" sortKey="program" sort={table.sort} onSort={table.toggleSort} />
@@ -172,7 +310,23 @@ function PreAuthorizationPage() {
                             {table.pageRows.map(row => {
                                 const state = eligibility(row);
                                 return (
-                                    <tr key={row.registrationId}>
+                                    <tr
+                                        key={row.registrationId}
+                                        className={selected.has(row.registrationId) ? 'is-selected' : undefined}
+                                    >
+                                        {selecting && (
+                                            <td className="preauth-check-col">
+                                                <input
+                                                    type="checkbox"
+                                                    aria-label={`Select ${row.fullName}`}
+                                                    checked={selected.has(row.registrationId)}
+                                                    disabled={bulkBusy || state !== 'Eligible'}
+                                                    title={state === 'Authorized' ? 'Already authorized'
+                                                        : state === 'Blocked' ? blockers(row).join(' · ') : undefined}
+                                                    onChange={() => toggleRow(row)}
+                                                />
+                                            </td>
+                                        )}
                                         <td className="reg-mono">{row.studentNumber}</td>
                                         <td><strong>{row.fullName}</strong></td>
                                         <td>{row.program}</td>
@@ -211,13 +365,13 @@ function PreAuthorizationPage() {
                                             {row.isPreAuthorized ? (
                                                 <button
                                                     className="btn" type="button"
-                                                    disabled={busyId === row.registrationId}
+                                                    disabled={bulkBusy || busyId === row.registrationId}
                                                     onClick={() => revoke(row)}
                                                 >Revoke</button>
                                             ) : (
                                                 <button
                                                     className="btn btn-primary" type="button"
-                                                    disabled={busyId === row.registrationId || state !== 'Eligible'}
+                                                    disabled={bulkBusy || busyId === row.registrationId || state !== 'Eligible'}
                                                     title={state !== 'Eligible' ? blockers(row).join(' · ') : undefined}
                                                     onClick={() => grant(row)}
                                                 >Authorize</button>

@@ -101,6 +101,13 @@ namespace SENGENSystem.Server.Domain
 
         public string FullName => $"{FirstName} {LastName}";
 
+        /// <summary>
+        /// When the profile picture was last set, or null when there is none (initials are shown).
+        /// The picture itself lives in <see cref="UserAvatar"/>; this stamp is what the client
+        /// sees on every sign-in, and doubles as its cache key.
+        /// </summary>
+        public DateTime? AvatarUpdatedAtUtc { get; set; }
+
         /// <summary>Whether a lockout is currently in force.</summary>
         public bool IsLockedOut(DateTime utcNow) => LockedOutUntilUtc is { } until && until > utcNow;
     }

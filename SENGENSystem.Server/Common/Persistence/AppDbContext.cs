@@ -11,6 +11,8 @@ namespace SENGENSystem.Server.Common.Persistence
 
         public DbSet<User> Users => Set<User>();
 
+        public DbSet<UserAvatar> UserAvatars => Set<UserAvatar>();
+
         public DbSet<SchoolYear> SchoolYears => Set<SchoolYear>();
 
         public DbSet<Semester> Semesters => Set<Semester>();
@@ -77,6 +79,16 @@ namespace SENGENSystem.Server.Common.Persistence
         {
             // Class numbers for Section.ClassNumber ("Class No." on the faculty-loading memo).
             modelBuilder.HasSequence<int>("ClassNumbers").StartsAt(1001);
+
+            modelBuilder.Entity<UserAvatar>(avatar =>
+            {
+                avatar.HasKey(a => a.UserId);
+                avatar.Property(a => a.ContentType).HasMaxLength(20).IsRequired();
+                avatar.Property(a => a.Content).IsRequired();
+                avatar.HasOne(a => a.User).WithOne()
+                    .HasForeignKey<UserAvatar>(a => a.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
             modelBuilder.Entity<User>(user =>
             {

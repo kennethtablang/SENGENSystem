@@ -176,6 +176,10 @@ namespace SENGENSystem.Server.Domain
         // F-08 follow-up: a section's EnrolledCount was corrected to the count of its live approved
         // requests. Audited with the before/after figures because it is the one write to the
         // counter that does not correspond to a seat being taken or given back.
-        SeatCountReconciled = 79
+        SeatCountReconciled = 79,
+
+        // FR-DOC-02: a requirement checklist spreadsheet applied in bulk. One summary entry per
+        // import; each student it changed also gets its own DocumentChecklistUpdated entry.
+        DocumentChecklistImported = 80
     }
 }

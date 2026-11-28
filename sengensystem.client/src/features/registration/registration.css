@@ -727,6 +727,12 @@
   margin-bottom: 0.7rem;
 }
 
+.reg-cor-hint {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  margin: 0 0 0.6rem;
+}
+
 .reg-doc-list {
   list-style: none;
   display: flex;
@@ -769,10 +775,7 @@
   .reg-detail-grid {
     grid-template-columns: 1fr;
   }
-  .field-row {
-    flex-direction: column;
-    gap: 0;
-  }
+  /* .field-row stacking now lives in index.css, for every page. */
 }
 
 /* F-03: the "possible duplicate" flag beside a name in the queue, and the in-drawer jump to the
@@ -825,4 +828,55 @@
   display: flex;
   gap: 0.6rem;
   margin-top: 1rem;
+}
+
+/* ---- Pre-authorization: bulk clearance ------------------------------------------------------
+   "Start selecting students" adds a checkbox column and this bar; outside selection mode the
+   page is unchanged. Only students ready to authorize can be ticked. */
+
+.preauth-check-col {
+  width: 2.2rem;
+  text-align: center;
+}
+
+.preauth-check-col input {
+  accent-color: var(--sti-blue);
+  cursor: pointer;
+}
+
+.preauth-check-col input:disabled {
+  cursor: not-allowed;
+}
+
+.reg-table tr.is-selected > td {
+  background: var(--surface-2);
+}
+
+.preauth-bulkbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--sti-blue);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 0.84rem;
+}
+
+.preauth-bulkbar > span:first-child {
+  margin-right: auto;
+}
+
+.preauth-bulkbar-hint {
+  color: var(--text-3);
+}
+
+/* Skipped students come back with a reason each. */
+.preauth-skipped {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
 }

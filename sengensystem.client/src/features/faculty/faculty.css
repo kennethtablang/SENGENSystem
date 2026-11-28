@@ -366,19 +366,39 @@
   color: var(--down);
 }
 
-/* ---------- Shared primitives (kept local to this feature) ---------- */
-
-.modal-foot .setup-foot-spacer {
-  margin-right: auto;
-}
-
-.chip-lab {
-  background: var(--sti-blue-dim);
-  color: var(--sti-blue);
-}
-
 .alert-warn {
   background: rgba(214, 54, 90, 0.08);
   border: 1px solid rgba(214, 54, 90, 0.25);
   color: var(--down);
+}
+
+/* Phone width: the six fixed columns (about 22rem) left the subject column no room, so the header
+   labels ran into each other. Each row becomes two lines instead: checkbox, subject and units on
+   top; class, year and type underneath. The column header is dropped, since the values read on
+   their own (BSCS 1-A, Y1, Lecture only). */
+@media (max-width: 560px) {
+  .fl-subject-head {
+    display: none;
+  }
+
+  .fl-subject-row {
+    grid-template-columns: 1.4rem auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "check main main main units"
+      ".     course year type type";
+    row-gap: 0.3rem;
+  }
+
+  .fl-subject-row > input { grid-area: check; }
+  .fl-subject-row > .fl-subject-main { grid-area: main; }
+  .fl-subject-row > .fl-col-units { grid-area: units; }
+  .fl-subject-row > .fl-col-course { grid-area: course; }
+  .fl-subject-row > .fl-col-year { grid-area: year; }
+  .fl-subject-row > .fl-col-type { grid-area: type; justify-self: start; }
+
+  .fl-subject-row > .fl-col-course,
+  .fl-subject-row > .fl-col-year {
+    font-size: 0.76rem;
+    color: var(--text-3);
+  }
 }

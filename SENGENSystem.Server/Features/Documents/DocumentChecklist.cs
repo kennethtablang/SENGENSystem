@@ -23,12 +23,19 @@ namespace SENGENSystem.Server.Features.Documents
         public static async Task<RequirementCatalog> LoadCatalogAsync(AppDbContext db, CancellationToken ct)
         {
             var entries = await db.AdmissionRequirements.AsNoTracking()
-                .Select(r => new RequirementEntry(
+                .Select(r => new
+                {
                     r.Code, r.Name, r.SortOrder,
                     r.IsRequiredForAuthorization, r.AcceptsCertificateOfGrades,
-                    r.AppliesToNewStudents, r.AppliesToTransferees))
+                    r.AppliesToNewStudents, r.AppliesToTransferees,
+                    Programs = r.Programs.Select(p => p.Program).ToList()
+                })
                 .ToListAsync(ct);
-            return new RequirementCatalog(entries);
+            return new RequirementCatalog(entries.Select(r => new RequirementEntry(
+                r.Code, r.Name, r.SortOrder,
+                r.IsRequiredForAuthorization, r.AcceptsCertificateOfGrades,
+                r.AppliesToNewStudents, r.AppliesToTransferees,
+                r.Programs.ToHashSet())));
         }
 
         /// <summary>
@@ -63,6 +70,40 @@ namespace SENGENSystem.Server.Features.Documents
             }
         }
 
+        /// <summary>
+        /// Brings existing checklists in line with a requirement that was just added, re-activated,
+        /// or widened to more programs / student types: every open registration it now applies to
+        /// that has no row for it gets a fresh NotSubmitted one. Without this, a paper added on the
+        /// Manage Requirements screen (an X-ray, say) only ever reached students who submitted
+        /// their SIS afterwards. "Open" means not rejected and in a semester that is not archived —
+        /// a closed term's records stay as they were. Rows are staged, not saved, so they commit
+        /// together with the requirement change. Returns how many checklists gained the paper.
+        /// </summary>
+        public static async Task<int> BackfillAsync(
+            AppDbContext db, AdmissionRequirement requirement, CancellationToken ct)
+        {
+            var programs = requirement.Programs.Select(p => p.Program).Distinct().ToList();
+            if (!requirement.IsActive || programs.Count == 0) return 0;
+
+            var code = requirement.Code;
+            var newStudents = requirement.AppliesToNewStudents;
+            var transferees = requirement.AppliesToTransferees;
+
+            var registrationIds = await db.StudentRegistrations
+                .Where(r => r.Status != RegistrationStatus.Rejected
+                    && !r.Semester!.IsArchived
+                    && programs.Contains(r.Program)
+                    && ((transferees && r.StudentType == StudentType.Transferee)
+                        || (newStudents && r.StudentType != StudentType.Transferee))
+                    && !r.Documents.Any(d => d.RequirementCode == code))
+                .Select(r => r.Id)
+                .ToListAsync(ct);
+
+            db.RegistrationDocuments.AddRange(registrationIds.Select(id =>
+                new RegistrationDocument { StudentRegistrationId = id, RequirementCode = code }));
+            return registrationIds.Count;
+        }
+
         /// <summary>Whether a requirement is asked of the given student type.</summary>
         public static bool AppliesTo(AdmissionRequirement requirement, StudentType studentType) =>
             studentType == StudentType.Transferee
@@ -71,14 +112,15 @@ namespace SENGENSystem.Server.Features.Documents
 
         /// <summary>
         /// The checklist rows that actually apply to this enrollee. Seeding already filters by
-        /// student type, but a checklist seeded before a requirement's applicability was narrowed
-        /// still carries the row — this is what keeps a transferee's board free of the Form 138
-        /// they can never produce, and keeps the counts honest with what is shown.
+        /// program and student type, but a checklist seeded before a requirement's applicability
+        /// was narrowed still carries the row — this is what keeps a transferee's board free of the
+        /// Form 138 they can never produce (or an ITP student's free of a paper taken off ITP), and
+        /// keeps the counts honest with what is shown.
         /// </summary>
         public static List<RegistrationDocument> Applicable(
             StudentRegistration registration, RequirementCatalog catalog) =>
             registration.Documents
-                .Where(d => catalog.AppliesTo(d.RequirementCode, registration.StudentType))
+                .Where(d => catalog.AppliesTo(d.RequirementCode, registration.StudentType, registration.Program))
                 .ToList();
 
         /// <summary>
@@ -94,6 +136,43 @@ namespace SENGENSystem.Server.Features.Documents
                 .OrderBy(d => catalog.Order(d.RequirementCode))
                 .Select(d => catalog.Label(d.RequirementCode))
                 .ToList();
+
+        /// <summary>
+        /// Records a decision on one paper — the one place every path (the board, the Registrar's
+        /// SIS correction, the spreadsheet import) changes a checklist row, so the status, who
+        /// decided it and when (FR-DOC-03), and the date it was received always move together.
+        /// <para>
+        /// A received paper keeps the date given, else the one it already has when its form is
+        /// unchanged, else today (Philippine time). Going back to not submitted clears the date.
+        /// Returns whether anything changed.
+        /// </para>
+        /// </summary>
+        public static bool Record(
+            RegistrationDocument document, DocumentStatus status, DateOnly? submittedOn, Guid? decidedBy, DateTime nowUtc)
+        {
+            DateOnly? date = status == DocumentStatus.NotSubmitted
+                ? null
+                : submittedOn ?? (document.Status == status ? document.SubmittedOn : null) ?? Today();
+            if (document.Status == status && document.SubmittedOn == date) return false;
+
+            document.Status = status;
+            document.SubmittedOn = date;
+            document.UpdatedAtUtc = nowUtc;
+            document.VerifiedByUserId = decidedBy;
+            return true;
+        }
+
+        /// <summary>Today in the institution's time zone — a paper handed in at 7 a.m. PHT is not "yesterday".</summary>
+        public static DateOnly Today() => DateOnly.FromDateTime(SENGENSystem.Server.Common.InstitutionClock.Now);
+
+        /// <summary>
+        /// Why a received-on date cannot be recorded, or null when it can: never in the future, and
+        /// not absurdly old (a mistyped year).
+        /// </summary>
+        public static string? SubmittedOnProblem(DateOnly date) =>
+            date > Today() ? "The date received cannot be in the future."
+            : date.Year < 2000 ? "The date received looks mistyped — check the year."
+            : null;
 
         /// <summary>Title-cases a bare requirement code as a fallback when it is not in the catalog.</summary>
         internal static string Humanize(string code)
@@ -111,7 +190,8 @@ namespace SENGENSystem.Server.Features.Documents
         bool IsRequiredForAuthorization,
         bool AcceptsCertificateOfGrades,
         bool AppliesToNewStudents,
-        bool AppliesToTransferees);
+        bool AppliesToTransferees,
+        IReadOnlySet<ProgramTrack> Programs);
 
     /// <summary>A code → display-name / sort-order lookup for the active requirement catalog.</summary>
     public sealed class RequirementCatalog
@@ -147,11 +227,12 @@ namespace SENGENSystem.Server.Features.Documents
                 : [DocumentStatus.NotSubmitted, DocumentStatus.Submitted, DocumentStatus.XeroxCopy];
 
         /// <summary>
-        /// Whether this paper is asked of the given student type. Unknown codes (an archived or
-        /// deleted requirement a historical checklist still references) stay visible.
+        /// Whether this paper is asked of the given student type in the given program. Unknown codes
+        /// (a deleted requirement a historical checklist still references) stay visible.
         /// </summary>
-        public bool AppliesTo(string code, StudentType studentType) =>
+        public bool AppliesTo(string code, StudentType studentType, ProgramTrack program) =>
             !_byCode.TryGetValue(code, out var e)
-            || (studentType == StudentType.Transferee ? e.AppliesToTransferees : e.AppliesToNewStudents);
+            || ((studentType == StudentType.Transferee ? e.AppliesToTransferees : e.AppliesToNewStudents)
+                && e.Programs.Contains(program));
     }
 }

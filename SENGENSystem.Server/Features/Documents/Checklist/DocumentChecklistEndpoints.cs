@@ -25,7 +25,10 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         // Who last decided this row and when (FR-DOC-03). Both null for a paper nobody has ruled on
         // yet, which is the honest reading of a freshly seeded checklist rather than a missing value.
         string? UpdatedAtUtc,
-        string? VerifiedBy)
+        string? VerifiedBy,
+        // The day the paper was received ("yyyy-MM-dd"); null while it is not submitted, or for a
+        // paper received before dates were kept.
+        string? SubmittedOn)
     {
         public static ChecklistDocumentDto From(
             RegistrationDocument d, RequirementCatalog catalog, IReadOnlyDictionary<Guid, string> verifiers) =>
@@ -38,12 +41,17 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 d.UpdatedAtUtc is { } at
                     ? DateTime.SpecifyKind(at, DateTimeKind.Utc).ToString("o")
                     : null,
-                d.VerifiedByUserId is { } by ? verifiers.GetValueOrDefault(by) : null);
+                d.VerifiedByUserId is { } by ? verifiers.GetValueOrDefault(by) : null,
+                d.SubmittedOn?.ToString("yyyy-MM-dd"));
     }
 
     public record ChecklistRowDto(
         Guid RegistrationId,
+        // SEN-GEN's own registration number ("2026-000001")…
         string StudentNumber,
+        // …and the official Student ID from the student-records system, once the Admission Officer
+        // has recorded it (or a checklist import has learnt it). Null until then.
+        string? OfficialStudentNumber,
         string FullName,
         string Program,
         string StudentType,
@@ -53,6 +61,9 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         bool IsComplete,
         int SubmittedCount,
         int TotalCount,
+        // The most recent day any of this enrollee's papers was received ("yyyy-MM-dd"), so the
+        // board can show — and sort by — who has been handing things in.
+        string? LastSubmittedOn,
         IReadOnlyList<string> MissingAuthorizationRequirements,
         IReadOnlyList<ChecklistDocumentDto> Documents)
     {
@@ -63,6 +74,7 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             return new(
                 r.Id,
                 r.StudentNumber,
+                r.OfficialStudentNumber,
                 r.FullName,
                 r.Program.ToString(),
                 r.StudentType.ToString(),
@@ -72,6 +84,7 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 DocumentChecklist.IsComplete(documents),
                 DocumentChecklist.SubmittedCount(documents),
                 documents.Count,
+                documents.Where(d => d.Status != DocumentStatus.NotSubmitted).Max(d => d.SubmittedOn)?.ToString("yyyy-MM-dd"),
                 DocumentChecklist.MissingAuthorizationRequirements(documents, catalog),
                 documents
                     .OrderBy(d => catalog.Order(d.RequirementCode))
@@ -80,7 +93,11 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
         }
     }
 
-    public record UpdateDocumentStatusRequest(string? Status);
+    /// <summary>
+    /// A decision on one paper. <paramref name="Status"/> may be omitted to change only the date;
+    /// <paramref name="SubmittedOn"/> ("yyyy-MM-dd") defaults to today when a paper is first marked received.
+    /// </summary>
+    public record UpdateDocumentStatusRequest(string? Status, string? SubmittedOn = null);
 
     public static class DocumentChecklistEndpoints
     {
@@ -105,53 +122,13 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             AppDbContext db,
             CancellationToken cancellationToken)
         {
-            var query = db.StudentRegistrations
-                .AsNoTracking()
-                .Include(r => r.Semester)
-                .Include(r => r.Documents)
-                .AsQueryable();
-
-            // Scoped to the current term so the board doesn't carry every past term's enrollees
-            // forward when the semester rolls over — a search deliberately widens to every term so
-            // a past student can still be looked up. Same rule as the registration queue.
-            if (string.IsNullOrWhiteSpace(search)
-                && await db.GetActiveSemesterIdAsync(cancellationToken) is { } activeSemesterId)
-            {
-                query = query.Where(r => r.SemesterId == activeSemesterId);
-            }
-
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var term = search.Trim();
-                query = query.Where(r =>
-                    r.StudentNumber.Contains(term)
-                    || r.LastName.Contains(term)
-                    || r.FirstName.Contains(term));
-            }
-
             // The board before the completion chip narrows it. The headline tally is counted against
             // this, so switching the view to "Incomplete" cannot make the board report that nobody
             // is complete.
-            var baseQuery = query;
-
-            // The completion filter has to happen in SQL now that the list is paged. It used to run
-            // in memory over the fetched rows, which paging would have turned into "filter this
-            // page" — page 1 of an incomplete-only view would show whichever of the first 25
-            // enrollees happened to be incomplete, and the total would count both kinds.
-            //
-            // "Complete" here is "no paper still unsubmitted". The displayed figure counts only the
-            // papers that apply to the enrollee's program and student type (DocumentChecklist.Applicable,
-            // which needs the catalog and cannot run in SQL); those agree for every checklist seeded
-            // since applicability existed, and the AddRequirementApplicabilityAndClassStart migration
-            // deleted the inapplicable historical rows precisely so they would.
-            if (string.Equals(completion, "complete", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(r => !r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted));
-            }
-            else if (string.Equals(completion, "incomplete", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(r => r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted));
-            }
+            var baseQuery = (await BoardQueryAsync(db, null, search, cancellationToken))
+                .Include(r => r.Semester)
+                .Include(r => r.Documents);
+            var query = ApplyCompletion(baseQuery, completion);
 
             // Which papers gate clearance for enlistment — needed by the "Clearance" sort below.
             // Fetched once (a handful of rows) so the ordering itself can still be done in SQL.
@@ -172,6 +149,10 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                         gatingCodes.Contains(d.RequirementCode) && d.Status == DocumentStatus.NotSubmitted)),
                 "studentnumber" => desc
                     ? query.OrderByDescending(r => r.StudentNumber) : query.OrderBy(r => r.StudentNumber),
+                // Students with no Student ID yet sort together (last ascending) rather than first.
+                "officialstudentnumber" => desc
+                    ? query.OrderBy(r => r.OfficialStudentNumber == null).ThenByDescending(r => r.OfficialStudentNumber)
+                    : query.OrderBy(r => r.OfficialStudentNumber == null).ThenBy(r => r.OfficialStudentNumber),
                 "fullname" => desc
                     ? query.OrderByDescending(r => r.LastName).ThenByDescending(r => r.FirstName)
                     : query.OrderBy(r => r.LastName).ThenBy(r => r.FirstName),
@@ -181,6 +162,11 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 "submittedcount" => desc
                     ? query.OrderByDescending(r => r.Documents.Count(d => d.Status != DocumentStatus.NotSubmitted))
                     : query.OrderBy(r => r.Documents.Count(d => d.Status != DocumentStatus.NotSubmitted)),
+                // Most recently received first when descending; checklists with nothing dated sort last either way.
+                "lastsubmittedon" => desc
+                    ? query.OrderByDescending(r => r.Documents.Max(d => d.SubmittedOn))
+                    : query.OrderBy(r => r.Documents.Max(d => d.SubmittedOn) == null)
+                        .ThenBy(r => r.Documents.Max(d => d.SubmittedOn)),
                 "registrationstatus" => desc
                     ? query.OrderByDescending(r => r.Status) : query.OrderBy(r => r.Status),
                 "iscomplete" => desc
@@ -229,6 +215,60 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             return Results.Ok(body);
         }
 
+        /// <summary>
+        /// The board's rows before paging and sorting — shared with the spreadsheet export so the
+        /// file holds exactly the enrollees the officer is looking at. Scoped to the current term
+        /// so the board doesn't carry every past term's enrollees forward when the semester rolls
+        /// over; a search deliberately widens to every term so a past student can still be looked
+        /// up (same rule as the registration queue). Search covers both identifiers and the name.
+        /// </summary>
+        internal static async Task<IQueryable<StudentRegistration>> BoardQueryAsync(
+            AppDbContext db, string? completion, string? search, CancellationToken cancellationToken)
+        {
+            var query = db.StudentRegistrations.AsNoTracking().AsQueryable();
+
+            if (string.IsNullOrWhiteSpace(search)
+                && await db.GetActiveSemesterIdAsync(cancellationToken) is { } activeSemesterId)
+            {
+                query = query.Where(r => r.SemesterId == activeSemesterId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim();
+                query = query.Where(r =>
+                    r.StudentNumber.Contains(term)
+                    || (r.OfficialStudentNumber != null && r.OfficialStudentNumber.Contains(term))
+                    || r.LastName.Contains(term)
+                    || r.FirstName.Contains(term));
+            }
+
+            return ApplyCompletion(query, completion);
+        }
+
+        // The completion filter has to happen in SQL now that the list is paged. It used to run
+        // in memory over the fetched rows, which paging would have turned into "filter this
+        // page" — page 1 of an incomplete-only view would show whichever of the first 25
+        // enrollees happened to be incomplete, and the total would count both kinds.
+        //
+        // "Complete" here is "no paper still unsubmitted". The displayed figure counts only the
+        // papers that apply to the enrollee's program and student type (DocumentChecklist.Applicable,
+        // which needs the catalog and cannot run in SQL); those agree for every checklist seeded
+        // since applicability existed, and the AddRequirementApplicabilityAndClassStart migration
+        // deleted the inapplicable historical rows precisely so they would.
+        private static IQueryable<StudentRegistration> ApplyCompletion(IQueryable<StudentRegistration> query, string? completion)
+        {
+            if (string.Equals(completion, "complete", StringComparison.OrdinalIgnoreCase))
+            {
+                return query.Where(r => !r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted));
+            }
+            if (string.Equals(completion, "incomplete", StringComparison.OrdinalIgnoreCase))
+            {
+                return query.Where(r => r.Documents.Any(d => d.Status == DocumentStatus.NotSubmitted));
+            }
+            return query;
+        }
+
         private static async Task<IResult> UpdateStatusAsync(
             Guid documentId,
             UpdateDocumentStatusRequest request,
@@ -237,9 +277,31 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             AuditLog audit,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(request.Status)
-                || !Enum.TryParse<DocumentStatus>(request.Status, ignoreCase: true, out var status)
-                || !Enum.IsDefined(status))
+            DateOnly? submittedOn = null;
+            if (!string.IsNullOrWhiteSpace(request.SubmittedOn))
+            {
+                if (!DateOnly.TryParseExact(request.SubmittedOn, "yyyy-MM-dd", out var parsedDate))
+                {
+                    return Results.BadRequest(new { message = "Enter the date received as a valid date." });
+                }
+                if (DocumentChecklist.SubmittedOnProblem(parsedDate) is { } dateProblem)
+                {
+                    return Results.BadRequest(new { message = dateProblem });
+                }
+                submittedOn = parsedDate;
+            }
+
+            DocumentStatus? requested = null;
+            if (!string.IsNullOrWhiteSpace(request.Status))
+            {
+                if (!Enum.TryParse<DocumentStatus>(request.Status, ignoreCase: true, out var parsedStatus)
+                    || !Enum.IsDefined(parsedStatus))
+                {
+                    return Results.BadRequest(new { message = "Please choose a valid document status." });
+                }
+                requested = parsedStatus;
+            }
+            else if (submittedOn is null)
             {
                 return Results.BadRequest(new { message = "Please choose a valid document status." });
             }
@@ -255,6 +317,11 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
 
             var registration = document.StudentRegistration;
             var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+            var status = requested ?? document.Status;
+            if (status == DocumentStatus.NotSubmitted && submittedOn is not null)
+            {
+                return Results.BadRequest(new { message = "A paper that has not been submitted has no date received." });
+            }
 
             // Which third option this paper offers is the catalog's decision (a photocopy, or a
             // certificate of grades standing in for it) — never both. Refuse the one that isn't on
@@ -269,23 +336,20 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
                 });
             }
 
-            if (document.Status != status)
+            var previous = document.Status;
+            var previousDate = document.SubmittedOn;
+            var officerId = Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedOfficer)
+                && parsedOfficer != Guid.Empty ? parsedOfficer : (Guid?)null;
+            // FR-DOC-03: the row carries its own provenance, and the date the paper came in, set
+            // together through the one helper every path uses.
+            if (DocumentChecklist.Record(document, status, submittedOn, officerId, DateTime.UtcNow))
             {
-                var previous = document.Status;
-                document.Status = status;
-                // FR-DOC-03: the row now carries its own provenance. The audit entry below says the
-                // same thing in prose, but it cannot be joined back to this row — so the board could
-                // show a paper as received with nothing on the row itself saying who had decided
-                // that, or when. Set together, on the one path that changes a status.
-                document.UpdatedAtUtc = DateTime.UtcNow;
-                document.VerifiedByUserId =
-                    Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier),
-                        out var officerId) && officerId != Guid.Empty
-                        ? officerId
-                        : null;
+                var what = previous != status
+                    ? $"from {previous} to {status}"
+                    : $"date received from {previousDate?.ToString("MMM d, yyyy") ?? "unknown"}";
                 audit.Record(AuditAction.DocumentChecklistUpdated,
-                    $"Set {catalog.Label(document.RequirementCode)} of {registration.StudentNumber} " +
-                    $"from {previous} to {status}.",
+                    $"Set {catalog.Label(document.RequirementCode)} of {registration.StudentNumber} {what}" +
+                    (document.SubmittedOn is { } on ? $" (received {on:MMM d, yyyy})." : "."),
                     "StudentRegistration", registration.Id.ToString());
                 await db.SaveChangesAsync(cancellationToken);
             }
@@ -295,6 +359,7 @@ namespace SENGENSystem.Server.Features.Documents.Checklist
             {
                 documentId = document.Id,
                 status = document.Status.ToString(),
+                submittedOn = document.SubmittedOn?.ToString("yyyy-MM-dd"),
                 updatedAtUtc = Iso(document.UpdatedAtUtc),
                 verifiedBy = await VerifierNameAsync(db, document.VerifiedByUserId, cancellationToken),
                 isComplete = DocumentChecklist.IsComplete(applicable),

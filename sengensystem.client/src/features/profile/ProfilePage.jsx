@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/useAuth';
 import PasswordInput from '../auth/PasswordInput';
-import { changePassword, updateProfile, startTwoFactor, enableTwoFactor, disableTwoFactor } from './api';
+import { changePassword, updateProfile, startTwoFactor, enableTwoFactor, disableTwoFactor, removeAvatar } from './api';
 import { getMyLink } from '../documents/api';
 import ChangeEmailModal from './ChangeEmailModal';
+import AvatarCropModal from './AvatarCropModal';
+import Avatar from '../shell/Avatar';
+import { clearAvatar } from '../shell/avatarCache';
+import { confirmAction } from '../shell/confirm';
 import { notifySuccess, notifyError } from '../shell/notify';
 import './profile.css';
 
@@ -257,7 +261,45 @@ function ProfilePage() {
     const [savingPw, setSavingPw] = useState(false);
     const [emailModalOpen, setEmailModalOpen] = useState(false);
 
-    const initials = `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase();
+    const [photoFile, setPhotoFile] = useState(null);
+    const [removingPhoto, setRemovingPhoto] = useState(false);
+    const photoInput = useRef(null);
+
+    // Large camera photos are fine — the crop dialog shrinks them before anything is uploaded.
+    function choosePhoto(e) {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+            notifyError('Choose a JPEG, PNG, or WebP picture.');
+            return;
+        }
+        if (file.size > 15 * 1024 * 1024) {
+            notifyError('That picture is larger than 15 MB — choose a smaller one.');
+            return;
+        }
+        setPhotoFile(file);
+    }
+
+    async function deletePhoto() {
+        const ok = await confirmAction({
+            title: 'Remove your profile picture?',
+            message: 'Your initials will be shown instead. You can upload a new picture at any time.',
+            confirmLabel: 'Remove picture'
+        });
+        if (!ok) return;
+        setRemovingPhoto(true);
+        try {
+            const { user: updated } = await removeAvatar();
+            clearAvatar(user);
+            updateUser(updated);
+            notifySuccess('Profile picture removed.');
+        } catch (err) {
+            notifyError(err.message);
+        } finally {
+            setRemovingPhoto(false);
+        }
+    }
 
     const setInfoField = field => e => setInfo(prev => ({ ...prev, [field]: e.target.value }));
     const setPwField = field => e => setPw(prev => ({ ...prev, [field]: e.target.value }));
@@ -317,15 +359,56 @@ function ProfilePage() {
     return (
         <div className="profile-page">
             <header className="profile-head">
-                <span className="avatar profile-avatar">{initials}</span>
+                <button
+                    type="button"
+                    className="profile-avatar-btn"
+                    onClick={() => photoInput.current?.click()}
+                    title={user.avatarVersion ? 'Change profile picture' : 'Upload a profile picture'}
+                    aria-label={user.avatarVersion ? 'Change profile picture' : 'Upload a profile picture'}
+                >
+                    <Avatar user={user} className="profile-avatar" />
+                    <span className="profile-avatar-edit" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                            <circle cx="12" cy="13" r="3" />
+                        </svg>
+                    </span>
+                </button>
+                <input
+                    ref={photoInput}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    onChange={choosePhoto}
+                />
                 <div>
                     <h2>{user.firstName} {user.lastName}</h2>
                     <p>
                         <span className="chip chip-blue">{roleLabels[user.role] ?? user.role}</span>
                         <span className="profile-email">{user.email}</span>
                     </p>
+                    <div className="profile-photo-actions">
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={() => photoInput.current?.click()}>
+                            {user.avatarVersion ? 'Change picture' : 'Upload picture'}
+                        </button>
+                        {user.avatarVersion && (
+                            <button type="button" className="btn btn-sm btn-ghost" onClick={deletePhoto} disabled={removingPhoto}>
+                                {removingPhoto ? 'Removing…' : 'Remove'}
+                            </button>
+                        )}
+                    </div>
                 </div>
             </header>
+            {photoFile && (
+                <AvatarCropModal
+                    file={photoFile}
+                    onClose={() => setPhotoFile(null)}
+                    onSaved={updated => { updateUser(updated); setPhotoFile(null); }}
+                />
+            )}
 
             <div className="profile-grid">
                 {user.role === 'Student' && <StudentRecordCard />}

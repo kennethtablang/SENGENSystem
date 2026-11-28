@@ -96,6 +96,18 @@ export function humanize(pascal) {
     return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
 }
 
+/** A calendar date from the server ("2026-09-23") as "Sep 23, 2026". No time zone is involved. */
+export function formatDay(ymd) {
+    if (!ymd) return '';
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** Today in Philippine time as "yyyy-mm-dd" — the latest date a paper can have been received. */
+export function todayPHT() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+}
+
 // Timestamps arrive as UTC ISO strings; SEN-GEN always reads in Philippine time (UTC+8).
 export function formatPHT(iso) {
     if (!iso) return '—';

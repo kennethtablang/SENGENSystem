@@ -6,6 +6,7 @@ import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import './registration.css';
 import EnrollmentChip from '../enlistment/EnrollmentChip';
+import { downloadRegistrationForm } from '../evaluation/api';
 
 const statusChip = {
     Submitted: 'chip chip-muted',
@@ -26,6 +27,7 @@ function RegistrationsPage() {
     const [reload, setReload] = useState(0);
     const [selected, setSelected] = useState(null); // full detail
     const [drawerBusy, setDrawerBusy] = useState(false);
+    const [corBusy, setCorBusy] = useState(false);
     const table = useServerTable({
         rows,
         total,
@@ -72,6 +74,20 @@ function RegistrationsPage() {
             ...prev,
             documents: prev.documents.map(d => d.requirementCode === requirementCode ? { ...d, status: value } : d)
         }));
+    }
+
+    // FR-RPT-06: the staff copy of a student's certificate of registration — the same PDF the
+    // student downloads from My subjects, so the Registrar can print or hand it over.
+    async function downloadCor() {
+        if (!selected) return;
+        setCorBusy(true);
+        try {
+            await downloadRegistrationForm(selected.id, selected.officialStudentNumber || selected.studentNumber);
+        } catch (err) {
+            notifyError(err.message);
+        } finally {
+            setCorBusy(false);
+        }
     }
 
     async function save(nextStatus) {
@@ -246,6 +262,21 @@ function RegistrationsPage() {
                                     </ul>
                                 )}
                             </section>
+
+                            {/* Only a confirmed registration can hold seats, so only it has a COR. */}
+                            {selected.status === 'Confirmed' && (
+                                <section>
+                                    <h4 className="reg-detail-title">Certificate of registration</h4>
+                                    <p className="reg-cor-hint">
+                                        The subjects this student holds approved seats in for the term, with
+                                        day, time, room, faculty, and total units.
+                                    </p>
+                                    <button type="button" className="btn btn-ghost btn-sm"
+                                        disabled={corBusy} onClick={downloadCor}>
+                                        {corBusy ? 'Preparing…' : 'Download COR (PDF)'}
+                                    </button>
+                                </section>
+                            )}
                         </div>
 
                         <footer className="reg-drawer-foot">

@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useAuth } from '../auth/useAuth';
-import { listChecklists, updateDocumentStatus, sendReminders, getMyLink, claimRecord } from './api';
+import { listChecklists, updateDocumentStatus, sendReminders, getMyLink, claimRecord, exportChecklists } from './api';
 import { notifySuccess, notifyError } from '../shell/notify';
 import { confirmAction } from '../shell/confirm';
 import { confirmsHeavy } from '../settings/prefs';
-import { statusOptionsFor, documentStatusLabel, humanize, formatPHT } from '../registration/options';
+import { statusOptionsFor, documentStatusLabel, humanize, formatPHT, formatDay, todayPHT } from '../registration/options';
 import { useServerTable } from '../shell/useServerTable';
 import { SortHeader, Pagination } from '../shell/tableControls';
 import RequirementsModal from './RequirementsModal';
+import ChecklistImportModal from './ChecklistImportModal';
 import '../registration/registration.css';
 import './documents.css';
 
@@ -137,6 +138,9 @@ function StudentChecklist() {
                                         Required to be cleared
                                     </span>
                                 )}
+                                {d.submittedOn && (
+                                    <span className="doc-received-on">Received {formatDay(d.submittedOn)}</span>
+                                )}
                             </span>
                             <span className={statusChipClass[d.status] || 'chip chip-muted'}>
                                 {documentStatusLabel(d.status)}
@@ -172,6 +176,8 @@ function StaffBoard() {
     const [alert, setAlert] = useState(null);
     const [remindBusy, setRemindBusy] = useState(false);
     const [manageOpen, setManageOpen] = useState(false);
+    const [importOpen, setImportOpen] = useState(false);
+    const [exportBusy, setExportBusy] = useState(false);
     const table = useServerTable({
         rows,
         total,
@@ -213,6 +219,33 @@ function StaffBoard() {
         } catch (err) {
             setAlert({ kind: 'error', text: err.message });
             notifyError(err.message);
+        }
+    }
+
+    // Only the date received changes — the status stays as recorded.
+    async function setDocDate(row, doc, date) {
+        if (!date || date === doc.submittedOn) return;
+        setAlert(null);
+        try {
+            await updateDocumentStatus(doc.id, null, date);
+            notifySuccess(`${doc.label} of ${row.studentNumber}: received ${formatDay(date)}.`);
+            setReload(v => v + 1);
+        } catch (err) {
+            setAlert({ kind: 'error', text: err.message });
+            notifyError(err.message);
+        }
+    }
+
+    // The board as a workbook, filtered exactly as it is on screen (all pages, not just this one).
+    async function exportBoard() {
+        setExportBusy(true);
+        try {
+            const name = await exportChecklists({ completion, search: appliedSearch });
+            notifySuccess(`Exported the checklist to ${name}.`);
+        } catch (err) {
+            if (!err.cancelled) notifyError(err.message);
+        } finally {
+            setExportBusy(false);
         }
     }
 
@@ -274,7 +307,7 @@ function StaffBoard() {
                 <div className="reg-controls">
                     <form onSubmit={e => { e.preventDefault(); setAppliedSearch(search); }} className="reg-search">
                         <input
-                            type="search" placeholder="Search name or student no."
+                            type="search" placeholder="Search name, registration no., or Student ID"
                             value={search} onChange={e => setSearch(e.target.value)}
                         />
                     </form>
@@ -292,6 +325,20 @@ function StaffBoard() {
                         Manage requirements
                     </button>
                     <button
+                        className="btn" type="button"
+                        onClick={() => setImportOpen(true)}
+                        title="Update checklists from the admission office's .xlsx or .csv — you review the matches before anything is saved"
+                    >
+                        Import
+                    </button>
+                    <button
+                        className="btn" type="button" disabled={exportBusy}
+                        onClick={exportBoard}
+                        title="Download the checklists shown (every page, current filter) as an .xlsx you can edit and import back"
+                    >
+                        {exportBusy ? 'Exporting…' : 'Export'}
+                    </button>
+                    <button
                         className="btn btn-primary" type="button" disabled={remindBusy}
                         onClick={() => remind(null)}
                         title="Email every enrollee whose checklist is incomplete"
@@ -302,6 +349,12 @@ function StaffBoard() {
             </header>
 
             {manageOpen && <RequirementsModal onClose={() => setManageOpen(false)} />}
+            {importOpen && (
+                <ChecklistImportModal
+                    onClose={() => setImportOpen(false)}
+                    onImported={text => { setAlert({ kind: 'success', text }); setReload(v => v + 1); }}
+                />
+            )}
 
             {alert && <div className={alert.kind === 'success' ? 'alert alert-success' : 'alert'}
                     role={alert.kind === 'success' ? 'status' : 'alert'}>{alert.text}</div>}
@@ -315,11 +368,13 @@ function StaffBoard() {
                     <table className="reg-table">
                         <thead>
                             <tr>
-                                <SortHeader label="Student no." sortKey="studentNumber" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Registration no." sortKey="studentNumber" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Student ID" sortKey="officialStudentNumber" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Name" sortKey="fullName" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Program" sortKey="program" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Type" sortKey="studentType" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Requirements" sortKey="submittedCount" sort={table.sort} onSort={table.toggleSort} />
+                                <SortHeader label="Last received" sortKey="lastSubmittedOn" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="SIS status" sortKey="registrationStatus" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Checklist" sortKey="isComplete" sort={table.sort} onSort={table.toggleSort} />
                                 <SortHeader label="Clearance" sortKey="clearance" sort={table.sort} onSort={table.toggleSort} />
@@ -335,10 +390,18 @@ function StaffBoard() {
                                             onClick={() => setExpanded(isOpen ? null : row.registrationId)}
                                         >
                                             <td className="reg-mono">{row.studentNumber}</td>
+                                            <td className="reg-mono">
+                                                {row.officialStudentNumber || (
+                                                    <span className="doc-no-id" title="No official Student ID recorded yet">—</span>
+                                                )}
+                                            </td>
                                             <td><strong>{row.fullName}</strong></td>
                                             <td>{row.program}</td>
                                             <td>{humanize(row.studentType)}</td>
                                             <td>{row.submittedCount}/{row.totalCount}</td>
+                                            <td className="doc-last-received">
+                                                {row.lastSubmittedOn ? formatDay(row.lastSubmittedOn) : <span className="doc-no-id">—</span>}
+                                            </td>
                                             <td>
                                                 <span className={row.registrationStatus === 'Confirmed' ? 'chip chip-blue' : 'chip chip-muted'}>
                                                     {row.registrationStatus}
@@ -363,12 +426,12 @@ function StaffBoard() {
                                             </td>
                                         </tr>
                                         <tr className={`doc-expand-row${isOpen ? ' is-open' : ''}`}>
-                                            <td colSpan={8}>
+                                            <td colSpan={10}>
                                                 <div className="doc-expand-inner">
                                                     <div className="doc-expand-pad" aria-hidden={!isOpen}>
                                                         <div className="doc-grid">
                                                             {row.documents.map(doc => (
-                                                                <label
+                                                                <div
                                                                     className={`doc-grid-item${doc.gatesAuthorization ? ' is-gating' : ''}`}
                                                                     key={doc.id}
                                                                     onClick={e => e.stopPropagation()}
@@ -384,15 +447,39 @@ function StaffBoard() {
                                                                             </span>
                                                                         )}
                                                                     </span>
-                                                                    <select
-                                                                        value={doc.status}
-                                                                        disabled={!isOpen}
-                                                                        onChange={e => setDocStatus(row, doc, e.target.value)}
-                                                                    >
-                                                                        {statusOptionsFor(doc.statuses).map(o => (
-                                                                            <option key={o.value} value={o.value}>{o.label}</option>
-                                                                        ))}
-                                                                    </select>
+                                                                    <div className="doc-grid-controls">
+                                                                        <select
+                                                                            value={doc.status}
+                                                                            disabled={!isOpen}
+                                                                            aria-label={`${doc.label} status`}
+                                                                            onChange={e => setDocStatus(row, doc, e.target.value)}
+                                                                        >
+                                                                            {statusOptionsFor(doc.statuses).map(o => (
+                                                                                <option key={o.value} value={o.value}>{o.label}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                        {/* The day the paper came in — today by default when it
+                                                                            is marked received, corrected here when it was
+                                                                            handed in earlier than it was encoded. Committed on
+                                                                            blur / Enter so a half-typed year is never sent. */}
+                                                                        {doc.status !== 'NotSubmitted' && (
+                                                                            <input
+                                                                                key={`${doc.id}-${doc.submittedOn ?? ''}`}
+                                                                                type="date"
+                                                                                className="doc-received-input"
+                                                                                defaultValue={doc.submittedOn ?? ''}
+                                                                                max={todayPHT()}
+                                                                                disabled={!isOpen}
+                                                                                aria-label={`${doc.label} date received`}
+                                                                                title="Date received"
+                                                                                onBlur={e => setDocDate(row, doc, e.target.value)}
+                                                                                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                                                            />
+                                                                        )}
+                                                                    </div>
+                                                                    {doc.status !== 'NotSubmitted' && !doc.submittedOn && (
+                                                                        <span className="doc-date-missing">Date received not recorded</span>
+                                                                    )}
                                                                     {/* FR-DOC-03: who decided this row, and when. Absent until
                                                                         someone has — a freshly seeded checklist has nothing to
                                                                         say here, and inventing a name for it would be worse
@@ -404,7 +491,7 @@ function StaffBoard() {
                                                                                 : formatPHT(doc.updatedAtUtc)}
                                                                         </span>
                                                                     )}
-                                                                </label>
+                                                                </div>
                                                             ))}
                                                         </div>
                                                         {!row.isComplete && (

@@ -61,6 +61,7 @@ namespace SENGENSystem.Server.Features.PreEnrollment.PreAuthorize
                     nameof(UserRole.AdmissionOfficer), nameof(UserRole.Registrar), nameof(UserRole.SchoolAdmin)));
 
             group.MapGet("", ListAsync);
+            group.MapPost("bulk", BulkGrantAsync);
             group.MapPost("{registrationId:guid}", GrantAsync);
             group.MapDelete("{registrationId:guid}", RevokeAsync);
             return app;
@@ -203,11 +204,114 @@ namespace SENGENSystem.Server.Features.PreEnrollment.PreAuthorize
                 return Results.Ok(PreAuthorizationRowDto.From(registration, catalog));
             }
 
-            // Two preconditions. The SIS must be Registrar-confirmed, and the papers the catalog
-            // marks as required for authorization must be in hand — the report card and good moral
-            // for a new enrollee, the transcript and honorable dismissal for a transferee. The rest
-            // of the checklist may still be arriving (a student can submit those even after
-            // enlistment opens), so it is followed up on rather than blocked on.
+            var blockers = Blockers(registration, catalog);
+            if (blockers.Count > 0)
+            {
+                return Results.BadRequest(new
+                {
+                    message = "This student cannot be pre-authorized yet.",
+                    reasons = blockers
+                });
+            }
+
+            Authorize(registration, CurrentUserId(principal), audit);
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.Ok(PreAuthorizationRowDto.From(registration, catalog));
+        }
+
+        public record BulkPreAuthorizeRequest(Guid[]? RegistrationIds);
+
+        /// <summary>One student's result in a bulk run: cleared, or skipped with the reasons why.</summary>
+        public record BulkPreAuthorizeOutcome(
+            Guid RegistrationId,
+            string StudentNumber,
+            string FullName,
+            bool Authorized,
+            IReadOnlyList<string> Reasons);
+
+        /// <summary>Most students one bulk request may name — a term's intake, with headroom.</summary>
+        public const int MaxBulkSize = 500;
+
+        // Bulk clearance from the "Start selecting students" mode. Every student passes exactly the
+        // same gate as a single Authorize click; a blocked one is skipped and reported with its
+        // reasons instead of failing the whole run, and the cleared ones commit together.
+        private static async Task<IResult> BulkGrantAsync(
+            BulkPreAuthorizeRequest request,
+            AppDbContext db,
+            AuditLog audit,
+            ClaimsPrincipal principal,
+            CancellationToken cancellationToken)
+        {
+            var ids = (request.RegistrationIds ?? []).Distinct().ToList();
+            if (ids.Count == 0)
+            {
+                return Results.BadRequest(new { message = "Select at least one student to authorize." });
+            }
+            if (ids.Count > MaxBulkSize)
+            {
+                return Results.BadRequest(new
+                {
+                    message = $"A single run can authorize at most {MaxBulkSize} students — split the selection."
+                });
+            }
+
+            var registrations = await db.StudentRegistrations
+                .Include(r => r.Semester)
+                .Include(r => r.Documents)
+                .Where(r => ids.Contains(r.Id))
+                .ToListAsync(cancellationToken);
+            var byId = registrations.ToDictionary(r => r.Id);
+
+            var catalog = await DocumentChecklist.LoadCatalogAsync(db, cancellationToken);
+            var actorId = CurrentUserId(principal);
+            var outcomes = new List<BulkPreAuthorizeOutcome>();
+            var authorizedCount = 0;
+
+            foreach (var id in ids)
+            {
+                if (!byId.TryGetValue(id, out var registration))
+                {
+                    outcomes.Add(new(id, string.Empty, "Unknown student", false, ["Registration not found."]));
+                    continue;
+                }
+                if (registration.IsPreAuthorized)
+                {
+                    outcomes.Add(new(id, registration.StudentNumber, registration.FullName, false,
+                        ["Already authorized."]));
+                    continue;
+                }
+
+                var blockers = Blockers(registration, catalog);
+                if (blockers.Count > 0)
+                {
+                    outcomes.Add(new(id, registration.StudentNumber, registration.FullName, false, blockers));
+                    continue;
+                }
+
+                Authorize(registration, actorId, audit);
+                authorizedCount++;
+                outcomes.Add(new(id, registration.StudentNumber, registration.FullName, true, []));
+            }
+
+            if (authorizedCount > 0)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            return Results.Ok(new { authorizedCount, outcomes });
+        }
+
+        /// <summary>
+        /// Why this student cannot be cleared yet; empty means they can. Two preconditions: the SIS
+        /// must be Registrar-confirmed, and the papers the catalog marks as required for
+        /// authorization must be in hand — the report card and good moral for a new enrollee, the
+        /// transcript and honorable dismissal for a transferee. The rest of the checklist may still
+        /// be arriving (a student can submit those even after enlistment opens), so it is followed
+        /// up on rather than blocked on.
+        /// </summary>
+        private static List<string> Blockers(StudentRegistration registration, RequirementCatalog catalog)
+        {
             var blockers = new List<string>();
             if (registration.Status != RegistrationStatus.Confirmed)
             {
@@ -218,26 +322,18 @@ namespace SENGENSystem.Server.Features.PreEnrollment.PreAuthorize
                 DocumentChecklist.Applicable(registration, catalog), catalog);
             blockers.AddRange(missing.Select(name =>
                 $"{name} has not been submitted — it is required before this student can be authorized."));
+            return blockers;
+        }
 
-            if (blockers.Count > 0)
-            {
-                return Results.BadRequest(new
-                {
-                    message = "This student cannot be pre-authorized yet.",
-                    reasons = blockers
-                });
-            }
-
+        private static void Authorize(StudentRegistration registration, Guid? actorId, AuditLog audit)
+        {
             registration.IsPreAuthorized = true;
             registration.PreAuthorizedAtUtc = DateTime.UtcNow;
-            registration.PreAuthorizedByUserId = CurrentUserId(principal);
+            registration.PreAuthorizedByUserId = actorId;
 
             audit.Record(AuditAction.StudentPreAuthorized,
                 $"Pre-authorized {registration.StudentNumber} ({registration.FullName}) for online subject enlistment.",
                 "StudentRegistration", registration.Id.ToString());
-            await db.SaveChangesAsync(cancellationToken);
-
-            return Results.Ok(PreAuthorizationRowDto.From(registration, catalog));
         }
 
         private static async Task<IResult> RevokeAsync(

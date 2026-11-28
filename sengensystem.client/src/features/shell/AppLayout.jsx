@@ -10,6 +10,7 @@ import { useNavBadges } from './useNavBadges';
 import { confirmsSignout, showsBadges } from '../settings/prefs';
 import './shell.css';
 import { readItem, writeItem } from './storage';
+import Avatar from './Avatar';
 
 const roleLabels = {
     Student: 'Student',
@@ -91,8 +92,6 @@ function UserMenu({ user, logout }) {
     const menuRef = useRef(null);
     const [open, setOpen] = useState(false);
 
-    const initials = `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase();
-
     useEffect(() => {
         if (!open) return undefined;
         const onDoc = e => {
@@ -118,7 +117,7 @@ function UserMenu({ user, logout }) {
                 aria-haspopup="menu"
                 aria-expanded={open}
             >
-                <span className="avatar">{initials}</span>
+                <Avatar user={user} />
                 <span className="user-menu-name">{user.firstName} {user.lastName}</span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
@@ -130,7 +129,7 @@ function UserMenu({ user, logout }) {
             {open && (
                 <div className="user-menu-drop" role="menu">
                     <div className="user-menu-head">
-                        <span className="avatar">{initials}</span>
+                        <Avatar user={user} />
                         <div>
                             <strong>{user.firstName} {user.lastName}</strong>
                             <small>{user.email}</small>

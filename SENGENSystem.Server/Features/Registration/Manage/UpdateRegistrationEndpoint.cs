@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SENGENSystem.Server.Common.Auditing;
 using SENGENSystem.Server.Common.Notifications;
@@ -34,6 +35,7 @@ namespace SENGENSystem.Server.Features.Registration.Manage
         private static async Task<IResult> HandleAsync(
             Guid id,
             UpdateRegistrationRequest request,
+            ClaimsPrincipal principal,
             AppDbContext db,
             AuditLog audit,
             Notifier notifier,
@@ -108,14 +110,20 @@ namespace SENGENSystem.Server.Features.Registration.Manage
             if (!string.IsNullOrWhiteSpace(request.Email)) registration.Email = request.Email.Trim().ToUpperInvariant();
             if (!string.IsNullOrWhiteSpace(request.MobileNumber)) registration.MobileNumber = request.MobileNumber.Trim();
 
+            // Through the shared helper, so a correction made here carries who made it, when, and
+            // the date the paper was received — the same as a change on the Document Requirements
+            // board (this path used to change the status and leave all three unset).
             var documentsChanged = false;
+            var officerId = Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedOfficer)
+                && parsedOfficer != Guid.Empty ? parsedOfficer : (Guid?)null;
+            var now = DateTime.UtcNow;
             foreach (var (code, status) in docChanges)
             {
                 var doc = registration.Documents.FirstOrDefault(d =>
                     string.Equals(d.RequirementCode, code, StringComparison.OrdinalIgnoreCase));
-                if (doc is not null && doc.Status != status)
+                if (doc is not null && doc.Status != status
+                    && DocumentChecklist.Record(doc, status, null, officerId, now))
                 {
-                    doc.Status = status;
                     documentsChanged = true;
                 }
             }

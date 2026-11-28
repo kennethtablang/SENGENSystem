@@ -227,6 +227,16 @@
   color: rgba(255, 255, 255, 0.75);
 }
 
+/* Dark theme: --sti-blue turns a light periwinkle there, so the selected segment takes dark text
+   (white, and especially the faded "Default" hint, fell under 3:1). */
+:root[data-theme='dark'] .seg-btn.active {
+  color: #0a1128;
+}
+
+:root[data-theme='dark'] .seg-btn.active small {
+  color: rgba(10, 17, 40, 0.72);
+}
+
 /* ---------- Toggle switch ---------- */
 
 .switch {
